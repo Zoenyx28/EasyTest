@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { useDefect } from '../composables/useDefect';
-import { useProjectMembers } from '../composables/useProjectMembers';
 import type {
   DefectInfo,
   DefectLogInfo,
   DefectAttachmentInfo,
   DefectCommentInfo,
   DefectModuleInfo,
-  ProjectMemberInfo
 } from '../types';
 import DefectRichEditor from './DefectRichEditor.vue';
 import DefectHistoryTimeline from './DefectHistoryTimeline.vue';
@@ -26,13 +24,11 @@ const emit = defineEmits<{
 }>();
 
 const defectApi = useDefect(props.projectId);
-const membersApi = useProjectMembers();
 
 const defect = ref<DefectInfo | null>(null);
 const logs = ref<DefectLogInfo[]>([]);
 const attachments = ref<DefectAttachmentInfo[]>([]);
 const comments = ref<DefectCommentInfo[]>([]);
-const members = ref<ProjectMemberInfo[]>([]);
 const modules = ref<DefectModuleInfo[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
@@ -106,12 +102,6 @@ function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name
   return result;
 }
 
-async function loadMembers() {
-  try {
-    members.value = await membersApi.getMembers(props.projectId);
-  } catch { /* ignore */ }
-}
-
 async function loadModules() {
   try {
     modules.value = await defectApi.getModules(props.projectId);
@@ -122,12 +112,11 @@ async function loadDefect() {
   if (!props.defectId) return;
   loading.value = true;
   try {
-    [defect.value, logs.value, attachments.value, comments.value] = await Promise.all([
-      defectApi.getDefect(props.defectId),
-      defectApi.getLogs(props.defectId),
-      defectApi.getAttachments(props.defectId),
-      defectApi.getComments(props.defectId),
-    ]);
+    const detail = await defectApi.getDefectDetail(props.defectId);
+    defect.value = detail.defect;
+    logs.value = detail.logs;
+    attachments.value = detail.attachments;
+    comments.value = detail.comments;
   } catch (e: any) {
     emit('showToast', e.message || '加载缺陷详情失败');
   } finally {
@@ -228,7 +217,7 @@ function handleClose() {
 
 watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
-    await Promise.all([loadMembers(), loadModules()]);
+    await loadModules();
     await loadDefect();
   }
 });

@@ -264,6 +264,44 @@ async def get_defect(defect_id: int):
     return ok(enriched)
 
 
+@router.get('/{defect_id}/detail')
+async def get_defect_detail(defect_id: int):
+    """缺陷完整详情 — 合并 defect + logs + attachments + comments 一次返回"""
+    import asyncio
+
+    defect = await crud.get_defect(defect_id)
+    if defect is None:
+        return fail(404, '缺陷不存在')
+
+    async def _enrich_logs():
+        logs = await crud.get_defect_logs(defect_id)
+        enriched_logs = []
+        for log in logs:
+            op_name = ''
+            if log['operator_id']:
+                try:
+                    user = await crud.get_user_by_id(log['operator_id'])
+                    if user:
+                        op_name = user.get('nickname', '')
+                except Exception:
+                    pass
+            enriched_logs.append({**log, 'operator_name': op_name})
+        return enriched_logs
+
+    enriched_defect, logs, attachments, comments = await asyncio.gather(
+        _enrich_defect(defect),
+        _enrich_logs(),
+        crud.get_defect_attachments(defect_id),
+        crud.get_defect_comments(defect_id),
+    )
+    return ok({
+        'defect': enriched_defect,
+        'logs': logs,
+        'attachments': attachments,
+        'comments': comments,
+    })
+
+
 @router.put('/{defect_id}')
 async def update_defect(request: Request, defect_id: int, data: DefectUpdate):
     """更新缺陷"""

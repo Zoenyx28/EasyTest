@@ -6,6 +6,7 @@ import type {
   DefectAttachmentInfo,
   DefectCommentInfo,
   DefectCreateData,
+  DefectDetailResponse,
 } from '../types';
 
 export function useDefect(projectId?: number) {
@@ -67,6 +68,10 @@ export function useDefect(projectId?: number) {
 
   async function getDefect(id: number): Promise<DefectInfo> {
     return api.get<DefectInfo>(`/defects/${id}`);
+  }
+
+  async function getDefectDetail(id: number): Promise<DefectDetailResponse> {
+    return api.get<DefectDetailResponse>(`/defects/${id}/detail`);
   }
 
   async function updateDefect(id: number, data: Partial<DefectInfo>): Promise<void> {
@@ -160,6 +165,7 @@ export function useDefect(projectId?: number) {
     getDefects,
     createDefect,
     getDefect,
+    getDefectDetail,
     updateDefect,
     transitionDefect,
     copyDefect,

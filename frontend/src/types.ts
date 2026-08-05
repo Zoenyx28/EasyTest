@@ -372,6 +372,13 @@ export interface DefectAttachmentInfo {
   created_at: string;
 }
 
+export interface DefectDetailResponse {
+  defect: DefectInfo;
+  logs: DefectLogInfo[];
+  attachments: DefectAttachmentInfo[];
+  comments: DefectCommentInfo[];
+}
+
 export interface DefectCreateData {
   title: string;
   description: string;
