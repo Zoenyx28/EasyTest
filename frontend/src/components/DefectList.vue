@@ -436,13 +436,11 @@ watch(() => props.externalModuleId, (newVal) => {
     <!-- Pagination -->
     <div v-if="total > 0" class="pagination">
       <div class="pagination-info">
-        Showing
+        共 <span class="pagination-num">{{ props.total }}</span> 条，显示
         <span class="pagination-num">{{ Math.min((props.currentPage - 1) * props.pageSize + 1, props.total) }}</span>
-        to
+        至
         <span class="pagination-num">{{ Math.min(props.currentPage * props.pageSize, props.total) }}</span>
-        of
-        <span class="pagination-num">{{ props.total }}</span>
-        defects
+        条
       </div>
       <div class="pagination-controls">
         <button
@@ -485,6 +483,7 @@ watch(() => props.externalModuleId, (newVal) => {
   flex-direction: column;
   height: 100%;
   background-color: var(--bg-muted);
+  padding: 0 16px;
 }
 
 .search-bar {
