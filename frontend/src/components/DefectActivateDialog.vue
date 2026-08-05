@@ -2,7 +2,6 @@
 import { ref, watch } from 'vue';
 import { useDefect } from '../composables/useDefect';
 import { useProjectMembers } from '../composables/useProjectMembers';
-import { useBranch } from '../composables/useBranch';
 import type { DefectInfo, ProjectMemberInfo } from '../types';
 
 const props = defineProps<{
@@ -19,27 +18,11 @@ const emit = defineEmits<{
 
 const defectApi = useDefect(props.projectId);
 const membersApi = useProjectMembers();
-const { branches, loadBranches } = useBranch(props.projectId);
 
 const members = ref<ProjectMemberInfo[]>([]);
-const resolution = ref('fixed');
-const resolvedVersion = ref(0);
 const assigneeId = ref(0);
 const comment = ref('');
-const duplicateDefectId = ref(0);
-const projectDefects = ref<DefectInfo[]>([]);
-const loadingDefects = ref(false);
 const saving = ref(false);
-
-const resolutionOptions = [
-  { value: 'fixed', label: '已解决' },
-  { value: 'duplicate', label: '重复Bug' },
-  { value: 'not_issue', label: '不是问题' },
-  { value: 'cannot_reproduce', label: '无法重现' },
-  { value: 'design', label: '设计如此' },
-  { value: 'external', label: '外部原因' },
-  { value: 'deferred', label: '延期处理' },
-];
 
 async function loadMembers() {
   try {
@@ -47,48 +30,11 @@ async function loadMembers() {
   } catch { /* ignore */ }
 }
 
-async function loadBranchesForResolve() {
-  if (!props.projectId) return;
-  try {
-    await loadBranches(props.projectId);
-  } catch { /* ignore */ }
-}
-
 function resetForm() {
   if (!props.defect) return;
-  resolution.value = 'fixed';
-  resolvedVersion.value = props.defect.branch_id || 0;
   assigneeId.value = props.defect.assignee_id || 0;
   comment.value = '';
-  duplicateDefectId.value = 0;
-  projectDefects.value = [];
 }
-
-async function loadDefectsForProject() {
-  if (!props.projectId) return;
-  loadingDefects.value = true;
-  try {
-    const result = await defectApi.getDefects({
-      project_id: props.projectId,
-      branch_id: 0,
-      page: 1,
-      page_size: 200,
-    });
-    projectDefects.value = result.items.filter(
-      (d: DefectInfo) => d.id !== props.defect?.id
-    );
-  } catch { /* ignore */ }
-  finally {
-    loadingDefects.value = false;
-  }
-}
-
-// When resolution changes to 'duplicate', load defect list
-watch(resolution, (newVal) => {
-  if (newVal === 'duplicate' && projectDefects.value.length === 0) {
-    loadDefectsForProject();
-  }
-});
 
 async function handleSubmit() {
   if (!props.defect) return;
@@ -96,19 +42,16 @@ async function handleSubmit() {
   try {
     await defectApi.transitionDefect(
       props.defect.id,
-      'resolve',
+      'activate',
       assigneeId.value,
-      resolution.value,
+      undefined,
       comment.value,
-      resolvedVersion.value,
-      duplicateDefectId.value,
     );
-
     emit('done');
-    emit('showToast', 'Bug解决成功');
+    emit('showToast', '缺陷已激活');
     emit('close');
   } catch (e: any) {
-    emit('showToast', e.message || '解决失败');
+    emit('showToast', e.message || '激活失败');
   } finally {
     saving.value = false;
   }
@@ -117,7 +60,7 @@ async function handleSubmit() {
 watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
     resetForm();
-    await Promise.all([loadMembers(), loadBranchesForResolve()]);
+    await loadMembers();
   }
 });
 </script>
@@ -127,48 +70,19 @@ watch(() => props.isOpen, async (newVal) => {
     <div v-if="isOpen" class="dialog-overlay" @click.self="emit('close')">
       <div class="dialog-container">
         <div class="dialog-header">
-          <h2 class="dialog-title">解决 Bug #{{ defect?.id }}</h2>
+          <h2 class="dialog-title">激活缺陷 #{{ defect?.id }}</h2>
           <button class="dialog-close-btn" @click="emit('close')">×</button>
         </div>
 
         <div class="dialog-body">
           <div class="form-group">
-            <label class="form-label">解决方案 <span class="required">*</span></label>
-            <select class="form-select" v-model="resolution">
-              <option v-for="r in resolutionOptions" :key="r.value" :value="r.value">{{ r.label }}</option>
+            <label class="form-label">指派给</label>
+            <select class="form-select" v-model="assigneeId">
+              <option :value="0">未指派</option>
+              <option v-for="m in members" :key="m.id" :value="m.user_id">
+                {{ m.nickname || m.username }}
+              </option>
             </select>
-          </div>
-
-          <!-- Duplicate defect selector -->
-          <div v-if="resolution === 'duplicate'" class="form-group">
-            <label class="form-label">关联缺陷 <span class="required">*</span></label>
-            <select class="form-select" v-model="duplicateDefectId" :disabled="loadingDefects">
-              <option :value="0">{{ loadingDefects ? '加载中...' : '-- 选择缺陷 --' }}</option>
-              <option
-                v-for="d in projectDefects"
-                :key="d.id"
-                :value="d.id"
-              >#{{ d.id }} {{ d.title }}</option>
-            </select>
-          </div>
-
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">解决版本</label>
-              <select class="form-select" v-model="resolvedVersion">
-                <option :value="0">-- 选择版本 --</option>
-                <option v-for="b in (branches || [])" :key="b.id" :value="b.id">{{ b.name }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">指派给</label>
-              <select class="form-select" v-model="assigneeId">
-                <option :value="0">未指派</option>
-                <option v-for="m in members" :key="m.id" :value="m.user_id">
-                  {{ m.nickname || m.username }}
-                </option>
-              </select>
-            </div>
           </div>
 
           <div class="form-group">
@@ -185,7 +99,7 @@ watch(() => props.isOpen, async (newVal) => {
         <div class="dialog-footer">
           <button class="btn btn-cancel" @click="emit('close')">取消</button>
           <button class="btn btn-save" @click="handleSubmit" :disabled="saving">
-            {{ saving ? '解决中...' : '解决' }}
+            {{ saving ? '激活中...' : '激活' }}
           </button>
         </div>
       </div>
@@ -197,7 +111,7 @@ watch(() => props.isOpen, async (newVal) => {
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 210;
+  z-index: 220;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -206,7 +120,7 @@ watch(() => props.isOpen, async (newVal) => {
 }
 
 .dialog-container {
-  width: 500px;
+  width: 460px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -262,11 +176,6 @@ watch(() => props.isOpen, async (newVal) => {
   gap: 16px;
 }
 
-.form-row {
-  display: flex;
-  gap: 16px;
-}
-
 .form-group {
   flex: 1;
   min-width: 0;
@@ -281,10 +190,6 @@ watch(() => props.isOpen, async (newVal) => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-family: var(--font);
-}
-
-.required {
-  color: var(--color-danger);
 }
 
 .form-select {
@@ -328,30 +233,6 @@ watch(() => props.isOpen, async (newVal) => {
   box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
-.upload-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: var(--font);
-}
-
-.upload-btn:hover {
-  background: var(--color-primary-soft);
-}
-
-.hidden-input {
-  display: none;
-}
-
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
@@ -385,7 +266,7 @@ watch(() => props.isOpen, async (newVal) => {
 
 .btn-save {
   background-color: var(--color-primary);
-  color: var(--bg-card);
+  color: #fff;
 }
 
 .btn-save:hover:not(:disabled) {

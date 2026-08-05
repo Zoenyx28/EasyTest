@@ -233,6 +233,7 @@ class Defect(Base):
     bug_type: Mapped[str] = mapped_column(String(32), default='code_error')
     deadline: Mapped[str] = mapped_column(String(32), default='')
     resolved_version: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_defect_id: Mapped[int] = mapped_column(Integer, default=0)
     resolved_date: Mapped[str] = mapped_column(String(32), default='')
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -10,6 +10,7 @@ import DefectDetailDialog from './DefectDetailDialog.vue';
 import DefectConfirmDialog from './DefectConfirmDialog.vue';
 import DefectResolveDialog from './DefectResolveDialog.vue';
 import DefectCloseDialog from './DefectCloseDialog.vue';
+import DefectActivateDialog from './DefectActivateDialog.vue';
 import DefectModuleTreeNode from './DefectModuleTreeNode.vue';
 import type { DefectInfo, DefectModuleInfo } from '../types';
 
@@ -37,6 +38,7 @@ const loading = ref(false);
 const modules = ref<DefectModuleInfo[]>([]);
 const currentPage = ref(1);
 const pageSize = ref(20);
+const initialized = ref(false);
 
 const filterStatus = ref('');
 const filterSeverity = ref('');
@@ -51,6 +53,7 @@ const showDetailDialog = ref(false);
 const showConfirmDialog = ref(false);
 const showResolveDialog = ref(false);
 const showCloseDialog = ref(false);
+const showActivateDialog = ref(false);
 const selectedDefectId = ref<number | null>(null);
 const selectedDefect = ref<DefectInfo | null>(null);
 
@@ -280,11 +283,13 @@ async function initPage() {
     await loadDefects();
   } catch {
     // ignore
+  } finally {
+    initialized.value = true;
   }
 }
 
 watch(projectId, async () => {
-  if (projectId.value) {
+  if (projectId.value && initialized.value) {
     await loadBranches(projectId.value);
     currentPage.value = 1;
     await loadDefects();
@@ -292,7 +297,7 @@ watch(projectId, async () => {
 });
 
 watch(branchId, async () => {
-  if (branchId.value) {
+  if (branchId.value && initialized.value) {
     currentPage.value = 1;
     await loadDefects();
   }
@@ -489,6 +494,7 @@ onMounted(() => {
       :projectId="projectId"
       @close="showDetailDialog = false"
       @updated="handleUpdated"
+      @activate="(d: DefectInfo) => { selectedDefectId = d.id; selectedDefect = d; showActivateDialog = true }"
       @showToast="(msg: string) => emit('showToast', msg)"
     />
 
@@ -518,6 +524,16 @@ onMounted(() => {
       :defect="selectedDefect"
       :projectId="projectId"
       @close="showCloseDialog = false"
+      @done="handleUpdated"
+      @showToast="(msg: string) => emit('showToast', msg)"
+    />
+
+    <!-- Activate dialog -->
+    <DefectActivateDialog
+      :isOpen="showActivateDialog"
+      :defect="selectedDefect"
+      :projectId="projectId"
+      @close="showActivateDialog = false"
       @done="handleUpdated"
       @showToast="(msg: string) => emit('showToast', msg)"
     />

@@ -859,7 +859,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
       <!-- Task List -->
       <div class="flex-1 overflow-y-auto px-[12px] pb-[10px] space-y-[8px] select-none">
         <div v-if="tasks.length === 0" class="text-center py-8 text-[var(--text-tertiary)] text-xs">
-          暂无测试任务<br/>请从用例总览页选择用例并点击"执行选中"或"执行全部"创建任务
+          暂无测试任务<br/>
         </div>
         <div
           v-for="task in filteredTasks"

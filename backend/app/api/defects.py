@@ -120,6 +120,15 @@ async def _enrich_defect(defect: dict) -> dict:
         except Exception:
             pass
 
+    duplicate_defect_title = ''
+    if defect.get('duplicate_defect_id'):
+        try:
+            dup = await crud.get_defect(defect['duplicate_defect_id'])
+            if dup:
+                duplicate_defect_title = dup.get('title', '')
+        except Exception:
+            pass
+
     return {
         **defect,
         'module_name': module_name,
@@ -128,6 +137,7 @@ async def _enrich_defect(defect: dict) -> dict:
         'branch_name': branch_name,
         'bug_type_name': _bug_type_name(defect.get('bug_type', '')),
         'resolved_version_name': resolved_version_name,
+        'duplicate_defect_title': duplicate_defect_title,
     }
 
 
@@ -233,6 +243,26 @@ async def create_defect(request: Request, data: DefectCreate):
         new_value='unconfirmed',
         operator_id=user['id'],
     )
+
+    # Process attachments — move from temp to defect dir and create records
+    if data.attachments:
+        import shutil
+        defect_dir = PROJECTS_DATA_DIR / 'defects' / str(defect_id)
+        defect_dir.mkdir(parents=True, exist_ok=True)
+        for att in data.attachments:
+            src = att.get('filepath', '')
+            filename = att.get('filename', '')
+            if src and os.path.exists(src):
+                dst = str(defect_dir / filename)
+                shutil.move(src, dst)
+                await crud.create_defect_attachment(
+                    defect_id=defect_id,
+                    filename=filename,
+                    filepath=dst,
+                    file_size=att.get('file_size', 0),
+                    mime_type=att.get('mime_type', ''),
+                    created_by=user['id'],
+                )
 
     return ok({'id': defect_id}, msg='缺陷创建成功')
 
@@ -340,6 +370,26 @@ async def update_defect(request: Request, defect_id: int, data: DefectUpdate):
                 operator_id=user['id'],
             )
 
+    # Process new attachments — move from temp to defect dir and create records
+    if data.attachments:
+        import shutil
+        defect_dir = PROJECTS_DATA_DIR / 'defects' / str(defect_id)
+        defect_dir.mkdir(parents=True, exist_ok=True)
+        for att in data.attachments:
+            src = att.get('filepath', '')
+            filename = att.get('filename', '')
+            if src and os.path.exists(src):
+                dst = str(defect_dir / filename)
+                shutil.move(src, dst)
+                await crud.create_defect_attachment(
+                    defect_id=defect_id,
+                    filename=filename,
+                    filepath=dst,
+                    file_size=att.get('file_size', 0),
+                    mime_type=att.get('mime_type', ''),
+                    created_by=user['id'],
+                )
+
     return ok(None, msg='缺陷更新成功')
 
 
@@ -364,6 +414,8 @@ async def transition_defect(request: Request, defect_id: int, data: DefectTransi
             kwargs['priority'] = data.priority
         if getattr(data, 'deadline', ''):
             kwargs['deadline'] = data.deadline
+        if getattr(data, 'duplicate_defect_id', 0):
+            kwargs['duplicate_defect_id'] = data.duplicate_defect_id
 
         success = await crud.transition_defect(
             defect_id=defect_id,
@@ -451,6 +503,40 @@ async def get_attachments(defect_id: int):
     return ok(attachments)
 
 
+@router.post('/attachments/upload')
+async def upload_temp_attachment(request: Request, file: UploadFile = File(...)):
+    """上传附件到临时目录，返回文件路径信息。保存缺陷时传入路径即可绑定。"""
+    user = await get_current_user(request)
+
+    upload_dir = PROJECTS_DATA_DIR / 'defects' / 'temp'
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    content = await file.read()
+    filename = file.filename or 'unnamed'
+    filepath = str(upload_dir / filename)
+
+    # Handle duplicate filenames
+    counter = 1
+    base, ext = os.path.splitext(filename)
+    while os.path.exists(filepath):
+        filename = f'{base}_{counter}{ext}'
+        filepath = str(upload_dir / filename)
+        counter += 1
+
+    with open(filepath, 'wb') as f:
+        f.write(content)
+
+    file_size = len(content)
+    mime_type = file.content_type or 'application/octet-stream'
+
+    return ok({
+        'filename': filename,
+        'filepath': filepath,
+        'file_size': file_size,
+        'mime_type': mime_type,
+    })
+
+
 @router.post('/{defect_id}/attachments')
 async def upload_attachment(request: Request, defect_id: int, file: UploadFile = File(...)):
     """上传附件 (multipart/form-data)"""
@@ -484,6 +570,23 @@ async def upload_attachment(request: Request, defect_id: int, file: UploadFile =
     )
 
     return ok({'id': attachment_id}, msg='附件上传成功')
+
+
+@router.get('/attachments/{attachment_id}/download')
+async def download_attachment(attachment_id: int):
+    """下载附件"""
+    from fastapi.responses import FileResponse
+    attachment = await crud.get_defect_attachment(attachment_id)
+    if attachment is None:
+        return fail(404, '附件不存在')
+    filepath = attachment.get('filepath', '')
+    if not filepath or not os.path.exists(filepath):
+        return fail(404, '文件不存在')
+    return FileResponse(
+        filepath,
+        filename=attachment.get('filename', 'download'),
+        media_type=attachment.get('mime_type', 'application/octet-stream'),
+    )
 
 
 @router.delete('/attachments/{attachment_id}')

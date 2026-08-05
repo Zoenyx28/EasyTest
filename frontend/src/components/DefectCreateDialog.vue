@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
 import { useDefect } from '../composables/useDefect';
+import type { TempAttachmentInfo } from '../composables/useDefect';
 import { useProjectMembers } from '../composables/useProjectMembers';
 import type { DefectModuleInfo, ProjectMemberInfo, DefectCreateData } from '../types';
 import DefectRichEditor from './DefectRichEditor.vue';
@@ -32,6 +33,9 @@ const modules = ref<DefectModuleInfo[]>([]);
 const members = ref<ProjectMemberInfo[]>([]);
 const saving = ref(false);
 const titleError = ref('');
+const uploading = ref(false);
+const pendingFiles = ref<(TempAttachmentInfo & { _localId: number })[]>([]);
+let fileIdCounter = 0;
 
 const severityOptions = [
   { value: 'P0', label: 'P0' },
@@ -82,7 +86,7 @@ async function handleSave() {
   titleError.value = '';
   saving.value = true;
   try {
-    const data: DefectCreateData = {
+    const payload: Record<string, any> = {
       title: title.value.trim(),
       description: description.value,
       steps: steps.value,
@@ -92,8 +96,14 @@ async function handleSave() {
       severity: severity.value,
       priority: priority.value,
       assignee_id: assigneeId.value,
+      attachments: pendingFiles.value.map(pf => ({
+        filename: pf.filename,
+        filepath: pf.filepath,
+        file_size: pf.file_size,
+        mime_type: pf.mime_type,
+      })),
     };
-    await defectApi.createDefect(data);
+    await defectApi.createDefect(payload);
     emit('created');
     emit('showToast', '缺陷创建成功');
     handleClose();
@@ -102,6 +112,29 @@ async function handleSave() {
   } finally {
     saving.value = false;
   }
+}
+
+function handleAddFile(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const files = target.files;
+  if (!files || files.length === 0) return;
+  uploading.value = true;
+  const tasks: Promise<void>[] = [];
+  for (let i = 0; i < files.length; i++) {
+    tasks.push(
+      defectApi.uploadTempAttachment(files[i]).then(info => {
+        pendingFiles.value.push({ ...info, _localId: ++fileIdCounter });
+      })
+    );
+  }
+  Promise.all(tasks).finally(() => {
+    uploading.value = false;
+  });
+  target.value = '';
+}
+
+function handleRemoveFile(id: number) {
+  pendingFiles.value = pendingFiles.value.filter(f => f._localId !== id);
 }
 
 function handleClose() {
@@ -113,6 +146,8 @@ function handleClose() {
   moduleId.value = 0;
   assigneeId.value = 0;
   titleError.value = '';
+  pendingFiles.value = [];
+  fileIdCounter = 0;
   emit('close');
 }
 
@@ -202,6 +237,33 @@ onMounted(() => {
           <div class="form-group">
             <label class="form-label">复现步骤</label>
             <DefectRichEditor v-model="steps" placeholder="如何复现这个问题？" />
+          </div>
+
+          <!-- Attachments -->
+          <div class="form-group">
+            <label class="form-label">附件</label>
+            <div v-if="pendingFiles.length > 0" class="attachments-list">
+              <div v-for="pf in pendingFiles" :key="pf._localId" class="attachment-item">
+                <span class="attachment-name">{{ pf.filename }}</span>
+                <span class="attachment-meta">({{ Math.round(pf.file_size / 1024) }} KB)</span>
+                <button class="btn-text" @click="handleRemoveFile(pf._localId)">删除</button>
+              </div>
+            </div>
+            <label class="upload-btn" :class="{ disabled: uploading }">
+              <input
+                type="file"
+                multiple
+                @change="handleAddFile"
+                :disabled="uploading"
+                class="hidden-input"
+              />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              {{ uploading ? '上传中...' : '上传附件' }}
+            </label>
           </div>
         </div>
         <div class="dialog-footer">
@@ -391,5 +453,76 @@ onMounted(() => {
 .btn-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.attachments-list {
+  margin-bottom: 12px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-muted);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.attachment-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.attachment-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font);
+}
+
+.upload-btn:hover:not(.disabled) {
+  background: var(--color-primary-soft);
+}
+
+.upload-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.btn-text {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-danger);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  font-family: var(--font);
+}
+
+.btn-text:hover {
+  background: rgba(186, 26, 26, 0.1);
 }
 </style>

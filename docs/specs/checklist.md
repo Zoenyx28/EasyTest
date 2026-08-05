@@ -1,0 +1,24 @@
+# Checklist
+
+- [x] 后端 Defect 模型包含 `duplicate_defect_id` 字段
+- [x] 数据库 defects 表存在 `duplicate_defect_id` 列
+- [x] DefectTransition schema 包含 `duplicate_defect_id` 字段
+- [x] DefectInfo schema 包含 `duplicate_defect_id` 和 `duplicate_defect_title` 字段
+- [x] _enrich_defect 在 duplicate_defect_id > 0 时查询并返回关联缺陷标题
+- [x] transition_defect API 端点解析并传递 duplicate_defect_id
+- [x] crud.transition_defect 在 resolve 时写入 duplicate_defect_id
+- [x] 前端 types.ts DefectInfo 包含 duplicate_defect_id 和 duplicate_defect_title
+- [x] useDefect.ts transitionDefect 接受 duplicate_defect_id 参数
+- [x] DefectResolveDialog 选择「重复Bug」时出现关联缺陷下拉框
+- [x] DefectResolveDialog 关联缺陷下拉框加载当前项目缺陷（排除自身）
+- [x] DefectResolveDialog 切换其他解决方案时关联缺陷下拉框隐藏
+- [x] DefectDetailDialog 侧边栏解决方案显示中文标签
+- [x] DefectDetailDialog 侧边栏 resolution=duplicate 时显示关联缺陷（#ID 标题）
+- [x] DefectDetailDialog 侧边栏「关联版本」与「解决版本」相同时不重复显示
+- [x] 活动记录极简模式：yyyy-MM-dd HH:mm:ss + 操作人 + 动作
+- [x] 活动记录同操作日志归并（同操作人 + ≤1s）
+- [x] 活动记录展开模式：+/- 按钮切换
+- [x] 活动记录展开显示格式：修改了【字段名】，旧值为XX，新值为XX
+- [x] 活动记录字段值中文映射（状态/严重程度/优先级/Bug类型/解决方案等）
+- [x] 活动记录评论在展开时显示于对应操作下方
+- [x] 无 TypeScript 编译错误（vue-tsc --noEmit 通过）

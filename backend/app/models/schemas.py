@@ -284,6 +284,7 @@ class DefectCreate(BaseModel):
     assignee_id: int = 0
     bug_type: str = 'code_error'
     deadline: str = ''
+    attachments: list[dict] = []
 
 
 class DefectUpdate(BaseModel):
@@ -298,6 +299,7 @@ class DefectUpdate(BaseModel):
     deadline: str = ''
     resolved_version: int = 0
     resolved_date: str = ''
+    attachments: list[dict] = []
 
 
 class DefectTransition(BaseModel):
@@ -306,6 +308,7 @@ class DefectTransition(BaseModel):
     resolution: str = ''
     comment: str = ''
     resolved_version: int = 0
+    duplicate_defect_id: int = 0
     bug_type: str = ''
     priority: str = ''
     deadline: str = ''
@@ -333,6 +336,8 @@ class DefectInfo(BaseModel):
     deadline: str = ''
     resolved_version: int = 0
     resolved_version_name: str = ''
+    duplicate_defect_id: int = 0
+    duplicate_defect_title: str = ''
     resolved_date: str = ''
     created_at: str
     updated_at: str

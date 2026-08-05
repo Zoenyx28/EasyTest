@@ -9,6 +9,33 @@ import type {
   DefectDetailResponse,
 } from '../types';
 
+export interface TempAttachmentInfo {
+  filename: string;
+  filepath: string;
+  file_size: number;
+  mime_type: string;
+}
+
+/**
+ * Build a full module path like "一级模块/二级模块/三级模块" from the module tree.
+ */
+export function buildModulePath(modules: DefectModuleInfo[], targetId: number): string {
+  if (!targetId) return '';
+  function find(children: DefectModuleInfo[], path: string[]): string[] | null {
+    for (const m of children) {
+      const current = [...path, m.name];
+      if (m.id === targetId) return current;
+      if (m.children && m.children.length > 0) {
+        const found = find(m.children, current);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  const result = find(modules, []);
+  return result ? result.join(' / ') : '';
+}
+
 export function useDefect(projectId?: number) {
   const api = useApi(projectId);
 
@@ -62,7 +89,7 @@ export function useDefect(projectId?: number) {
     return api.get<{ total: number; items: DefectInfo[] }>(`/defects?${qs}`);
   }
 
-  async function createDefect(data: DefectCreateData): Promise<DefectInfo> {
+  async function createDefect(data: Record<string, any>): Promise<DefectInfo> {
     return api.post<DefectInfo>('/defects', data);
   }
 
@@ -74,7 +101,7 @@ export function useDefect(projectId?: number) {
     return api.get<DefectDetailResponse>(`/defects/${id}/detail`);
   }
 
-  async function updateDefect(id: number, data: Partial<DefectInfo>): Promise<void> {
+  async function updateDefect(id: number, data: Record<string, any>): Promise<void> {
     await api.put(`/defects/${id}`, data);
   }
 
@@ -85,6 +112,7 @@ export function useDefect(projectId?: number) {
     resolution?: string,
     comment?: string,
     resolved_version?: number,
+    duplicate_defect_id?: number,
     bug_type?: string,
     priority?: string,
     deadline?: string,
@@ -94,6 +122,7 @@ export function useDefect(projectId?: number) {
     if (resolution !== undefined) body.resolution = resolution;
     if (comment !== undefined) body.comment = comment;
     if (resolved_version !== undefined && resolved_version !== 0) body.resolved_version = resolved_version;
+    if (duplicate_defect_id !== undefined && duplicate_defect_id !== 0) body.duplicate_defect_id = duplicate_defect_id;
     if (bug_type !== undefined) body.bug_type = bug_type;
     if (priority !== undefined) body.priority = priority;
     if (deadline !== undefined) body.deadline = deadline;
@@ -112,14 +141,24 @@ export function useDefect(projectId?: number) {
     return api.get<DefectAttachmentInfo[]>(`/defects/${id}/attachments`);
   }
 
-  async function uploadAttachment(id: number, file: File): Promise<void> {
+  async function uploadAttachment(id: number, file: File): Promise<{ id: number }> {
     const formData = new FormData();
     formData.append('file', file);
-    await api.postFormData(`/defects/${id}/attachments`, formData);
+    return api.postFormData<{ id: number }>(`/defects/${id}/attachments`, formData);
+  }
+
+  async function uploadTempAttachment(file: File): Promise<TempAttachmentInfo> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.postFormData<TempAttachmentInfo>('/defects/attachments/upload', formData);
   }
 
   async function deleteAttachment(attachmentId: number): Promise<void> {
     await api.del(`/defects/attachments/${attachmentId}`);
+  }
+
+  function getAttachmentDownloadUrl(attachmentId: number): string {
+    return `/api/defects/attachments/${attachmentId}/download`;
   }
 
   async function getRecentDefects(
@@ -174,7 +213,9 @@ export function useDefect(projectId?: number) {
     getRecentDefects,
     getMyDefects,
     uploadAttachment,
+    uploadTempAttachment,
     deleteAttachment,
+    getAttachmentDownloadUrl,
     getComments,
     createComment,
     updateComment,

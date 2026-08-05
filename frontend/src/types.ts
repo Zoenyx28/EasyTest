@@ -348,6 +348,8 @@ export interface DefectInfo {
   deadline: string;
   resolved_version: number;
   resolved_version_name: string;
+  duplicate_defect_id: number;
+  duplicate_defect_title: string;
   resolved_date: string;
   created_at: string;
   updated_at: string;

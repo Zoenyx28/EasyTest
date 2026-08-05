@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import type { DefectLogInfo, DefectCommentInfo } from '../types';
 
 const props = defineProps<{
@@ -8,17 +8,19 @@ const props = defineProps<{
   defectId: number;
 }>();
 
-const statusLabels: Record<string, string> = {
-  unconfirmed: '未确认',
-  confirmed: '已确认',
-  in_progress: '处理中',
-  resolved: '已解决',
-  closed: '已关闭',
-};
+const expandedGroups = ref<Set<number>>(new Set());
+
+function toggleGroup(idx: number) {
+  const s = new Set(expandedGroups.value);
+  if (s.has(idx)) s.delete(idx); else s.add(idx);
+  expandedGroups.value = s;
+}
+
+// ── Labels ──
 
 const fieldLabels: Record<string, string> = {
   status: '状态',
-  assignee_id: '指派人',
+  assignee_id: '指派给',
   resolution: '解决方案',
   severity: '严重程度',
   priority: '优先级',
@@ -28,152 +30,217 @@ const fieldLabels: Record<string, string> = {
   steps: '复现步骤',
   bug_type: 'Bug类型',
   deadline: '截止日期',
+  resolved_version: '解决版本',
+  duplicate_defect_id: '关联缺陷',
 };
 
-function formatTime(iso: string): string {
+const statusLabels: Record<string, string> = {
+  unconfirmed: '未确认',
+  confirmed: '已确认',
+  in_progress: '处理中',
+  resolved: '已解决',
+  closed: '已关闭',
+};
+
+const resolutionLabels: Record<string, string> = {
+  fixed: '已解决',
+  duplicate: '重复Bug',
+  not_issue: '不是问题',
+  cannot_reproduce: '无法重现',
+  design: '设计如此',
+  external: '外部原因',
+  deferred: '延期处理',
+};
+
+const bugTypeLabels: Record<string, string> = {
+  code_error: '代码错误',
+  design_defect: '设计缺陷',
+  performance: '性能问题',
+  security: '安全问题',
+  experience: '体验问题',
+  compatibility: '兼容性',
+  other: '其他',
+};
+
+const severityLabels: Record<string, string> = {
+  P0: 'P0-致命',
+  P1: 'P1-严重',
+  P2: 'P2-一般',
+  P3: 'P3-轻微',
+};
+
+const priorityLabels: Record<string, string> = {
+  P0: 'P0-紧急',
+  P1: 'P1-高',
+  P2: 'P2-中',
+  P3: 'P3-低',
+};
+
+// ── Value formatting ──
+
+function fmtVal(field: string, val: string): string {
+  if (!val) return '（空）';
+  if (field === 'status') return statusLabels[val] || val;
+  if (field === 'resolution') return resolutionLabels[val] || val;
+  if (field === 'bug_type') return bugTypeLabels[val] || val;
+  if (field === 'severity') return severityLabels[val] || val;
+  if (field === 'priority') return priorityLabels[val] || val;
+  return val;
+}
+
+function formatDatetime(iso: string): string {
   if (!iso) return '--';
   try {
-    const date = new Date(iso);
-    return date.toLocaleString('zh-CN', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    });
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
   } catch {
     return iso;
   }
 }
 
-function getOperationName(log: DefectLogInfo): string {
-  if (log.field === 'status') {
-    const oldLabel = statusLabels[log.old_value] || log.old_value;
-    const newLabel = statusLabels[log.new_value] || log.new_value;
-    if (!log.old_value) return `创建了缺陷`;
-    if (oldLabel === '未确认' && newLabel === '已确认') return `确认了缺陷`;
-    if (newLabel === '处理中') return `开始处理缺陷`;
-    if (newLabel === '已解决') return `解决了缺陷`;
-    if (newLabel === '已关闭') return `关闭了缺陷`;
-    return `将状态从"${oldLabel}"改为"${newLabel}"`;
-  }
-  const fieldLabel = fieldLabels[log.field] || log.field;
-  if (log.field === 'assignee_id') return `修改了${fieldLabel}`;
-  return `修改了${fieldLabel}`;
+// ── Group logs into operations ──
+// Logs from the same operator within 1 second are treated as one operation.
+
+interface Operation {
+  operatorId: number;
+  operatorName: string;
+  time: string;       // ISO timestamp
+  logs: DefectLogInfo[];
+  comments: DefectCommentInfo[];
+  actionLabel: string; // e.g. "创建", "编辑", "确认 Bug", "指派", "解决", "关闭"
 }
 
-function getOperationIcon(log: DefectLogInfo): string {
-  if (log.field === 'status') {
-    const newLabel = statusLabels[log.new_value] || '';
-    if (!log.old_value) return 'create';
-    if (newLabel === '已确认') return 'confirm';
-    if (newLabel === '处理中') return 'assign';
-    if (newLabel === '已解决') return 'resolve';
-    if (newLabel === '已关闭') return 'close';
-    return 'edit';
-  }
-  return 'edit';
-}
-
-const timelineItems = computed(() => {
-  const items: Array<
-    { type: 'log'; data: DefectLogInfo } | { type: 'comment'; data: DefectCommentInfo }
-  > = [
-    ...props.logs.map(l => ({ type: 'log' as const, data: l })),
-    ...props.comments.map(c => ({ type: 'comment' as const, data: c })),
-  ];
-  items.sort((a, b) =>
-    new Date(a.data.created_at).getTime() - new Date(b.data.created_at).getTime()
+const operations = computed<Operation[]>(() => {
+  const sorted = [...props.logs].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
-  return items;
-});
 
-const operationColors: Record<string, { bg: string; icon: string }> = {
-  create: { bg: 'var(--color-success)', icon: '#ffffff' },
-  confirm: { bg: 'var(--color-primary)', icon: '#ffffff' },
-  assign: { bg: 'var(--color-warning)', icon: '#ffffff' },
-  resolve: { bg: 'var(--color-success)', icon: '#ffffff' },
-  close: { bg: 'var(--text-muted)', icon: '#ffffff' },
-  edit: { bg: 'var(--color-warning)', icon: '#ffffff' },
-};
+  const groups: DefectLogInfo[][] = [];
+  for (const log of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.length > 0) {
+      const lastTime = new Date(last[0].created_at).getTime();
+      const thisTime = new Date(log.created_at).getTime();
+      if (
+        last[0].operator_id === log.operator_id &&
+        Math.abs(thisTime - lastTime) <= 1000
+      ) {
+        last.push(log);
+        continue;
+      }
+    }
+    groups.push([log]);
+  }
+
+  // Sort comments and assign to nearest-in-time operation group
+  const sortedComments = [...props.comments].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+
+  return groups.map((groupLogs, gi) => {
+    const mainLog = groupLogs[0];
+    const opTime = new Date(mainLog.created_at).getTime();
+    const nextOpTime = gi + 1 < groups.length
+      ? new Date(groups[gi + 1][0].created_at).getTime()
+      : Infinity;
+
+    // Comments belong to this operation if they fall between its time and the next operation's time
+    const opComments = sortedComments.filter(c => {
+      const ct = new Date(c.created_at).getTime();
+      return ct >= opTime && ct < nextOpTime;
+    });
+
+    // Determine action label from the group's logs
+    let actionLabel = '编辑';
+    for (const l of groupLogs) {
+      if (l.field === 'status') {
+        const newLabel = statusLabels[l.new_value] || l.new_value;
+        if (!l.old_value) { actionLabel = '创建'; break; }
+        if (newLabel === '已确认') { actionLabel = '确认 Bug'; break; }
+        if (newLabel === '处理中') { actionLabel = '指派'; break; }
+        if (newLabel === '已解决') { actionLabel = '解决'; break; }
+        if (newLabel === '已关闭') { actionLabel = '关闭'; break; }
+      }
+    }
+
+    return {
+      operatorId: mainLog.operator_id,
+      operatorName: mainLog.operator_name || '系统',
+      time: mainLog.created_at,
+      logs: groupLogs,
+      comments: opComments,
+      actionLabel,
+    };
+  });
+});
 </script>
 
 <template>
   <div class="history-timeline">
-    <!-- Timeline -->
-    <div class="timeline-list">
-      <div v-if="timelineItems.length === 0" class="empty-state">
-        <p>暂无活动记录</p>
+    <div v-if="operations.length === 0" class="empty-state">
+      <p>暂无活动记录</p>
+    </div>
+
+    <div
+      v-for="(op, idx) in operations"
+      :key="'op' + idx"
+      class="timeline-op"
+    >
+      <!-- Collapsed row -->
+      <div class="op-header" @click="toggleGroup(idx)">
+        <div class="op-summary">
+          <span class="op-time">{{ formatDatetime(op.time) }}</span>
+          <span class="op-operator">{{ op.operatorName }}</span>
+          <span class="op-action">{{ op.actionLabel }}</span>
+          <span v-if="op.logs.length > 1 && !expandedGroups.has(idx)" class="op-extra-hint">
+            {{ op.logs.length - 1 }} 项变更
+          </span>
+        </div>
+        <button class="op-toggle-btn" :class="{ expanded: expandedGroups.has(idx) }">
+          <svg v-if="!expandedGroups.has(idx)" width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>
       </div>
 
-      <div
-        v-for="item in timelineItems"
-        :key="item.type + '-' + item.data.id"
-        class="timeline-item"
-      >
-        <!-- Log entry -->
-        <template v-if="item.type === 'log'">
-          <div class="timeline-dot" :style="{
-            backgroundColor: (operationColors[getOperationIcon(item.data as DefectLogInfo)] || operationColors.edit).bg,
-            color: (operationColors[getOperationIcon(item.data as DefectLogInfo)] || operationColors.edit).icon,
-          }">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <template v-if="getOperationIcon(item.data as DefectLogInfo) === 'create'">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </template>
-              <template v-else-if="getOperationIcon(item.data as DefectLogInfo) === 'confirm'">
-                <polyline points="20 6 9 17 4 12" />
-              </template>
-              <template v-else-if="getOperationIcon(item.data as DefectLogInfo) === 'assign'">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="8.5" cy="7" r="4" />
-                <polyline points="17 11 19 13 23 9" />
-              </template>
-              <template v-else-if="getOperationIcon(item.data as DefectLogInfo) === 'resolve'">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </template>
-              <template v-else-if="getOperationIcon(item.data as DefectLogInfo) === 'close'">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </template>
-              <template v-else>
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </template>
-            </svg>
-          </div>
-          <div class="timeline-content">
-            <div class="timeline-header">
-              <span class="timeline-operator">{{ item.data.operator_name || '系统' }}</span>
-              <span class="timeline-action">{{ getOperationName(item.data as DefectLogInfo) }}</span>
-              <span class="timeline-time">{{ formatTime(item.data.created_at) }}</span>
-            </div>
-            <div v-if="(item.data as DefectLogInfo).field !== 'status' || (item.data as DefectLogInfo).old_value" class="timeline-detail">
-              <span v-if="(item.data as DefectLogInfo).old_value" class="detail-old">{{ (item.data as DefectLogInfo).old_value }}</span>
-              <svg v-if="(item.data as DefectLogInfo).old_value" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color: var(--text-muted); flex-shrink: 0;">
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-              <span class="detail-new">{{ (item.data as DefectLogInfo).new_value }}</span>
-            </div>
-          </div>
-        </template>
+      <!-- Expanded detail -->
+      <div v-if="expandedGroups.has(idx)" class="op-detail">
+        <div
+          v-for="log in op.logs"
+          :key="'l' + log.id"
+          class="op-change"
+        >
+          <span class="change-label">修改了【{{ fieldLabels[log.field] || log.field }}】</span>
+          <span class="change-old">，旧值为 {{ fmtVal(log.field, log.old_value) }}</span>
+          <span class="change-new">，新值为 {{ fmtVal(log.field, log.new_value) }}</span>
+        </div>
 
-        <!-- Comment entry -->
-        <template v-else>
-          <div class="timeline-dot comment-dot">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          </div>
-          <div class="timeline-content">
-            <div class="timeline-header">
-              <span class="timeline-operator">{{ item.data.author_name || '未知用户' }}</span>
-              <span class="timeline-action">发表了评论</span>
-              <span class="timeline-time">{{ formatTime(item.data.created_at) }}</span>
+        <!-- Comments -->
+        <div v-if="op.comments.length > 0" class="op-comments">
+          <div
+            v-for="c in op.comments"
+            :key="'c' + c.id"
+            class="op-comment"
+          >
+            <div class="comment-header">
+              <span class="comment-author">{{ c.author_name || '未知用户' }}</span>
+              <span class="comment-time">{{ formatDatetime(c.created_at) }}</span>
             </div>
-            <div class="timeline-comment-body">{{ item.data.content }}</div>
+            <div class="comment-body">{{ c.content }}</div>
           </div>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -181,72 +248,6 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 
 <style scoped>
 .history-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-
-.comment-add-section {
-  background: var(--bg-muted);
-  padding: 16px;
-  border-radius: 12px;
-}
-
-.form-textarea {
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: var(--font);
-  background-color: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border-hover);
-  outline: none;
-  transition: all 0.15s ease;
-  box-sizing: border-box;
-  resize: vertical;
-  min-height: 80px;
-  line-height: 20px;
-  margin-bottom: 12px;
-}
-
-.form-textarea:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
-}
-
-.comment-actions {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.btn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: var(--font);
-  border: none;
-  line-height: 20px;
-}
-
-.btn-save {
-  background-color: var(--color-primary);
-  color: #ffffff;
-}
-
-.btn-save:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
-}
-
-.btn-save:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.timeline-list {
   display: flex;
   flex-direction: column;
 }
@@ -260,97 +261,152 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
   font-size: 14px;
 }
 
-.timeline-item {
-  display: flex;
-  gap: 14px;
-  padding: 0 0 20px 0;
-  position: relative;
+.timeline-op {
+  border-bottom: 1px solid var(--border);
 }
 
-.timeline-item:last-child {
-  padding-bottom: 0;
+.timeline-op:last-child {
+  border-bottom: none;
 }
 
-.timeline-dot {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+.op-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  position: relative;
-  z-index: 1;
+  justify-content: space-between;
+  padding: 10px 0;
+  cursor: pointer;
+  transition: background 0.1s;
+  min-height: 40px;
 }
 
-.comment-dot {
-  background-color: var(--color-primary-soft);
-  color: var(--color-primary);
+.op-header:hover {
+  background: var(--bg-muted);
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-radius: 6px;
 }
 
-.timeline-content {
-  flex: 1;
-  min-width: 0;
-  padding-top: 6px;
-}
-
-.timeline-header {
+.op-summary {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.timeline-operator {
   font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-  font-family: var(--font);
+  line-height: 22px;
 }
 
-.timeline-action {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-family: var(--font);
-}
-
-.timeline-time {
-  font-size: 12px;
+.op-time {
   color: var(--text-muted);
-  font-family: var(--font);
-}
-
-.timeline-detail {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.detail-old {
-  padding: 2px 8px;
-  background: var(--border);
-  border-radius: 4px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
 }
 
-.detail-new {
-  padding: 2px 8px;
-  background: var(--color-success);
-  color: #fff;
-  border-radius: 4px;
-  font-size: 12px;
+.op-operator {
+  color: var(--text-primary);
   font-weight: 600;
 }
 
-.timeline-comment-body {
+.op-action {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.op-extra-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.op-toggle-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.op-toggle-btn:hover {
+  background: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.op-toggle-btn.expanded {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.op-detail {
+  padding: 6px 0 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.op-change {
+  padding: 6px 12px;
+  background: var(--bg-muted);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 22px;
+  border-left: 3px solid var(--color-primary);
+}
+
+.change-label {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.change-old {
+  color: var(--text-muted);
+}
+
+.change-new {
+  color: var(--text-primary);
+}
+
+/* Comments */
+.op-comments {
   margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.op-comment {
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.comment-author {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.comment-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.comment-body {
   font-size: 14px;
   line-height: 22px;
   color: var(--text-primary);
-  font-family: var(--font);
   white-space: pre-wrap;
   word-wrap: break-word;
 }

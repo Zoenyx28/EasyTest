@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { useDefect } from '../composables/useDefect';
+import { useDefect, buildModulePath } from '../composables/useDefect';
+import type { TempAttachmentInfo } from '../composables/useDefect';
 import type {
   DefectInfo,
   DefectLogInfo,
@@ -21,6 +22,7 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'updated'): void;
   (e: 'showToast', msg: string): void;
+  (e: 'activate', defect: import('../types').DefectInfo): void;
 }>();
 
 const defectApi = useDefect(props.projectId);
@@ -35,6 +37,12 @@ const uploading = ref(false);
 const saving = ref(false);
 const activeTab = ref<'details' | 'activity'>('details');
 const isEditing = ref(false);
+
+// Attachment edit state
+const originalAttachments = ref<DefectAttachmentInfo[]>([]);
+const pendingFiles = ref<(TempAttachmentInfo & { _localId: number })[]>([]);
+const deletedAttachmentIds = ref<Set<number>>(new Set());
+let pendingFileIdCounter = 0;
 
 // Edit form state
 const editSeverity = ref('');
@@ -88,7 +96,21 @@ const statusTextColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  unconfirmed: '未确认', confirmed: '已确认', in_progress: '处理中', resolved: '已解决', closed: '已关闭',
+  unconfirmed: '未确认',
+  confirmed: '已确认',
+  in_progress: '处理中',
+  resolved: '已解决',
+  closed: '已关闭',
+};
+
+const resolutionLabels: Record<string, string> = {
+  fixed: '已解决',
+  duplicate: '重复Bug',
+  not_issue: '不是问题',
+  cannot_reproduce: '无法重现',
+  design: '设计如此',
+  external: '外部原因',
+  deferred: '延期处理',
 };
 
 function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name: string; depth: number }[] {
@@ -133,10 +155,20 @@ function enterEditMode() {
   editSteps.value = defect.value.steps || '';
   editBugType.value = defect.value.bug_type || 'code_error';
   editDeadline.value = defect.value.deadline || '';
-  isEditing.value = true;
+  // Snapshot current attachments
+   originalAttachments.value = [...attachments.value];
+   pendingFiles.value = [];
+   deletedAttachmentIds.value = new Set();
+   pendingFileIdCounter = 0;
+   isEditing.value = true;
 }
 
 function cancelEdit() {
+  // Revert attachment changes
+  attachments.value = [...originalAttachments.value];
+  pendingFiles.value = [];
+  deletedAttachmentIds.value = new Set();
+  pendingFileIdCounter = 0;
   isEditing.value = false;
 }
 
@@ -152,9 +184,17 @@ async function handleSaveEdit() {
       steps: editSteps.value || '',
       bug_type: editBugType.value || '',
       deadline: editDeadline.value || '',
+      attachments: pendingFiles.value,
     });
-    isEditing.value = false;
+    // Delete marked attachments
+    for (const id of deletedAttachmentIds.value) {
+      await defectApi.deleteAttachment(id);
+    }
+    // Clear edit state and reload
+    deletedAttachmentIds.value = new Set();
+    pendingFiles.value = [];
     await loadDefect();
+    isEditing.value = false;
     emit('updated');
     emit('showToast', '保存成功');
   } catch (e: any) {
@@ -164,30 +204,33 @@ async function handleSaveEdit() {
   }
 }
 
-async function handleFileUpload(event: Event) {
+function handleFileUpload(event: Event) {
   const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file || !props.defectId) return;
+  const files = target.files;
+  if (!files || files.length === 0) return;
   uploading.value = true;
-  try {
-    await defectApi.uploadAttachment(props.defectId, file);
-    await loadDefect();
-    emit('showToast', '附件上传成功');
-  } catch (e: any) {
-    emit('showToast', e.message || '附件上传失败');
-  } finally {
-    uploading.value = false;
-    target.value = '';
+  const tasks: Promise<void>[] = [];
+  for (let i = 0; i < files.length; i++) {
+    tasks.push(
+      defectApi.uploadTempAttachment(files[i]).then(info => {
+        pendingFiles.value.push({ ...info, _localId: ++pendingFileIdCounter });
+      })
+    );
   }
+  Promise.all(tasks).finally(() => {
+    uploading.value = false;
+  });
+  target.value = '';
 }
 
-async function handleDeleteAttachment(attachmentId: number) {
-  try {
-    await defectApi.deleteAttachment(attachmentId);
-    await loadDefect();
-    emit('showToast', '附件删除成功');
-  } catch (e: any) {
-    emit('showToast', e.message || '附件删除失败');
+function handleDeleteAttachment(attachmentId: number) {
+  // If it's a server-side attachment, mark for deletion
+  if (originalAttachments.value.some(a => a.id === attachmentId)) {
+    deletedAttachmentIds.value = new Set([...deletedAttachmentIds.value, attachmentId]);
+    attachments.value = attachments.value.filter(a => a.id !== attachmentId);
+  } else {
+    // It's a pending file, just remove it
+    pendingFiles.value = pendingFiles.value.filter(f => f._localId !== attachmentId);
   }
 }
 
@@ -249,6 +292,16 @@ watch(() => props.defectId, async () => {
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
               </svg>
               编辑
+            </button>
+            <button
+              v-if="defect && !isEditing && (defect.status === 'resolved' || defect.status === 'closed')"
+              class="btn btn-activate"
+              @click="emit('activate', defect!)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              激活
             </button>
             <button class="dialog-close-btn" @click="handleClose">×</button>
           </div>
@@ -350,7 +403,7 @@ watch(() => props.defectId, async () => {
                       </select>
                     </template>
                     <template v-else>
-                      <span class="text-muted">{{ defect.module_name || '--' }}</span>
+                      <span class="text-muted">{{ buildModulePath(modules, defect.module_id) || '--' }}</span>
                     </template>
                   </div>
                 </div>
@@ -417,17 +470,35 @@ watch(() => props.defectId, async () => {
                 <div class="info-section">
                   <label class="info-label">附件</label>
                   <div class="attachments-list">
-                    <div v-if="attachments.length === 0" class="text-muted">暂无附件</div>
-                    <div v-for="att in attachments" :key="att.id" class="attachment-item">
-                      <span class="attachment-name">{{ att.filename }}</span>
+                    <div v-if="attachments.length === 0 && pendingFiles.length === 0" class="text-muted">暂无附件</div>
+                    <div v-for="att in attachments" :key="'a' + att.id" class="attachment-item">
+                      <a
+                        class="attachment-name attachment-link"
+                        :href="defectApi.getAttachmentDownloadUrl(att.id)"
+                        :download="att.filename"
+                      >{{ att.filename }}</a>
                       <span class="attachment-meta">({{ Math.round(att.file_size / 1024) }} KB)</span>
-                      <button class="btn-text" @click="handleDeleteAttachment(att.id)">删除</button>
+                      <button
+                        v-if="isEditing"
+                        class="btn-text"
+                        @click="handleDeleteAttachment(att.id)"
+                      >删除</button>
+                    </div>
+                    <div v-for="pf in pendingFiles" :key="'p' + pf._localId" class="attachment-item">
+                      <span class="attachment-name">{{ pf.filename }}</span>
+                      <span class="attachment-meta">({{ Math.round(pf.file_size / 1024) }} KB)</span>
+                      <button
+                        v-if="isEditing"
+                        class="btn-text"
+                        @click="handleDeleteAttachment(pf._localId)"
+                      >删除</button>
                     </div>
                   </div>
-                  <div class="upload-section">
+                  <div v-if="isEditing" class="upload-section">
                     <label class="upload-btn" :class="{ disabled: uploading }">
                       <input
                         type="file"
+                        multiple
                         @change="handleFileUpload"
                         :disabled="uploading"
                         class="hidden-input"
@@ -460,17 +531,21 @@ watch(() => props.defectId, async () => {
                   </div>
                   <div v-if="defect.resolution" class="sidebar-item">
                     <span class="sidebar-label">解决方案</span>
-                    <span class="sidebar-value">{{ defect.resolution }}</span>
+                    <span class="sidebar-value">{{ resolutionLabels[defect.resolution] || defect.resolution }}</span>
+                  </div>
+                  <div v-if="defect.resolution === 'duplicate' && defect.duplicate_defect_id" class="sidebar-item">
+                    <span class="sidebar-label">关联缺陷</span>
+                    <span class="sidebar-value">#{{ defect.duplicate_defect_id }} {{ defect.duplicate_defect_title }}</span>
                   </div>
                   <div v-if="defect.resolved_version_name" class="sidebar-item">
                     <span class="sidebar-label">解决版本</span>
                     <span class="sidebar-value">{{ defect.resolved_version_name }}</span>
                   </div>
                   <div v-if="defect.resolved_date" class="sidebar-item">
-                    <span class="sidebar-label">解决时间</span>
+                    <span class="sidebar-label">解决日期</span>
                     <span class="sidebar-value">{{ formatTime(defect.resolved_date) }}</span>
                   </div>
-                  <div v-if="defect.branch_name" class="sidebar-item">
+                  <div v-if="defect.branch_name && defect.branch_name !== defect.resolved_version_name" class="sidebar-item">
                     <span class="sidebar-label">关联版本</span>
                     <span class="sidebar-value">{{ defect.branch_name }}</span>
                   </div>
@@ -601,6 +676,26 @@ watch(() => props.defectId, async () => {
 
 .btn-edit:hover {
   background-color: var(--color-primary-soft);
+}
+
+.btn-activate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font);
+  background-color: var(--color-warning);
+  color: #fff;
+  border: none;
+}
+
+.btn-activate:hover {
+  opacity: 0.85;
 }
 
 .tabs-header {
@@ -815,6 +910,16 @@ watch(() => props.defectId, async () => {
   font-size: 14px;
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.attachment-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.attachment-link:hover {
+  text-decoration: underline;
 }
 
 .attachment-meta {

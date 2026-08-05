@@ -2107,6 +2107,9 @@ async def transition_defect(defect_id: int, action: str, operator_id: int,
             resolved_version = kwargs.get('resolved_version', 0)
             if resolved_version:
                 defect.resolved_version = resolved_version
+            duplicate_defect_id = kwargs.get('duplicate_defect_id', 0)
+            if duplicate_defect_id:
+                defect.duplicate_defect_id = duplicate_defect_id
             from datetime import datetime
             defect.resolved_date = datetime.utcnow().isoformat()
             if kwargs.get('assignee_id'):
@@ -2299,6 +2302,27 @@ async def create_defect_attachment(defect_id: int, filename: str, filepath: str,
         attachment_id = attachment.id
         await session.commit()
         return attachment_id
+
+
+async def get_defect_attachment(attachment_id: int) -> dict | None:
+    """Get a single attachment by id."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(DefectAttachment).where(DefectAttachment.id == attachment_id)
+        )
+        a = result.scalar_one_or_none()
+        if a is None:
+            return None
+        return {
+            'id': a.id,
+            'defect_id': a.defect_id,
+            'filename': a.filename,
+            'filepath': a.filepath,
+            'file_size': a.file_size,
+            'mime_type': a.mime_type,
+            'created_by': a.created_by,
+            'created_at': a.created_at.isoformat() if a.created_at else '',
+        }
 
 
 async def get_defect_attachments(defect_id: int) -> list[dict]:

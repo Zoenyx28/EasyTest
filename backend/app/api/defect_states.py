@@ -3,6 +3,7 @@
 States and transitions:
     unconfirmed -> confirm -> confirmed
     confirmed   -> assign  -> in_progress
+    confirmed   -> resolve -> resolved
     in_progress -> resolve -> resolved
     resolved    -> close   -> closed
     resolved    -> activate -> in_progress
@@ -32,7 +33,7 @@ RESOLUTIONS = ['fixed', 'duplicate', 'not_issue', 'cannot_reproduce', 'design', 
 # ── State machine valid transitions ──
 TRANSITIONS = {
     STATUS_UNCONFIRMED: [ACTION_CONFIRM, ACTION_CLOSE],
-    STATUS_CONFIRMED: [ACTION_ASSIGN, ACTION_CLOSE],
+    STATUS_CONFIRMED: [ACTION_ASSIGN, ACTION_RESOLVE, ACTION_CLOSE],
     STATUS_IN_PROGRESS: [ACTION_RESOLVE],
     STATUS_RESOLVED: [ACTION_CLOSE, ACTION_ACTIVATE],
     STATUS_CLOSED: [ACTION_ACTIVATE],
@@ -81,6 +82,7 @@ def _next_status(current_status: str, action: str) -> str:
         (STATUS_UNCONFIRMED, ACTION_CONFIRM): STATUS_CONFIRMED,
         (STATUS_UNCONFIRMED, ACTION_CLOSE): STATUS_CLOSED,
         (STATUS_CONFIRMED, ACTION_ASSIGN): STATUS_IN_PROGRESS,
+        (STATUS_CONFIRMED, ACTION_RESOLVE): STATUS_RESOLVED,
         (STATUS_CONFIRMED, ACTION_CLOSE): STATUS_CLOSED,
         (STATUS_IN_PROGRESS, ACTION_RESOLVE): STATUS_RESOLVED,
         (STATUS_RESOLVED, ACTION_CLOSE): STATUS_CLOSED,

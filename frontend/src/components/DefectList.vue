@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { buildModulePath } from '../composables/useDefect';
 import type { DefectInfo, DefectModuleInfo } from '../types';
 
 const props = defineProps<{
@@ -330,7 +331,7 @@ watch(() => props.externalModuleId, (newVal) => {
             <td class="cell-id">#{{ defect.id }}</td>
             <td class="cell-title">
               <div class="cell-title-main">{{ defect.title }}</div>
-              <div class="cell-title-sub">{{ defect.module_name }}</div>
+              <div class="cell-title-sub">{{ buildModulePath(props.modules, defect.module_id) }}</div>
             </td>
             <td class="cell-severity">
               <span
