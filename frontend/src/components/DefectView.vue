@@ -10,6 +10,7 @@ import DefectDetailDialog from './DefectDetailDialog.vue';
 import DefectConfirmDialog from './DefectConfirmDialog.vue';
 import DefectResolveDialog from './DefectResolveDialog.vue';
 import DefectCloseDialog from './DefectCloseDialog.vue';
+import DefectModuleTreeNode from './DefectModuleTreeNode.vue';
 import type { DefectInfo, DefectModuleInfo } from '../types';
 
 const props = defineProps<{
