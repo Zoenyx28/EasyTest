@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick as tick } from 'vue';
 import { useProject } from '../composables/useProject';
 import { useBranch } from '../composables/useBranch';
 import { useDefect } from '../composables/useDefect';
@@ -7,7 +7,6 @@ import { useAuth } from '../composables/useAuth';
 import DefectList from './DefectList.vue';
 import DefectCreateDialog from './DefectCreateDialog.vue';
 import DefectDetailDialog from './DefectDetailDialog.vue';
-import DefectModuleDialog from './DefectModuleDialog.vue';
 import DefectConfirmDialog from './DefectConfirmDialog.vue';
 import DefectResolveDialog from './DefectResolveDialog.vue';
 import DefectCloseDialog from './DefectCloseDialog.vue';
@@ -47,7 +46,6 @@ const filterCreatorId = ref<number | null>(null);
 const filterSearch = ref('');
 
 const showCreateDialog = ref(false);
-const showModuleDialog = ref(false);
 const showDetailDialog = ref(false);
 const showConfirmDialog = ref(false);
 const showResolveDialog = ref(false);
@@ -59,6 +57,82 @@ const selectedDefect = ref<DefectInfo | null>(null);
 const selectedModuleId = ref<number | null>(null);
 const expandedModules = ref<Set<number>>(new Set());
 const moduleSearchQuery = ref('');
+
+// Inline edit state
+const renamingModuleId = ref<number | null>(null);
+const renameValue = ref('');
+const addingChildParentId = ref<number | null>(null);
+const newChildName = ref('');
+const hoveredModuleId = ref<number | null>(null);
+
+function getModuleDepth(mods: DefectModuleInfo[], targetId: number, depth = 1): number {
+  for (const m of mods) {
+    if (m.id === targetId) return depth;
+    if (m.children && m.children.length > 0) {
+      const found = getModuleDepth(m.children, targetId, depth + 1);
+      if (found > 0) return found;
+    }
+  }
+  return 0;
+}
+
+async function startRename(mod: DefectModuleInfo) {
+  renamingModuleId.value = mod.id;
+  renameValue.value = mod.name;
+  await tick();
+}
+
+async function saveRename() {
+  const id = renamingModuleId.value;
+  const name = renameValue.value.trim();
+  if (!id || !name) return;
+  try {
+    await defectApi.updateModule(id, { name });
+    renamingModuleId.value = null;
+    await loadDefects();
+  } catch (e: any) {
+    emit('showToast', e.message || '重命名失败');
+  }
+}
+
+function cancelRename() {
+  renamingModuleId.value = null;
+}
+
+async function deleteModuleAction(id: number) {
+  try {
+    await defectApi.deleteModule(id);
+    if (selectedModuleId.value === id) selectedModuleId.value = null;
+    await loadDefects();
+  } catch (e: any) {
+    emit('showToast', e.message || '删除失败');
+  }
+}
+
+async function addChildModule(parentId: number) {
+  const name = newChildName.value.trim();
+  if (!name) return;
+  try {
+    await defectApi.createModule({ project_id: projectId.value, name, parent_id: parentId });
+    expandedModules.value.add(parentId);
+    expandedModules.value = new Set(expandedModules.value);
+    addingChildParentId.value = null;
+    newChildName.value = '';
+    await loadDefects();
+  } catch (e: any) {
+    emit('showToast', e.message || '创建子模块失败');
+  }
+}
+
+function cancelAddChild() {
+  addingChildParentId.value = null;
+  newChildName.value = '';
+}
+
+function startAddRoot() {
+  addingChildParentId.value = 0;
+  newChildName.value = '';
+}
 
 function flattenModuleTree(mods: DefectModuleInfo[]): DefectModuleInfo[] {
   const result: DefectModuleInfo[] = [];
@@ -217,11 +291,6 @@ watch(branchId, async () => {
   }
 });
 
-// Reload when module dialog closes (modules may have changed)
-watch(showModuleDialog, async (open) => {
-  if (!open) await loadDefects();
-});
-
 onMounted(() => {
   initPage();
 });
@@ -245,11 +314,24 @@ onMounted(() => {
     <template v-else>
       <!-- Left Sidebar: Module Tree -->
       <aside
-        class="w-[240px] min-w-[240px] flex flex-col shrink-0 min-h-0 glass"
+        class="w-[240px] min-w-[240px] flex flex-col shrink-0 min-h-0"
         style="background-color: var(--sidebar-bg); border-right: 0.5px solid var(--sidebar-border);"
       >
         <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
           <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷模块</h3>
+          <button
+            @click="startAddRoot()"
+            class="w-[24px] h-[24px] rounded-[6px] flex items-center justify-center cursor-pointer transition-colors"
+            style="color: var(--text-tertiary);"
+            @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
+            @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
+            title="添加根模块"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
         </div>
 
         <!-- Search -->
@@ -274,7 +356,7 @@ onMounted(() => {
           <!-- All defects -->
           <div
             @click="selectModule(null)"
-            class="flex items-center gap-[8px] px-[10px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors"
+            class="group flex items-center gap-[8px] px-[10px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors"
             :style="!selectedModuleId ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
             @mouseenter="(e: MouseEvent) => { if (selectedModuleId) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
             @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
@@ -286,53 +368,55 @@ onMounted(() => {
             <span class="text-[11px] opacity-60">{{ total }}</span>
           </div>
 
-          <div v-if="modules.length === 0" class="text-center py-8 text-[var(--text-tertiary)] text-[12px]">
-            暂无模块<br/>
-            <button @click="showModuleDialog = true" class="mt-2 underline cursor-pointer" style="color: var(--accent);">创建模块</button>
+          <!-- Root add input -->
+          <div v-if="addingChildParentId === 0" class="flex items-center gap-[6px] px-[10px] py-[5px]">
+            <input
+              v-model="newChildName"
+              ref="rootInputRef"
+              type="text"
+              placeholder="输入模块名称..."
+              class="flex-1 bg-transparent text-[12px] outline-none px-[6px] py-[3px] rounded-[4px]"
+              style="color: var(--text-primary); border: 1px solid var(--accent);"
+              @keyup.enter="addChildModule(0)"
+              @keyup.escape="cancelAddChild()"
+            />
+            <button @click="addChildModule(0)" class="w-[20px] h-[20px] flex items-center justify-center cursor-pointer" style="color: var(--accent);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <button @click="cancelAddChild()" class="w-[20px] h-[20px] flex items-center justify-center cursor-pointer" style="color: var(--text-tertiary);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
 
-          <template v-for="mod in modules" :key="mod.id">
-            <!-- Module row -->
-            <div
-              @click="selectModule(mod.id)"
-              class="flex items-center gap-[6px] px-[10px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors"
-              :style="selectedModuleId === mod.id ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
-              @mouseenter="(e: MouseEvent) => { if (selectedModuleId !== mod.id) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
-              @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
-            >
-              <svg
-                v-if="mod.children && mod.children.length > 0"
-                @click.stop="toggleModuleExpand(mod.id)"
-                width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                class="transition-transform duration-150 shrink-0"
-                :style="{ transform: expandedModules.has(mod.id) ? 'rotate(90deg)' : 'rotate(0deg)', color: 'var(--text-tertiary)' }"
-              >
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-              <span v-else class="w-[10px] shrink-0"></span>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span class="flex-1 truncate">{{ mod.name }}</span>
-            </div>
+          <!-- Empty state -->
+          <div v-if="modules.length === 0 && addingChildParentId !== 0" class="text-center py-8 text-[var(--text-tertiary)] text-[12px]">
+            暂无模块<br/>
+            <button @click="startAddRoot()" class="mt-2 underline cursor-pointer" style="color: var(--accent);">创建根模块</button>
+          </div>
 
-            <!-- Children -->
-            <div v-if="mod.children && mod.children.length > 0 && expandedModules.has(mod.id)" class="ml-[14px]">
-              <div
-                v-for="child in mod.children" :key="child.id"
-                @click="selectModule(child.id)"
-                class="flex items-center gap-[8px] px-[10px] py-[6px] rounded-[8px] cursor-pointer text-[12.5px] transition-colors"
-                :style="selectedModuleId === child.id ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
-                @mouseenter="(e: MouseEvent) => { if (selectedModuleId !== child.id) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
-                @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
-                <span class="flex-1 truncate">{{ child.name }}</span>
-              </div>
-            </div>
+          <!-- Module tree nodes -->
+          <template v-for="mod in modules" :key="mod.id">
+            <DefectModuleTreeNode
+              :module="mod"
+              :depth="1"
+              :selectedModuleId="selectedModuleId"
+              :expandedModules="expandedModules"
+              :renamingModuleId="renamingModuleId"
+              :renameValue="renameValue"
+              :addingChildParentId="addingChildParentId"
+              :newChildName="newChildName"
+              @toggleExpand="toggleModuleExpand"
+              @select="selectModule"
+              @startRename="startRename"
+              @saveRename="saveRename"
+              @cancelRename="cancelRename"
+              @deleteModule="deleteModuleAction"
+              @addChild="(parentId: number) => { addingChildParentId = parentId; newChildName = '' }"
+              @addChildSave="addChildModule"
+              @cancelAddChild="cancelAddChild"
+              @updateNewChildName="(v: string) => newChildName = v"
+              @updateRenameValue="(v: string) => renameValue = v"
+            />
           </template>
         </div>
       </aside>
@@ -343,18 +427,6 @@ onMounted(() => {
         <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0" style="border-bottom: 1px solid var(--border);">
           <h2 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷管理</h2>
           <div class="flex gap-[8px]">
-            <button
-              @click="showModuleDialog = true"
-              class="flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-              style="background-color: var(--card-bg); color: var(--text-secondary); border: 1px solid var(--border);"
-              @mouseenter="($event.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; ($event.currentTarget as HTMLElement).style.color = 'var(--accent)'"
-              @mouseleave="($event.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; ($event.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-              模块管理
-            </button>
             <button
               @click="showCreateDialog = true"
               class="flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
@@ -410,14 +482,6 @@ onMounted(() => {
       :projectId="projectId"
       @close="showDetailDialog = false"
       @updated="handleUpdated"
-      @showToast="(msg: string) => emit('showToast', msg)"
-    />
-
-    <!-- Module dialog -->
-    <DefectModuleDialog
-      :isOpen="showModuleDialog"
-      :projectId="projectId"
-      @close="showModuleDialog = false"
       @showToast="(msg: string) => emit('showToast', msg)"
     />
 
