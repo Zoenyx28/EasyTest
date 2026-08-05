@@ -1,0 +1,242 @@
+@import "tailwindcss";
+
+/* ── Self-hosted Fonts ── */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/SpaceGrotesk-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/SpaceGrotesk-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/SpaceGrotesk-600.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/SpaceGrotesk-700.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/DMSans-400.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/DMSans-500.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/DMSans-700.ttf') format('truetype');
+}
+
+@layer base {
+  /* ═══ Light Theme ═══ */
+  :root {
+    /* Primary */
+    --color-primary: #2563EB;
+    --color-primary-dark: #1D4ED8;
+    --color-primary-soft: rgba(37, 99, 235, 0.10);
+
+    /* Accent / CTA */
+    --color-accent: #EA580C;
+    --color-accent-dark: #C2410C;
+
+    /* Status */
+    --color-success: #16A34A;
+    --color-danger: #DC2626;
+    --color-warning: #F59E0B;
+    --color-broken: #7C3AED;
+
+    /* Background */
+    --bg-window: #F8FAFC;
+    --bg-sidebar: rgba(248, 250, 252, 0.85);
+    --bg-content: #FFFFFF;
+    --bg-card: #FFFFFF;
+    --bg-card-hover: #F1F5F9;
+    --bg-soft: #F1F5F9;
+    --bg-muted: #F8FAFC;
+    --bg-input: #F1F5F9;
+
+    /* Border */
+    --border: #E2E8F0;
+    --border-hover: #CBD5E1;
+
+    /* Text */
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+
+    /* Interaction */
+    --hover-bg: rgba(0, 0, 0, 0.04);
+    --selected-bg: rgba(37, 99, 235, 0.10);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.15);
+
+    /* Compat aliases (for gradual migration) */
+    --accent: var(--color-primary);
+    --accent-soft: var(--color-primary-soft);
+    --green: var(--color-success);
+    --red: var(--color-danger);
+    --amber: var(--color-warning);
+    --purple: var(--color-broken);
+    --radius-lg: 14px;
+    --radius-md: 10px;
+    --radius-sm: 7px;
+    --font: "DM Sans", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-heading: "Space Grotesk", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sidebar-bg: var(--bg-sidebar);
+    --sidebar-border: var(--border);
+    --content-bg: var(--bg-content);
+    --toolbar-bg: var(--bg-sidebar);
+    --card-bg: var(--bg-card);
+    --card-bg-2: var(--bg-soft);
+    --border-strong: var(--border-hover);
+    --text-tertiary: var(--text-muted);
+    --row-hover: var(--hover-bg);
+    --input-bg: var(--bg-input);
+    --success: var(--color-success);
+    --danger: var(--color-danger);
+    --broken: var(--color-broken);
+    --warning: var(--color-warning);
+    --skipped: var(--text-muted);
+  }
+
+  /* ═══ Dark Theme ═══ */
+  html[data-theme="dark"] {
+    --color-primary: #3B82F6;
+    --color-primary-dark: #2563EB;
+    --color-primary-soft: rgba(59, 130, 246, 0.15);
+
+    --color-accent: #F97316;
+    --color-accent-dark: #EA580C;
+
+    --color-success: #22C55E;
+    --color-danger: #EF4444;
+    --color-warning: #F59E0B;
+    --color-broken: #A78BFA;
+
+    --bg-window: #0B0B10;
+    --bg-sidebar: rgba(11, 11, 16, 0.85);
+    --bg-content: #0B0B10;
+    --bg-card: #121218;
+    --bg-card-hover: #1E1E28;
+    --bg-soft: #1E1E28;
+    --bg-muted: #121218;
+    --bg-input: rgba(255, 255, 255, 0.06);
+
+    --border: #1E293B;
+    --border-hover: #334155;
+
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --text-muted: #64748B;
+
+    --hover-bg: rgba(255, 255, 255, 0.04);
+    --selected-bg: rgba(59, 130, 246, 0.18);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.4);
+
+    /* Compat aliases */
+    --accent: var(--color-primary);
+    --accent-soft: var(--color-primary-soft);
+    --green: var(--color-success);
+    --red: var(--color-danger);
+    --amber: var(--color-warning);
+    --purple: var(--color-broken);
+    --sidebar-bg: var(--bg-sidebar);
+    --sidebar-border: var(--border);
+    --content-bg: var(--bg-content);
+    --toolbar-bg: var(--bg-sidebar);
+    --card-bg: var(--bg-card);
+    --card-bg-2: var(--bg-soft);
+    --border-strong: var(--border-hover);
+    --text-tertiary: var(--text-muted);
+    --row-hover: var(--hover-bg);
+    --input-bg: var(--bg-input);
+    --success: var(--color-success);
+    --danger: var(--color-danger);
+    --broken: var(--color-broken);
+    --warning: var(--color-warning);
+    --skipped: var(--text-muted);
+  }
+
+  body {
+    background-color: var(--bg-window);
+    color: var(--text-primary);
+    font-family: var(--font);
+    margin: 0;
+    overflow: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+  }
+}
+
+@layer utilities {
+  .glass {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.pulse-icon::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background-color: currentColor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+  z-index: -1;
+}
+
+.font-code {
+  font-family: var(--font-mono);
+}

@@ -1,0 +1,395 @@
+<script setup lang="ts">
+import { ref, onMounted, watch } from 'vue';
+import { useDefect } from '../composables/useDefect';
+import { useProjectMembers } from '../composables/useProjectMembers';
+import type { DefectModuleInfo, ProjectMemberInfo, DefectCreateData } from '../types';
+import DefectRichEditor from './DefectRichEditor.vue';
+
+const props = defineProps<{
+  isOpen: boolean;
+  projectId: number;
+  branchId: number;
+}>();
+
+const emit = defineEmits<{
+  (e: 'close'): void;
+  (e: 'created'): void;
+  (e: 'showToast', msg: string): void;
+}>();
+
+const defectApi = useDefect(props.projectId);
+const membersApi = useProjectMembers();
+
+const title = ref('');
+const description = ref('');
+const severity = ref('P2');
+const priority = ref('P2');
+const moduleId = ref<number>(0);
+const assigneeId = ref<number>(0);
+const steps = ref('');
+
+const modules = ref<DefectModuleInfo[]>([]);
+const members = ref<ProjectMemberInfo[]>([]);
+const saving = ref(false);
+const titleError = ref('');
+
+const severityOptions = [
+  { value: 'P0', label: 'P0' },
+  { value: 'P1', label: 'P1' },
+  { value: 'P2', label: 'P2' },
+  { value: 'P3', label: 'P3' },
+];
+
+const priorityOptions = [
+  { value: 'P0', label: 'P0' },
+  { value: 'P1', label: 'P1' },
+  { value: 'P2', label: 'P2' },
+  { value: 'P3', label: 'P3' },
+];
+
+function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name: string; depth: number }[] {
+  const result: { id: number; name: string; depth: number }[] = [];
+  for (const m of list) {
+    result.push({ id: m.id, name: m.name, depth });
+    if (m.children && m.children.length > 0) {
+      result.push(...flattenModules(m.children, depth + 1));
+    }
+  }
+  return result;
+}
+
+async function loadModules() {
+  try {
+    modules.value = await defectApi.getModules(props.projectId);
+  } catch {
+    // ignore
+  }
+}
+
+async function loadMembers() {
+  try {
+    members.value = await membersApi.getMembers(props.projectId);
+  } catch {
+    // ignore
+  }
+}
+
+async function handleSave() {
+  if (!title.value.trim()) {
+    titleError.value = '请输入标题';
+    return;
+  }
+  titleError.value = '';
+  saving.value = true;
+  try {
+    const data: DefectCreateData = {
+      title: title.value.trim(),
+      description: description.value,
+      steps: steps.value,
+      project_id: props.projectId,
+      branch_id: props.branchId,
+      module_id: moduleId.value,
+      severity: severity.value,
+      priority: priority.value,
+      assignee_id: assigneeId.value,
+    };
+    await defectApi.createDefect(data);
+    emit('created');
+    emit('showToast', '缺陷创建成功');
+    handleClose();
+  } catch (e: any) {
+    emit('showToast', e.message || '创建缺陷失败');
+  } finally {
+    saving.value = false;
+  }
+}
+
+function handleClose() {
+  title.value = '';
+  description.value = '';
+  steps.value = '';
+  severity.value = 'P2';
+  priority.value = 'P2';
+  moduleId.value = 0;
+  assigneeId.value = 0;
+  titleError.value = '';
+  emit('close');
+}
+
+watch(() => props.isOpen, (newVal) => {
+  if (newVal) {
+    loadModules();
+    loadMembers();
+  }
+});
+
+onMounted(() => {
+  if (props.isOpen) {
+    loadModules();
+    loadMembers();
+  }
+});
+</script>
+
+<template>
+  <teleport to="body">
+    <div v-if="isOpen" class="dialog-overlay" @click.self="handleClose">
+      <div class="dialog-container">
+        <div class="dialog-header">
+          <h2 class="dialog-title">创建缺陷</h2>
+          <button class="dialog-close-btn" @click="handleClose">×</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group">
+            <label class="form-label">标题 <span class="required">*</span></label>
+            <input
+              v-model="title"
+              class="form-input"
+              :class="{ 'input-error': titleError }"
+              placeholder="简要描述问题"
+              @input="titleError = ''"
+            />
+            <span v-if="titleError" class="error-text">{{ titleError }}</span>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">严重程度</label>
+              <select v-model="severity" class="form-select">
+                <option v-for="opt in severityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">优先级</label>
+              <select v-model="priority" class="form-select">
+                <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">模块</label>
+              <select v-model="moduleId" class="form-select">
+                <option :value="0">选择模块</option>
+                <template v-for="item in flattenModules(modules)" :key="item.id">
+                  <option :value="item.id">
+                    <span v-for="i in item.depth" :key="i">&nbsp;&nbsp;&nbsp;</span>
+                    {{ item.name }}
+                  </option>
+                </template>
+              </select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">指派给</label>
+              <select v-model="assigneeId" class="form-select">
+                <option :value="0">选择指派对象</option>
+                <option v-for="m in members" :key="m.id" :value="m.user_id">{{ m.nickname || m.username }}</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">描述</label>
+            <textarea
+              v-model="description"
+              class="form-textarea"
+              placeholder="发生了什么？应该发生什么？"
+              rows="4"
+            ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">复现步骤</label>
+            <DefectRichEditor v-model="steps" placeholder="如何复现这个问题？" />
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button class="btn btn-cancel" @click="handleClose">取消</button>
+          <button class="btn btn-save" :disabled="saving" @click="handleSave">
+            {{ saving ? '创建中...' : '创建缺陷' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </teleport>
+</template>
+
+<style scoped>
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+.dialog-container {
+  width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background-color: var(--bg-card);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dialog-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  font-family: var(--font);
+}
+
+.dialog-close-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dialog-close-btn:hover {
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
+}
+
+.dialog-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  font-family: var(--font);
+}
+
+.required {
+  color: var(--color-danger);
+}
+
+.form-input,
+.form-textarea,
+.form-select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  outline: none;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.input-error {
+  border-color: var(--color-danger) !important;
+}
+
+.error-text {
+  display: block;
+  font-size: 12px;
+  color: var(--color-danger);
+  margin-top: 6px;
+  font-family: var(--font);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 20px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font);
+  border: none;
+  line-height: 20px;
+}
+
+.btn-cancel {
+  background-color: transparent;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.btn-cancel:hover {
+  background-color: var(--bg-muted);
+}
+
+.btn-save {
+  background-color: var(--color-primary);
+  color: var(--bg-card);
+}
+
+.btn-save:hover:not(:disabled) {
+  background-color: var(--color-primary-dark);
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+</style>

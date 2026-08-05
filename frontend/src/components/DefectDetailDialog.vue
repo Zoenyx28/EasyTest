@@ -84,13 +84,13 @@ const severityTextColors: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  unconfirmed: '#e0e9f2', confirmed: '#d8e2ff', in_progress: '#ffd6a5',
-  resolved: '#d4edda', closed: '#e0e9f2',
+  unconfirmed: 'var(--border)', confirmed: '#d8e2ff', in_progress: '#ffd6a5',
+  resolved: '#d4edda', closed: 'var(--border)',
 };
 
 const statusTextColors: Record<string, string> = {
-  unconfirmed: '#414754', confirmed: '#0059bb', in_progress: '#7a4400',
-  resolved: '#155724', closed: '#414754',
+  unconfirmed: 'var(--text-secondary)', confirmed: 'var(--color-primary)', in_progress: '#7a4400',
+  resolved: '#155724', closed: 'var(--text-secondary)',
 };
 
 function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name: string; depth: number }[] {
@@ -399,7 +399,7 @@ watch(() => props.defectId, async () => {
                       </select>
                     </template>
                     <template v-else>
-                      <span class="severity-badge" :style="{ backgroundColor: severityColors[defect.severity] || '#e0e9f2', color: severityTextColors[defect.severity] || '#414754' }">
+                      <span class="severity-badge" :style="{ backgroundColor: severityColors[defect.severity] || 'var(--border)', color: severityTextColors[defect.severity] || 'var(--text-secondary)' }">
                         {{ defect.severity }}
                       </span>
                     </template>
@@ -412,7 +412,7 @@ watch(() => props.defectId, async () => {
                       </select>
                     </template>
                     <template v-else>
-                      <span class="severity-badge" :style="{ backgroundColor: severityColors[defect.priority] || '#e0e9f2', color: severityTextColors[defect.priority] || '#414754' }">
+                      <span class="severity-badge" :style="{ backgroundColor: severityColors[defect.priority] || 'var(--border)', color: severityTextColors[defect.priority] || 'var(--text-secondary)' }">
                         {{ defect.priority }}
                       </span>
                     </template>
@@ -594,7 +594,7 @@ watch(() => props.defectId, async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(41, 49, 56, 0.6);
+  background-color: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
 }
 
@@ -604,7 +604,7 @@ watch(() => props.defectId, async () => {
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
   overflow: hidden;
 }
@@ -618,7 +618,7 @@ watch(() => props.defectId, async () => {
   align-items: center;
   justify-content: space-between;
   padding: 24px;
-  border-bottom: 1px solid #e0e9f2;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -637,9 +637,9 @@ watch(() => props.defectId, async () => {
 .dialog-title {
   font-size: 20px;
   font-weight: 700;
-  color: #141d23;
+  color: var(--text-primary);
   margin: 0;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -654,15 +654,15 @@ watch(() => props.defectId, async () => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #717786;
+  color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .dialog-close-btn:hover {
-  background: #ecf5fe;
-  color: #141d23;
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
 }
 
 .btn-edit {
@@ -675,22 +675,22 @@ watch(() => props.defectId, async () => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ecf5fe;
-  color: #0059bb;
+  font-family: var(--font);
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
   border: none;
 }
 
 .btn-edit:hover {
-  background-color: #d8eaff;
+  background-color: var(--color-primary-soft);
 }
 
 .tabs-header {
   display: flex;
   gap: 4px;
   padding: 8px 24px;
-  border-bottom: 1px solid #e0e9f2;
-  background-color: #f6faff;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--bg-muted);
   flex-shrink: 0;
 }
 
@@ -700,31 +700,31 @@ watch(() => props.defectId, async () => {
   background: transparent;
   font-size: 14px;
   font-weight: 600;
-  color: #414754;
+  color: var(--text-secondary);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .tab-button:hover {
-  background: #ecf5fe;
+  background: var(--color-primary-soft);
 }
 
 .tab-button.active {
-  background: #ffffff;
-  color: #0059bb;
+  background: var(--bg-card);
+  color: var(--color-primary);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .tab-badge {
   padding: 2px 8px;
   border-radius: 100px;
-  background: #e0e9f2;
-  color: #414754;
+  background: var(--border);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -743,15 +743,15 @@ watch(() => props.defectId, async () => {
   justify-content: center;
   padding: 60px 20px;
   gap: 12px;
-  color: #717786;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-muted);
+  font-family: var(--font);
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #e0e9f2;
-  border-top-color: #0059bb;
+  border: 3px solid var(--border);
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -793,23 +793,23 @@ watch(() => props.defectId, async () => {
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: #717786;
+  color: var(--text-muted);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .info-content {
   font-size: 14px;
   line-height: 22px;
-  color: #141d23;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font);
 }
 
 .info-section {
   padding: 16px;
-  background: #f6faff;
+  background: var(--bg-muted);
   border-radius: 12px;
 }
 
@@ -829,7 +829,7 @@ watch(() => props.defectId, async () => {
 }
 
 .text-muted {
-  color: #717786;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -838,18 +838,18 @@ watch(() => props.defectId, async () => {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ffffff;
-  color: #141d23;
-  border: 1px solid #c1c6d7;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
 }
 
 .form-select:focus {
-  border-color: #0059bb;
-  box-shadow: 0 0 0 3px rgba(0, 89, 187, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 .form-select:disabled {
@@ -862,10 +862,10 @@ watch(() => props.defectId, async () => {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ffffff;
-  color: #141d23;
-  border: 1px solid #c1c6d7;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -875,8 +875,8 @@ watch(() => props.defectId, async () => {
 }
 
 .form-textarea:focus {
-  border-color: #0059bb;
-  box-shadow: 0 0 0 3px rgba(0, 89, 187, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 .attachments-list {
@@ -888,20 +888,20 @@ watch(() => props.defectId, async () => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #ffffff;
+  background: var(--bg-card);
   border-radius: 8px;
   margin-bottom: 8px;
 }
 
 .attachment-name {
   font-size: 14px;
-  color: #141d23;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .attachment-meta {
   font-size: 12px;
-  color: #717786;
+  color: var(--text-muted);
 }
 
 .upload-section {
@@ -913,19 +913,19 @@ watch(() => props.defectId, async () => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #ecf5fe;
-  color: #0059bb;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
   border: none;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .upload-btn:hover:not(.disabled) {
-  background: #d8eaff;
+  background: var(--color-primary-soft);
 }
 
 .upload-btn.disabled {
@@ -941,13 +941,13 @@ watch(() => props.defectId, async () => {
   padding: 4px 8px;
   background: transparent;
   border: none;
-  color: #ba1a1a;
+  color: var(--color-danger);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .btn-text:hover {
@@ -962,23 +962,23 @@ watch(() => props.defectId, async () => {
 
 .sidebar-card {
   padding: 16px;
-  background: #f6faff;
+  background: var(--bg-muted);
   border-radius: 12px;
 }
 
 .sidebar-title {
   font-size: 14px;
   font-weight: 700;
-  color: #141d23;
+  color: var(--text-primary);
   margin: 0 0 16px 0;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .sidebar-item {
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid #e0e9f2;
+  border-bottom: 1px solid var(--border);
 }
 
 .sidebar-item:last-child {
@@ -988,15 +988,15 @@ watch(() => props.defectId, async () => {
 .sidebar-label {
   font-size: 12px;
   font-weight: 600;
-  color: #717786;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-muted);
+  font-family: var(--font);
 }
 
 .sidebar-value {
   font-size: 13px;
   font-weight: 500;
-  color: #141d23;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font);
   text-align: right;
   max-width: 140px;
   word-break: break-word;
@@ -1007,7 +1007,7 @@ watch(() => props.defectId, async () => {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid #e0e9f2;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -1018,28 +1018,28 @@ watch(() => props.defectId, async () => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   border: none;
   line-height: 20px;
 }
 
 .btn-cancel {
   background-color: transparent;
-  color: #141d23;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .btn-cancel:hover {
-  background-color: #f6faff;
+  background-color: var(--bg-muted);
 }
 
 .btn-save {
-  background-color: #0059bb;
-  color: #ffffff;
+  background-color: var(--color-primary);
+  color: var(--bg-card);
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: #004493;
+  background-color: var(--color-primary-dark);
 }
 
 .btn-save:disabled {

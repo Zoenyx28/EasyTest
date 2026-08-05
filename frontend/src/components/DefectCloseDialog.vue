@@ -92,7 +92,7 @@ watch(() => props.isOpen, (newVal) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(41, 49, 56, 0.6);
+  background-color: rgba(0,0,0,0.5);
   backdrop-filter: blur(4px);
 }
 
@@ -102,8 +102,8 @@ watch(() => props.isOpen, (newVal) => {
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  background-color: #ffffff;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  background-color: var(--bg-card);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
   overflow: hidden;
 }
 
@@ -112,16 +112,16 @@ watch(() => props.isOpen, (newVal) => {
   align-items: center;
   justify-content: space-between;
   padding: 24px;
-  border-bottom: 1px solid #e0e9f2;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .dialog-title {
   font-size: 18px;
   font-weight: 700;
-  color: #141d23;
+  color: var(--text-primary);
   margin: 0;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .dialog-close-btn {
@@ -133,15 +133,15 @@ watch(() => props.isOpen, (newVal) => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: #717786;
+  color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .dialog-close-btn:hover {
-  background: #ecf5fe;
-  color: #141d23;
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
 }
 
 .dialog-body {
@@ -162,11 +162,11 @@ watch(() => props.isOpen, (newVal) => {
   display: block;
   font-size: 12px;
   font-weight: 700;
-  color: #717786;
+  color: var(--text-muted);
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
 }
 
 .form-textarea {
@@ -174,10 +174,10 @@ watch(() => props.isOpen, (newVal) => {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ffffff;
-  color: #141d23;
-  border: 1px solid #c1c6d7;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -187,8 +187,8 @@ watch(() => props.isOpen, (newVal) => {
 }
 
 .form-textarea:focus {
-  border-color: #0059bb;
-  box-shadow: 0 0 0 3px rgba(0, 89, 187, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 .dialog-footer {
@@ -196,7 +196,7 @@ watch(() => props.isOpen, (newVal) => {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 24px;
-  border-top: 1px solid #e0e9f2;
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -207,28 +207,28 @@ watch(() => props.isOpen, (newVal) => {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   border: none;
   line-height: 20px;
 }
 
 .btn-cancel {
   background-color: transparent;
-  color: #141d23;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .btn-cancel:hover {
-  background-color: #f6faff;
+  background-color: var(--bg-muted);
 }
 
 .btn-save {
-  background-color: #0059bb;
-  color: #ffffff;
+  background-color: var(--color-primary);
+  color: var(--bg-card);
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: #004493;
+  background-color: var(--color-primary-dark);
 }
 
 .btn-save:disabled {

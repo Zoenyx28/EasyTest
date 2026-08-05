@@ -105,19 +105,19 @@ const statusLabels: Record<string, string> = {
 };
 
 const statusColors: Record<string, string> = {
-  unconfirmed: '#e0e9f2',
+  unconfirmed: 'var(--border)',
   confirmed: '#d8e2ff',
   in_progress: '#ffd6a5',
   resolved: '#d4edda',
-  closed: '#e0e9f2',
+  closed: 'var(--border)',
 };
 
 const statusTextColors: Record<string, string> = {
-  unconfirmed: '#414754',
-  confirmed: '#0059bb',
+  unconfirmed: 'var(--text-secondary)',
+  confirmed: 'var(--color-primary)',
   in_progress: '#7a4400',
   resolved: '#155724',
-  closed: '#414754',
+  closed: 'var(--text-secondary)',
 };
 
 function formatTime(iso: string): string {
@@ -328,8 +328,8 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
               <span
                 class="severity-badge"
                 :style="{
-                  backgroundColor: severityColors[defect.severity] || '#e0e9f2',
-                  color: severityTextColors[defect.severity] || '#414754',
+                  backgroundColor: severityColors[defect.severity] || 'var(--border)',
+                  color: severityTextColors[defect.severity] || 'var(--text-secondary)',
                 }"
               >
                 {{ defect.severity }}
@@ -339,8 +339,8 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
               <span
                 class="status-badge"
                 :style="{
-                  backgroundColor: statusColors[defect.status] || '#e0e9f2',
-                  color: statusTextColors[defect.status] || '#414754',
+                  backgroundColor: statusColors[defect.status] || 'var(--border)',
+                  color: statusTextColors[defect.status] || 'var(--text-secondary)',
                 }"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
@@ -476,7 +476,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: #f6faff;
+  background-color: var(--bg-muted);
 }
 
 .search-bar {
@@ -485,7 +485,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: space-between;
   gap: 24px;
   padding: 16px 0;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   flex-shrink: 0;
 }
 
@@ -494,15 +494,15 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background-color: #ecf5fe;
+  background-color: var(--color-primary-soft);
   border-radius: 8px;
-  border: 1px solid #e0e9f2;
+  border: 1px solid var(--border);
   flex: 1;
   max-width: 400px;
 }
 
 .search-icon {
-  color: #717786;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -510,14 +510,14 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   flex: 1;
   border: none;
   background: transparent;
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   font-size: 14px;
-  color: #141d23;
+  color: var(--text-primary);
   outline: none;
 }
 
 .search-input::placeholder {
-  color: #717786;
+  color: var(--text-muted);
 }
 
 .quick-filters {
@@ -525,7 +525,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   gap: 4px;
   align-items: center;
   padding: 2px;
-  background-color: #e6eff8;
+  background-color: var(--bg-soft);
   border-radius: 100px;
 }
 
@@ -533,22 +533,22 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   padding: 6px 14px;
   border: none;
   background: transparent;
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   font-size: 13px;
   font-weight: 600;
-  color: #414754;
+  color: var(--text-secondary);
   border-radius: 100px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .quick-filter-button:hover {
-  color: #141d23;
+  color: var(--text-primary);
 }
 
 .quick-filter-active {
-  background-color: #ffffff;
-  color: #141d23;
+  background-color: var(--bg-card);
+  color: var(--text-primary);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
@@ -558,7 +558,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: space-between;
   gap: 16px;
   padding: 16px 0;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   flex-shrink: 0;
 }
 
@@ -569,10 +569,10 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .filter-label {
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   font-size: 11px;
   font-weight: 700;
-  color: #717786;
+  color: var(--text-muted);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -581,7 +581,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   display: flex;
   gap: 4px;
   align-items: center;
-  border: 1px solid #e0e9f2;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 2px;
 }
@@ -590,28 +590,28 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   padding: 6px 12px;
   border: none;
   background: transparent;
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   font-size: 12px;
   font-weight: 500;
-  color: #414754;
+  color: var(--text-secondary);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .filter-button:hover {
-  background-color: #ecf5fe;
-  color: #141d23;
+  background-color: var(--color-primary-soft);
+  color: var(--text-primary);
 }
 
 .filter-button-active {
-  background-color: #0059bb;
-  color: #ffffff;
+  background-color: var(--color-primary);
+  color: var(--bg-card);
 }
 
 .filter-button-active:hover {
-  background-color: #0059bb;
-  color: #ffffff;
+  background-color: var(--color-primary);
+  color: var(--bg-card);
   filter: brightness(1.1);
 }
 
@@ -623,8 +623,8 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #717786;
-  font-family: 'Hanken Grotesk';
+  color: var(--text-muted);
+  font-family: var(--font);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -633,13 +633,13 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .filter-more:hover {
-  color: #0059bb;
+  color: var(--color-primary);
 }
 
 .more-filters {
   padding: 12px 16px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e0e9f2;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border);
 }
 
 .filter-row {
@@ -649,10 +649,10 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .filter-row-label {
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   font-size: 11px;
   font-weight: 700;
-  color: #717786;
+  color: var(--text-muted);
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -660,19 +660,19 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 .filter-select {
   padding: 6px 10px;
   border-radius: 6px;
-  border: 1px solid #c1c6d7;
+  border: 1px solid var(--border-hover);
   font-size: 13px;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ffffff;
-  color: #141d23;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
   outline: none;
   cursor: pointer;
   min-width: 150px;
 }
 
 .filter-select:focus {
-  border-color: #0059bb;
-  box-shadow: 0 0 0 3px rgba(0, 89, 187, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .loading-state {
@@ -682,8 +682,8 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: center;
   padding: 80px 20px;
   gap: 12px;
-  color: #717786;
-  font-family: 'Hanken Grotesk';
+  color: var(--text-muted);
+  font-family: var(--font);
   font-size: 13px;
   flex: 1;
 }
@@ -691,8 +691,8 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2.5px solid #e0e9f2;
-  border-top-color: #0059bb;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -710,7 +710,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: center;
   padding: 80px 20px;
   gap: 12px;
-  color: #717786;
+  color: var(--text-muted);
   flex: 1;
 }
 
@@ -719,7 +719,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .empty-text {
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   font-size: 14px;
   font-weight: 500;
 }
@@ -727,14 +727,14 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 .table-wrapper {
   flex: 1;
   overflow-y: auto;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
   border-radius: 12px;
-  border: 1px solid #e0e9f2;
+  border: 1px solid var(--border);
 }
 
 .defect-table {
   width: 100%;
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   border-collapse: collapse;
 }
 
@@ -742,7 +742,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   position: sticky;
   top: 0;
   z-index: 5;
-  background-color: #f6faff;
+  background-color: var(--bg-muted);
 }
 
 .defect-table th {
@@ -751,9 +751,9 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   letter-spacing: 0.05em;
   text-transform: uppercase;
   padding: 16px 20px;
-  border-bottom: 1px solid #e0e9f2;
-  color: #717786;
-  background-color: #f6faff;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  background-color: var(--bg-muted);
   text-align: left;
 }
 
@@ -791,13 +791,13 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .defect-row {
-  border-bottom: 1px solid #e0e9f2;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .defect-row:hover {
-  background-color: #ecf5fe;
+  background-color: var(--color-primary-soft);
 }
 
 .defect-row td {
@@ -809,21 +809,21 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   width: 16px;
   height: 16px;
   cursor: pointer;
-  border: 1px solid #c1c6d7;
+  border: 1px solid var(--border-hover);
   border-radius: 4px;
-  accent-color: #0059bb;
+  accent-color: var(--color-primary);
 }
 
 .cell-id {
   font-weight: 700;
-  color: #717786;
+  color: var(--text-muted);
   font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
 }
 
 .cell-title {
   font-weight: 500;
-  color: #141d23;
+  color: var(--text-primary);
 }
 
 .cell-title-main {
@@ -833,7 +833,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 
 .cell-title-sub {
   font-size: 12px;
-  color: #717786;
+  color: var(--text-muted);
   line-height: 16px;
 }
 
@@ -864,22 +864,22 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background-color: #0059bb;
+  background-color: var(--color-primary);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .user-avatar-text {
-  color: #ffffff;
+  color: var(--bg-card);
   font-size: 13px;
   font-weight: 600;
 }
 
 .text-muted {
   font-size: 12px;
-  color: #717786;
-  font-family: 'Hanken Grotesk';
+  color: var(--text-muted);
+  font-family: var(--font);
 }
 
 .pagination {
@@ -888,18 +888,18 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: space-between;
   padding: 16px 20px;
   flex-shrink: 0;
-  background-color: #ffffff;
+  background-color: var(--bg-card);
 }
 
 .pagination-info {
   font-size: 13px;
-  color: #717786;
-  font-family: 'Hanken Grotesk';
+  color: var(--text-muted);
+  font-family: var(--font);
   line-height: 18px;
 }
 
 .pagination-num {
-  color: #141d23;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -921,16 +921,16 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk';
+  font-family: var(--font);
   background: transparent;
-  color: #141d23;
-  border: 1px solid #e0e9f2;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
 }
 
 .page-button:hover:not(:disabled):not(.page-button-active) {
-  background-color: #ecf5fe;
-  border-color: #c1c6d7;
-  color: #141d23;
+  background-color: var(--color-primary-soft);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
 }
 
 .page-button:disabled {
@@ -939,9 +939,9 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
 }
 
 .page-button-active {
-  background-color: #141d23;
-  color: #ffffff;
-  border-color: #141d23;
+  background-color: var(--text-primary);
+  color: var(--bg-card);
+  border-color: var(--text-primary);
 }
 
 .page-ellipsis {
@@ -951,7 +951,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   min-width: 24px;
   height: 32px;
   font-size: 13px;
-  color: #717786;
+  color: var(--text-muted);
   letter-spacing: 1px;
 }
 
@@ -971,25 +971,25 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
   justify-content: center;
   width: 30px;
   height: 30px;
-  border: 1px solid #e0e9f2;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
-  color: #717786;
+  background: var(--bg-card);
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
   padding: 0;
 }
 
 .action-btn:hover:not(:disabled) {
-  background-color: #ecf5fe;
-  border-color: #0059bb;
-  color: #0059bb;
+  background-color: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .action-btn.action-disabled,
 .action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
-  background: #f6faff;
+  background: var(--bg-muted);
 }
 </style>

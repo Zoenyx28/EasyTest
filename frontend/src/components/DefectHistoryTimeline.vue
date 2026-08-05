@@ -93,12 +93,12 @@ const timelineItems = computed(() => {
 });
 
 const operationColors: Record<string, { bg: string; icon: string }> = {
-  create: { bg: '#d4edda', icon: '#155724' },
-  confirm: { bg: '#d8e2ff', icon: '#0059bb' },
-  assign: { bg: '#ffd6a5', icon: '#7a4400' },
-  resolve: { bg: '#d4edda', icon: '#155724' },
-  close: { bg: '#e0e9f2', icon: '#414754' },
-  edit: { bg: '#fff6cc', icon: '#655500' },
+  create: { bg: 'var(--color-success)', icon: '#ffffff' },
+  confirm: { bg: 'var(--color-primary)', icon: '#ffffff' },
+  assign: { bg: 'var(--color-warning)', icon: '#ffffff' },
+  resolve: { bg: 'var(--color-success)', icon: '#ffffff' },
+  close: { bg: 'var(--text-muted)', icon: '#ffffff' },
+  edit: { bg: 'var(--color-warning)', icon: '#ffffff' },
 };
 </script>
 
@@ -176,7 +176,7 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
             </div>
             <div v-if="(item.data as DefectLogInfo).field !== 'status' || (item.data as DefectLogInfo).old_value" class="timeline-detail">
               <span v-if="(item.data as DefectLogInfo).old_value" class="detail-old">{{ (item.data as DefectLogInfo).old_value }}</span>
-              <svg v-if="(item.data as DefectLogInfo).old_value" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color: #717786; flex-shrink: 0;">
+              <svg v-if="(item.data as DefectLogInfo).old_value" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color: var(--text-muted); flex-shrink: 0;">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
@@ -214,7 +214,7 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 }
 
 .comment-add-section {
-  background: #f6faff;
+  background: var(--bg-muted);
   padding: 16px;
   border-radius: 12px;
 }
@@ -224,10 +224,10 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 14px;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  background-color: #ffffff;
-  color: #141d23;
-  border: 1px solid #c1c6d7;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -238,8 +238,8 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 }
 
 .form-textarea:focus {
-  border-color: #0059bb;
-  box-shadow: 0 0 0 3px rgba(0, 89, 187, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 .comment-actions {
@@ -254,18 +254,18 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   border: none;
   line-height: 20px;
 }
 
 .btn-save {
-  background-color: #0059bb;
+  background-color: var(--color-primary);
   color: #ffffff;
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: #004493;
+  background-color: var(--color-primary-dark);
 }
 
 .btn-save:disabled {
@@ -283,7 +283,7 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #717786;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -311,8 +311,8 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 }
 
 .comment-dot {
-  background-color: #d8e2ff;
-  color: #0059bb;
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
 }
 
 .timeline-content {
@@ -331,20 +331,20 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 .timeline-operator {
   font-size: 13px;
   font-weight: 700;
-  color: #141d23;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font);
 }
 
 .timeline-action {
   font-size: 13px;
-  color: #414754;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-secondary);
+  font-family: var(--font);
 }
 
 .timeline-time {
   font-size: 12px;
-  color: #717786;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-muted);
+  font-family: var(--font);
 }
 
 .timeline-detail {
@@ -356,17 +356,17 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 
 .detail-old {
   padding: 2px 8px;
-  background: #e0e9f2;
+  background: var(--border);
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
-  color: #414754;
+  color: var(--text-secondary);
 }
 
 .detail-new {
   padding: 2px 8px;
-  background: #d4edda;
-  color: #155724;
+  background: var(--color-success);
+  color: #fff;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
@@ -376,8 +376,8 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
   margin-top: 6px;
   font-size: 14px;
   line-height: 22px;
-  color: #141d23;
-  font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  color: var(--text-primary);
+  font-family: var(--font);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
