@@ -6,13 +6,6 @@ const props = defineProps<{
   logs: DefectLogInfo[];
   comments: DefectCommentInfo[];
   defectId: number;
-  loading: boolean;
-  commentContent: string;
-}>();
-
-const emit = defineEmits<{
-  (e: 'update:commentContent', val: string): void;
-  (e: 'addComment'): void;
 }>();
 
 const statusLabels: Record<string, string> = {
@@ -104,26 +97,6 @@ const operationColors: Record<string, { bg: string; icon: string }> = {
 
 <template>
   <div class="history-timeline">
-    <!-- Add Comment -->
-    <div class="comment-add-section">
-      <textarea
-        :value="commentContent"
-        class="form-textarea"
-        placeholder="添加评论..."
-        rows="3"
-        @input="emit('update:commentContent', ($event.target as HTMLTextAreaElement).value)"
-      ></textarea>
-      <div class="comment-actions">
-        <button
-          class="btn btn-save"
-          :disabled="loading || !commentContent.trim()"
-          @click="emit('addComment')"
-        >
-          {{ loading ? '发送中...' : '发送' }}
-        </button>
-      </div>
-    </div>
-
     <!-- Timeline -->
     <div class="timeline-list">
       <div v-if="timelineItems.length === 0" class="empty-state">

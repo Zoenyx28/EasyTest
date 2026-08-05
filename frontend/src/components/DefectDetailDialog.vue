@@ -36,9 +36,7 @@ const members = ref<ProjectMemberInfo[]>([]);
 const modules = ref<DefectModuleInfo[]>([]);
 const loading = ref(false);
 const uploading = ref(false);
-const addingComment = ref(false);
 const saving = ref(false);
-const commentContent = ref('');
 const activeTab = ref<'details' | 'activity'>('details');
 const isEditing = ref(false);
 
@@ -93,6 +91,10 @@ const statusTextColors: Record<string, string> = {
   resolved: 'var(--status-resolved-text)', closed: 'var(--text-secondary)',
 };
 
+const statusLabels: Record<string, string> = {
+  unconfirmed: '未确认', confirmed: '已确认', in_progress: '处理中', resolved: '已解决', closed: '已关闭',
+};
+
 function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name: string; depth: number }[] {
   const result: { id: number; name: string; depth: number }[] = [];
   for (const m of list) {
@@ -135,11 +137,11 @@ async function loadDefect() {
 
 function enterEditMode() {
   if (!defect.value) return;
-  editSeverity.value = defect.value.severity;
-  editPriority.value = defect.value.priority;
-  editModuleId.value = defect.value.module_id;
-  editDescription.value = defect.value.description;
-  editSteps.value = defect.value.steps;
+  editSeverity.value = defect.value.severity || '';
+  editPriority.value = defect.value.priority || '';
+  editModuleId.value = defect.value.module_id || 0;
+  editDescription.value = defect.value.description || '';
+  editSteps.value = defect.value.steps || '';
   editBugType.value = defect.value.bug_type || 'code_error';
   editDeadline.value = defect.value.deadline || '';
   isEditing.value = true;
@@ -154,13 +156,13 @@ async function handleSaveEdit() {
   saving.value = true;
   try {
     await defectApi.updateDefect(props.defectId, {
-      severity: editSeverity.value,
-      priority: editPriority.value,
-      module_id: editModuleId.value,
-      description: editDescription.value,
-      steps: editSteps.value,
-      bug_type: editBugType.value,
-      deadline: editDeadline.value,
+      severity: editSeverity.value || '',
+      priority: editPriority.value || '',
+      module_id: editModuleId.value || 0,
+      description: editDescription.value || '',
+      steps: editSteps.value || '',
+      bug_type: editBugType.value || '',
+      deadline: editDeadline.value || '',
     });
     isEditing.value = false;
     await loadDefect();
@@ -170,49 +172,6 @@ async function handleSaveEdit() {
     emit('showToast', e.message || '保存失败');
   } finally {
     saving.value = false;
-  }
-}
-
-async function handleStatusChange(newStatus: string) {
-  if (!props.defectId || !defect.value) return;
-  const originalDefect = { ...defect.value };
-  try {
-    const currentStatus = originalDefect.status;
-    let action: string;
-    if (currentStatus === 'unconfirmed' && newStatus === 'confirmed') {
-      action = 'confirm';
-    } else if (newStatus === 'in_progress') {
-      action = 'assign';
-    } else if (newStatus === 'resolved') {
-      action = 'resolve';
-    } else if (newStatus === 'closed') {
-      action = 'close';
-    } else if (currentStatus !== 'unconfirmed' && newStatus === 'unconfirmed') {
-      action = 'activate';
-    } else {
-      await defectApi.updateDefect(props.defectId, { status: newStatus });
-    }
-    if (action) {
-      await defectApi.transitionDefect(props.defectId, action);
-    }
-    await loadDefect();
-    emit('updated');
-  } catch (e: any) {
-    emit('showToast', e.message || '更新状态失败');
-    defect.value = originalDefect;
-  }
-}
-
-async function handleAssigneeChange(userId: number) {
-  if (!props.defectId || !defect.value) return;
-  const originalDefect = { ...defect.value };
-  try {
-    await defectApi.updateDefect(props.defectId, { assignee_id: userId });
-    await loadDefect();
-    emit('updated');
-  } catch (e: any) {
-    emit('showToast', e.message || '更新指派人失败');
-    defect.value = originalDefect;
   }
 }
 
@@ -240,21 +199,6 @@ async function handleDeleteAttachment(attachmentId: number) {
     emit('showToast', '附件删除成功');
   } catch (e: any) {
     emit('showToast', e.message || '附件删除失败');
-  }
-}
-
-async function handleAddComment() {
-  if (!commentContent.value.trim() || !props.defectId) return;
-  addingComment.value = true;
-  try {
-    await defectApi.createComment(props.defectId, commentContent.value.trim());
-    commentContent.value = '';
-    await loadDefect();
-    emit('showToast', '评论添加成功');
-  } catch (e: any) {
-    emit('showToast', e.message || '评论添加失败');
-  } finally {
-    addingComment.value = false;
   }
 }
 
@@ -357,35 +301,25 @@ watch(() => props.defectId, async () => {
           <div v-else-if="activeTab === 'details'" class="details-tab">
             <div class="details-grid">
               <div class="details-main">
-                <!-- Status & Assignee (always shown, not in edit mode) -->
+                <!-- Status & Assignee (always read-only) -->
                 <div class="info-row">
                   <div class="info-item">
                     <label class="info-label">状态</label>
-                    <select
-                      class="form-select"
-                      :value="defect.status"
-                      @change.prevent="handleStatusChange(($event.target as HTMLSelectElement).value)"
+                    <span
+                      class="status-badge-status"
+                      :style="{
+                        backgroundColor: statusColors[defect.status] || 'var(--border)',
+                        color: statusTextColors[defect.status] || 'var(--text-secondary)',
+                      }"
                     >
-                      <option value="unconfirmed">未确认</option>
-                      <option value="confirmed">已确认</option>
-                      <option value="in_progress">处理中</option>
-                      <option value="resolved">已解决</option>
-                      <option value="closed">已关闭</option>
-                    </select>
+                      {{ statusLabels[defect.status] || defect.status }}
+                    </span>
                   </div>
                   <div class="info-item">
                     <label class="info-label">指派给</label>
-                    <select
-                      class="form-select"
-                      :value="defect.assignee_id || 0"
-                      :disabled="defect.status === 'closed'"
-                      @change.prevent="handleAssigneeChange(Number(($event.target as HTMLSelectElement).value))"
-                    >
-                      <option :value="0">未指派</option>
-                      <option v-for="m in members" :key="m.id" :value="m.user_id">
-                        {{ m.nickname || m.username }}
-                      </option>
-                    </select>
+                    <span class="text-muted">
+                      {{ defect.assignee_name || '未指派' }}
+                    </span>
                   </div>
                 </div>
 
@@ -563,10 +497,6 @@ watch(() => props.defectId, async () => {
             :logs="logs"
             :comments="comments"
             :defect-id="props.defectId || 0"
-            :loading="addingComment"
-            :comment-content="commentContent"
-            @update:comment-content="commentContent = $event"
-            @add-comment="handleAddComment"
           />
         </div>
 
