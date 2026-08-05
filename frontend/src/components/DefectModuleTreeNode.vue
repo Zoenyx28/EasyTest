@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { DefectModuleInfo } from '../types';
 
 const props = defineProps<{
@@ -26,12 +27,12 @@ const emit = defineEmits<{
   (e: 'updateRenameValue', value: string): void;
 }>();
 
-const isSelected = props.selectedModuleId === props.module.id;
-const isExpanded = props.expandedModules.has(props.module.id);
-const hasChildren = props.module.children && props.module.children.length > 0;
-const isRenaming = props.renamingModuleId === props.module.id;
-const isAddingChild = props.addingChildParentId === props.module.id;
-const canAddChild = props.depth < 4;
+const isSelected = computed(() => props.selectedModuleId === props.module.id);
+const isExpanded = computed(() => props.expandedModules.has(props.module.id));
+const hasChildren = computed(() => props.module.children && props.module.children.length > 0);
+const isRenaming = computed(() => props.renamingModuleId === props.module.id);
+const isAddingChild = computed(() => props.addingChildParentId === props.module.id);
+const canAddChild = computed(() => props.depth < 4);
 </script>
 
 <template>
@@ -78,7 +79,8 @@ const canAddChild = props.depth < 4;
     <!-- Hover actions -->
     <div
       v-if="!isRenaming"
-      class="flex items-center gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+      class="absolute right-[4px] top-1/2 -translate-y-1/2 flex items-center gap-[2px] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+      style="background-color: var(--sidebar-bg); border-radius: 6px; padding: 2px;"
     >
       <button
         v-if="canAddChild"
