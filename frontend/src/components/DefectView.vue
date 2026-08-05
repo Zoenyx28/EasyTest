@@ -326,19 +326,6 @@ onMounted(() => {
       >
         <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
           <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷模块</h3>
-          <button
-            @click="startAddRoot()"
-            class="w-[24px] h-[24px] rounded-[6px] flex items-center justify-center cursor-pointer transition-colors"
-            style="color: var(--text-tertiary);"
-            @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
-            @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
-            title="添加根模块"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
         </div>
 
         <!-- Search -->
@@ -372,7 +359,20 @@ onMounted(() => {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
             <span class="flex-1 truncate">全部</span>
-            <span class="text-[11px] opacity-60">{{ total }}</span>
+            <span class="text-[11px] opacity-60 mr-[2px]">{{ total }}</span>
+            <button
+              @click.stop="startAddRoot()"
+              class="w-[20px] h-[20px] rounded-[4px] flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              style="color: var(--text-tertiary);"
+              @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
+              @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
+              title="添加根模块"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
           </div>
 
           <!-- Root add input -->
