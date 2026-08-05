@@ -10,6 +10,7 @@ const props = defineProps<{
   pageSize: number;
   modules: DefectModuleInfo[];
   currentUserId: number;
+  externalModuleId?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -187,6 +188,13 @@ function clearFilters() {
 }
 
 watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssigneeId, filterCreatorId, filterSearch], applyFilters);
+
+// Sync external module filter from parent sidebar
+watch(() => props.externalModuleId, (newVal) => {
+  if (newVal !== undefined) {
+    filterModuleId.value = newVal;
+  }
+}, { immediate: true });
 </script>
 
 <template>
@@ -262,7 +270,7 @@ watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssig
           <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
-      <div class="filter-section">
+      <div v-if="externalModuleId === undefined" class="filter-section">
         <div class="filter-label">模块:</div>
         <select
           class="filter-select"
