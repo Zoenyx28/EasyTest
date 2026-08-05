@@ -1,0 +1,109 @@
+test_batch_create_success:
+  description: "创建批次成功"
+  request:
+    name: "测试批次"
+    description: "测试批次描述"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      name: "测试批次"
+      description: "测试批次描述"
+      project_id: not_none
+      id: not_none
+
+test_batch_create_name_empty:
+  description: "创建批次失败-名称为空"
+  request:
+    name: ""
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_batch_create_name_too_long:
+  description: "创建批次失败-名称超过20字符"
+  request:
+    name: "测试批次名称超过二十个字符"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_batch_create_without_description:
+  description: "创建批次-无描述"
+  request:
+    name: "测试批次"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      name: "测试批次"
+      description: null
+
+test_batch_get_list_empty:
+  description: "查询批次列表-无批次"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      items: []
+      page: 1
+      page_size: 10
+      total: 0
+
+test_batch_get_detail:
+  description: "查询批次详情"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      id: not_none
+      name: not_none
+      project_id: not_none
+
+test_batch_update_name:
+  description: "编辑批次-修改名称"
+  request:
+    name: "更新后的批次名称"
+  expect:
+    status_code: 200
+    code: 0
+
+test_batch_update_description:
+  description: "编辑批次-修改描述"
+  request:
+    description: "更新后的批次描述"
+  expect:
+    status_code: 200
+    code: 0
+
+test_batch_delete_success:
+  description: "删除批次成功"
+  expect:
+    status_code: 200
+    code: 0
+
+test_batch_create_invalid_project_id:
+  description: "创建批次失败-项目ID不存在"
+  request:
+    name: "测试批次"
+  expect:
+    status_code: 404
+
+test_batch_get_detail_invalid_id:
+  description: "查询批次详情失败-批次ID不存在"
+  expect:
+    status_code: 404
+
+test_batch_update_invalid_id:
+  description: "编辑批次失败-批次ID不存在"
+  request:
+    name: "new_name"
+  expect:
+    status_code: 404
+
+test_batch_delete_invalid_id:
+  description: "删除批次失败-批次ID不存在"
+  expect:
+    status_code: 404

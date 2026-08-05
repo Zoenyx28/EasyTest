@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  frontend:
+    image: easy-test-frontend:${FRONTEND_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: easy-test-frontend
+    security_opt:
+      - seccomp=unconfined
+    ports:
+      - "15731:15731"
+    restart: unless-stopped
+
+networks:
+  default:
+    name: easy-test-net
+    external: true

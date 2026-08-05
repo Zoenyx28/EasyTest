@@ -1,0 +1,60 @@
+browser:
+  headless: false
+  options:
+    arguments:
+    - --start-maximized
+    - --disable-infobars
+    - --disable-extensions
+  screenshot:
+    enabled: true
+    save_path: reports/screenshots
+  timeout:
+    explicit_wait: 30
+    page_load_timeout: 30
+  type: chromium
+  window_size: 1920x1080
+env:
+  dev:
+    api:
+      base_url: http://10.19.195.58:18880
+      timeout: 5
+    database:
+      database: ls_platform_new
+      host: 10.19.195.109
+      password: ${DB_PASSWORD}
+      port: 5432
+      username: ${DB_USERNAME}
+    default_password: admin123
+    ui:
+      base_url: http://127.0.0.1:19999
+      implicit_wait: 1
+      page_load_timeout: 5
+  test:
+    api:
+      base_url: http://10.19.195.58:18880
+      timeout: 5
+    database:
+      database: ls_platform_new
+      host: 10.19.195.109
+      password: ${DB_PASSWORD}
+      port: 5432
+      username: ${DB_USERNAME}
+    default_password: admin123
+    ui:
+      base_url: http://10.19.195.58:18880/data-annotation
+      implicit_wait: 1
+      page_load_timeout: 5
+log:
+  compression: zip
+  format: '{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} | {message}'
+  level: INFO
+  retention: 7 days
+  rotation: 1 day
+report:
+  allure_raw: reports/allure_raw
+  html_report: reports/html_report
+  title: 数据标注平台自动化报告
+request:
+  headers:
+    Content-Type: application/json;charset=UTF-8
+    User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36

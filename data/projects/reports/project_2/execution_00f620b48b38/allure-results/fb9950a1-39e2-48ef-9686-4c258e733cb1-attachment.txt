@@ -1,0 +1,33 @@
+2026-07-29 10:38:15 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:38:15 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:38:15 | INFO | 
+---------- 开始执行测试: test_login_failure ----------
+
+2026-07-29 10:38:15 | INFO | ========== 登录失败-密码错误 ==========
+
+2026-07-29 10:38:15 | INFO | 密码已Base64编码
+
+2026-07-29 10:38:15 | INFO | 登录请求: username=admin
+
+2026-07-29 10:38:15 | INFO | 【API调用】POST /api/auth/login
+
+2026-07-29 10:38:15 | INFO | Request: POST http://10.19.195.58:18880/api/auth/login
+
+2026-07-29 10:38:15 | INFO | Json: {'username': 'admin', 'password': 'd3JvbmdfcGFzc3dvcmQ='}
+
+2026-07-29 10:38:16 | INFO | Response: 200
+
+2026-07-29 10:38:16 | INFO | Response Body: {'code': 401, 'msg': '用户名或密码错误', 'data': None}
+
+2026-07-29 10:38:16 | INFO | Assert status code passed: 200 == 200
+
+2026-07-29 10:38:16 | INFO | Assert equal passed: 401 == 401
+
+2026-07-29 10:38:16 | INFO | Assert equal passed: 用户名或密码错误 == 用户名或密码错误
+
+2026-07-29 10:38:16 | INFO | Assert is None passed
+
+2026-07-29 10:38:16 | INFO | ---------- 测试执行结束: test_login_failure ----------
+

@@ -1,0 +1,95 @@
+2026-07-29 10:38:16 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:38:16 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:38:16 | INFO | 
+---------- 开始执行测试: test_login_success ----------
+
+2026-07-29 10:38:16 | INFO | ========== 登录成功（密码base64编码） ==========
+
+2026-07-29 10:38:16 | INFO | 密码已Base64编码
+
+2026-07-29 10:38:16 | INFO | 登录请求: username=admin
+
+2026-07-29 10:38:16 | INFO | 【API调用】POST /api/auth/login
+
+2026-07-29 10:38:16 | INFO | Request: POST http://10.19.195.58:18880/api/auth/login
+
+2026-07-29 10:38:16 | INFO | Json: {'username': 'admin', 'password': 'YWRtaW4xMjM='}
+
+2026-07-29 10:38:17 | INFO | Response: 200
+
+2026-07-29 10:38:17 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': '5997e912-bdbf-4714-a391-dd983a147e55', 'user_code': None, 'username': 'admin', 'email': 'hsong@example.com', 'display_name': 'admin_0724173420yqxt', 'phone': '13800138000', 'remark': None, 'is_active': True, 'is_system_admin': True, 'organization': None, 'supplier': None, 'teams': [], 'role': {'id': 'e4cc63f2-70f6-4887-bf46-a0a362464468', 'code': 'system_admin', 'name': '系统管理员'}, 'created_at': '2026-06-17 09:50:10', 'created_by': None, 'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1OTk3ZTkxMi1iZGJmLTQ3MTQtYTM5MS1kZDk4M2ExNDdlNTUiLCJleHAiOjE3ODUzMzU5OTF9.LwijUjjpN3PxdEsJU2GHGuIp1nJ8jM-hHBJlf0bjscA', 'token_type': 'bearer'}}
+
+2026-07-29 10:38:17 | INFO | Assert status code passed: 200 == 200
+
+2026-07-29 10:38:17 | INFO | Assert equal passed: 0 == 0
+
+2026-07-29 10:38:17 | INFO | Assert equal passed: success == success
+
+2026-07-29 10:38:17 | INFO | Assert equal passed: admin == admin
+
+2026-07-29 10:38:18 | INFO | ---------- 测试执行结束: test_login_success ----------
+
+2026-07-29 10:38:18 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:38:18 | INFO | ========== 开始清理测试数据 ==========
+
+2026-07-29 10:38:18 | INFO | 备份成员记录: 0 条
+
+2026-07-29 10:38:18 | INFO | 删项目: 0 条
+
+2026-07-29 10:38:18 | INFO | 删数据集: 0 条
+
+2026-07-29 10:38:19 | INFO | 删成员: 0 条
+
+2026-07-29 10:38:19 | INFO | 删团队(成员关联): 0 条
+
+2026-07-29 10:38:19 | INFO | 删团队(组织关联): 0 条
+
+2026-07-29 10:38:19 | INFO | 删供应商(成员关联): 0 条
+
+2026-07-29 10:38:19 | INFO | 删供应商(组织关联): 0 条
+
+2026-07-29 10:38:19 | INFO | 删用户: 0 条
+
+2026-07-29 10:38:19 | INFO | 删组织: 0 条
+
+2026-07-29 10:38:19 | INFO | 备份表已删除
+
+2026-07-29 10:38:19 | DEBUG | 事务已提交
+
+2026-07-29 10:38:19 | INFO | ==================== 测试数据清理完成 ====================
+
+2026-07-29 10:38:20 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:38:20 | INFO | ========== 开始清理测试数据 ==========
+
+2026-07-29 10:38:20 | INFO | 备份成员记录: 0 条
+
+2026-07-29 10:38:20 | INFO | 删项目: 0 条
+
+2026-07-29 10:38:20 | INFO | 删数据集: 0 条
+
+2026-07-29 10:38:20 | INFO | 删成员: 0 条
+
+2026-07-29 10:38:20 | INFO | 删团队(成员关联): 0 条
+
+2026-07-29 10:38:20 | INFO | 删团队(组织关联): 0 条
+
+2026-07-29 10:38:20 | INFO | 删供应商(成员关联): 0 条
+
+2026-07-29 10:38:20 | INFO | 删供应商(组织关联): 0 条
+
+2026-07-29 10:38:20 | INFO | 删用户: 0 条
+
+2026-07-29 10:38:21 | INFO | 删组织: 0 条
+
+2026-07-29 10:38:21 | INFO | 备份表已删除
+
+2026-07-29 10:38:22 | DEBUG | 事务已提交
+
+2026-07-29 10:38:22 | INFO | ==================== 测试数据清理完成 ====================
+
+2026-07-29 10:38:22 | INFO | ========== 测试会话结束 ==========
+

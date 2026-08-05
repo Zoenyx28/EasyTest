@@ -457,7 +457,7 @@ function formatTime(iso: string): string {
     <aside class="macos-sidebar">
       <!-- Traffic light dots -->
       <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
-        <span class="text-[11.5px] font-semibold uppercase tracking-[0.03em]" style="color: var(--text-tertiary);">测试目录</span>
+        <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">测试目录</h3>
       </div>
 
       <!-- Search + header -->

@@ -1,0 +1,6 @@
+{
+  "name": "EasyTest",
+  "description": "Visual PyTest test execution runner, test explorer, and interactive report dashboard built with Vue 3 and TypeScript.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -853,7 +853,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
       class="execution-sidebar w-[260px] flex flex-col shrink-0 min-h-0 glass"
     >
       <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
-        <span class="text-[11.5px] font-semibold uppercase tracking-[0.03em]" style="color: var(--text-tertiary);">测试任务</span>
+        <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">测试任务</h3>
       </div>
 
       <!-- Task List -->

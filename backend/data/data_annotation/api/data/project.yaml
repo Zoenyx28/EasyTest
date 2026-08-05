@@ -1,0 +1,211 @@
+test_project_create_success:
+  description: "创建项目成功"
+  request:
+    name: "测试项目"
+    description: "测试项目描述"
+    data_type: "image"
+    visibility: "organization"
+  expect:
+    status_code: 200
+    code: 0
+    msg: "success"
+    data:
+      name: "测试项目"
+      data_type: "image"
+      status: "pending_config"
+      visibility: "organization"
+      cover_url: null
+      id: not_none
+
+test_project_create_name_empty:
+  description: "创建项目失败-名称为空"
+  request:
+    name: ""
+    description: "测试项目描述"
+    data_type: "image"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_project_create_name_too_long:
+  description: "创建项目失败-名称超过20字符"
+  request:
+    name: "测试项目名称超过二十个字符"
+    description: "测试项目描述"
+    data_type: "image"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_project_create_description_empty:
+  description: "创建项目失败-描述为空"
+  request:
+    name: "测试项目"
+    description: ""
+    data_type: "image"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_project_create_description_too_long:
+  description: "创建项目失败-描述超过200字符"
+  request:
+    name: "测试项目"
+    description: "a" * 201
+    data_type: "image"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_project_create_invalid_data_type:
+  description: "创建项目失败-数据类型非法"
+  request:
+    name: "测试项目"
+    description: "测试项目描述"
+    data_type: "invalid_type"
+  expect:
+    status_code: 200
+    code: 422
+    data: null
+
+test_project_create_with_visibility_team:
+  description: "创建项目-可见范围为团队"
+  request:
+    name: "测试项目"
+    description: "测试项目描述"
+    data_type: "image"
+    visibility: "team"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      visibility: "team"
+
+test_project_create_with_visibility_private:
+  description: "创建项目-可见范围为私有"
+  request:
+    name: "测试项目"
+    description: "测试项目描述"
+    data_type: "image"
+    visibility: "private"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      visibility: "private"
+
+test_project_get_list_empty:
+  description: "查询项目列表-无项目"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      items: []
+      page: 1
+      page_size: 10
+      total: 0
+
+test_project_get_detail:
+  description: "查询项目详情"
+  expect:
+    status_code: 200
+    code: 0
+    data:
+      id: not_none
+      name: not_none
+      description: not_none
+      data_type: not_none
+      status: not_none
+      organization_id: not_none
+
+test_project_update_name:
+  description: "编辑项目-修改名称"
+  request:
+    name: "更新后的项目名称"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_update_description:
+  description: "编辑项目-修改描述"
+  request:
+    description: "更新后的项目描述"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_update_visibility:
+  description: "编辑项目-修改可见范围"
+  request:
+    visibility: "team"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_start:
+  description: "启动项目"
+  request:
+    reason: "测试启动"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_abandon:
+  description: "废弃项目"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_pause:
+  description: "暂停项目"
+  request:
+    reason: "测试暂停"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_resume:
+  description: "恢复项目"
+  request:
+    reason: "测试恢复"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_bind_dataset:
+  description: "绑定数据集"
+  request:
+    dataset_ids: []
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_unbind_dataset:
+  description: "解绑数据集"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_save_label_config:
+  description: "保存标注配置"
+  request:
+    label_config: "<View><Image name=\"image\" value=\"$image\"/></View>"
+  expect:
+    status_code: 200
+    code: 0
+
+test_project_update_workflow:
+  description: "更新流转策略"
+  request:
+    steps:
+      - step_type: "annotate"
+        name: "标注"
+      - step_type: "review"
+        name: "质检"
+  expect:
+    status_code: 200
+    code: 0

@@ -1,0 +1,115 @@
+2026-07-29 10:14:37 | INFO | ========== 测试会话开始 ==========
+
+2026-07-29 10:14:38 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:14:38 | INFO | ========== 开始清理测试数据 ==========
+
+2026-07-29 10:14:38 | INFO | 备份成员记录: 0 条
+
+2026-07-29 10:14:38 | INFO | 删项目: 0 条
+
+2026-07-29 10:14:38 | INFO | 删数据集: 0 条
+
+2026-07-29 10:14:38 | INFO | 删成员: 0 条
+
+2026-07-29 10:14:38 | INFO | 删团队(成员关联): 0 条
+
+2026-07-29 10:14:38 | INFO | 删团队(组织关联): 0 条
+
+2026-07-29 10:14:39 | INFO | 删供应商(成员关联): 0 条
+
+2026-07-29 10:14:39 | INFO | 删供应商(组织关联): 0 条
+
+2026-07-29 10:14:39 | INFO | 删用户: 0 条
+
+2026-07-29 10:14:39 | INFO | 删组织: 3 条
+
+2026-07-29 10:14:39 | INFO | 备份表已删除
+
+2026-07-29 10:14:39 | DEBUG | 事务已提交
+
+2026-07-29 10:14:39 | INFO | ==================== 测试数据清理完成 ====================
+
+2026-07-29 10:14:39 | INFO | 环境: test
+
+2026-07-29 10:14:39 | INFO | 基础URL: http://10.19.195.58:18880
+
+2026-07-29 10:14:39 | INFO | 超时时间: 5s
+
+2026-07-29 10:14:39 | INFO | 登录请求: admin
+
+2026-07-29 10:14:39 | INFO | 密码已Base64编码
+
+2026-07-29 10:14:39 | INFO | 登录请求: username=admin
+
+2026-07-29 10:14:39 | INFO | 【API调用】POST /api/auth/login
+
+2026-07-29 10:14:39 | INFO | Request: POST http://10.19.195.58:18880/api/auth/login
+
+2026-07-29 10:14:39 | INFO | Json: {'username': 'admin', 'password': 'YWRtaW4xMjM='}
+
+2026-07-29 10:14:40 | INFO | Response: 200
+
+2026-07-29 10:14:40 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': '5997e912-bdbf-4714-a391-dd983a147e55', 'user_code': None, 'username': 'admin', 'email': 'hsong@example.com', 'display_name': 'admin_0724173420yqxt', 'phone': '13800138000', 'remark': None, 'is_active': True, 'is_system_admin': True, 'organization': None, 'supplier': None, 'teams': [], 'role': {'id': 'e4cc63f2-70f6-4887-bf46-a0a362464468', 'code': 'system_admin', 'name': '系统管理员'}, 'created_at': '2026-06-17 09:50:10', 'created_by': None, 'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1OTk3ZTkxMi1iZGJmLTQ3MTQtYTM5MS1kZDk4M2ExNDdlNTUiLCJleHAiOjE3ODUzMzQ1NzR9.AKoDv-xUlvLO0ZrNsW3JiSHQ0-rPvSXE9XLpZJTnLmI', 'token_type': 'bearer'}}
+
+2026-07-29 10:14:40 | INFO | 登录成功: admin
+
+2026-07-29 10:14:40 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:14:40 | INFO | 创建组织: name=org_0729101440t8el6f, description=权限测试共享组织
+
+2026-07-29 10:14:40 | INFO | 【API调用】POST /api/organizations/
+
+2026-07-29 10:14:40 | INFO | Request: POST http://10.19.195.58:18880/api/organizations/
+
+2026-07-29 10:14:40 | INFO | Json: {'name': 'org_0729101440t8el6f', 'description': '权限测试共享组织'}
+
+2026-07-29 10:14:40 | INFO | Response: 200
+
+2026-07-29 10:14:40 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': 'b2ffc763-6895-4bae-8d98-ed6b60e5062b', 'code': 'ORG1141', 'name': 'org_0729101440t8el6f', 'description': '权限测试共享组织', 'is_active': True, 'member_count': 1, 'pm_list': [], 'created_by_id': '5997e912-bdbf-4714-a391-dd983a147e55', 'created_at': '2026-07-29 10:16:14'}}
+
+2026-07-29 10:14:40 | INFO | Assert status code passed: 200 == 200
+
+2026-07-29 10:14:40 | INFO | Assert equal passed: 0 == 0
+
+2026-07-29 10:14:40 | INFO | [common] 共享组织创建成功: b2ffc763-6895-4bae-8d98-ed6b60e5062b
+
+2026-07-29 10:14:40 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:14:40 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:14:40 | INFO | 
+---------- 开始执行测试: test_create_batch_name_too_long ----------
+
+2026-07-29 10:14:40 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:14:41 | INFO | 查询全部: SELECT id, code, name FROM dsp_role... | 行数: 5
+
+2026-07-29 10:14:41 | DEBUG | 事务已提交
+
+2026-07-29 10:14:41 | INFO | Assert is not None passed
+
+2026-07-29 10:14:41 | INFO | 共查询到 5 个角色: ['SYSTEM_ADMIN', 'PM', 'SUPPLIER_ADMIN', 'TEAM_ADMIN', 'MEMBER']
+
+2026-07-29 10:14:41 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:14:41 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:14:41 | INFO | 创建用户: username=pm07291014416d, user_type=PM, role=PM, org=b2ffc763..., team=None, supplier=None
+
+2026-07-29 10:14:41 | INFO | 创建用户: username=pm07291014416d, display_name=pm_0729101441juylz4
+
+2026-07-29 10:14:41 | INFO | 【API调用】POST /api/users/
+
+2026-07-29 10:14:41 | INFO | Request: POST http://10.19.195.58:18880/api/users/
+
+2026-07-29 10:14:41 | INFO | Json: {'username': 'pm07291014416d', 'display_name': 'pm_0729101441juylz4', 'password': 'YWRtaW4xMjM=', 'role_id': 'd988bfa8-42ec-48d7-b370-87dcd70f6f42', 'phone': '', 'email': '', 'remark': '', 'organization_id': 'b2ffc763-6895-4bae-8d98-ed6b60e5062b'}
+
+2026-07-29 10:14:45 | INFO | Response: 200
+
+2026-07-29 10:14:45 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': 'c47fb6c3-b9b8-4c5a-b94c-a2020ec0ebb4', 'user_code': 'U006390', 'username': 'pm07291014416d', 'email': '', 'display_name': 'pm_0729101441juylz4', 'phone': None, 'remark': '', 'is_active': True, 'is_system_admin': False, 'organization': {'id': 'b2ffc763-6895-4bae-8d98-ed6b60e5062b', 'name': 'org_0729101440t8el6f'}, 'supplier': None, 'teams': [], 'role': {'id': 'd988bfa8-42ec-48d7-b370-87dcd70f6f42', 'code': 'pm', 'name': '项目管理员'}, 'created_at': '2026-07-29 10:16:15', 'created_by': {'id': '5997e912-bdbf-4714-a391-dd983a147e55', 'username': 'admin', 'display_name': 'admin_0724173420yqxt'}}}
+
+2026-07-29 10:14:45 | INFO | Assert equal passed: 0 == 0
+
+2026-07-29 10:14:46 | INFO | ---------- 测试执行结束: test_create_batch_name_too_long ----------
+

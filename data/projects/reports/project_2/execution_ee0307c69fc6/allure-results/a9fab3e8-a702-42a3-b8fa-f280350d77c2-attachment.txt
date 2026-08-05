@@ -1,0 +1,135 @@
+2026-07-29 10:43:33 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:43:33 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:43:33 | INFO | 
+---------- 开始执行测试: test_create_dataset_invalid_input ----------
+
+2026-07-29 10:43:33 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:43:33 | INFO | 查询全部: SELECT id, code, name FROM dsp_role... | 行数: 5
+
+2026-07-29 10:43:33 | DEBUG | 事务已提交
+
+2026-07-29 10:43:33 | INFO | Assert is not None passed
+
+2026-07-29 10:43:33 | INFO | 共查询到 5 个角色: ['SYSTEM_ADMIN', 'PM', 'SUPPLIER_ADMIN', 'TEAM_ADMIN', 'MEMBER']
+
+2026-07-29 10:43:33 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:43:33 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:43:33 | INFO | 创建用户: username=pm0729104333fj, user_type=PM, role=PM, org=e785170e..., team=None, supplier=None
+
+2026-07-29 10:43:33 | INFO | 创建用户: username=pm0729104333fj, display_name=pm_0729104333un5vxr
+
+2026-07-29 10:43:33 | INFO | 【API调用】POST /api/users/
+
+2026-07-29 10:43:33 | INFO | Request: POST http://10.19.195.58:18880/api/users/
+
+2026-07-29 10:43:33 | INFO | Json: {'username': 'pm0729104333fj', 'display_name': 'pm_0729104333un5vxr', 'password': 'YWRtaW4xMjM=', 'role_id': 'd988bfa8-42ec-48d7-b370-87dcd70f6f42', 'phone': '', 'email': '', 'remark': '', 'organization_id': 'e785170e-bd1e-4c88-936f-5afc63106e00'}
+
+2026-07-29 10:43:35 | INFO | Response: 200
+
+2026-07-29 10:43:35 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': 'd2869d5f-3bda-4fc1-9b00-8a78eaca7cde', 'user_code': 'U006391', 'username': 'pm0729104333fj', 'email': '', 'display_name': 'pm_0729104333un5vxr', 'phone': None, 'remark': '', 'is_active': True, 'is_system_admin': False, 'organization': {'id': 'e785170e-bd1e-4c88-936f-5afc63106e00', 'name': 'org_0729104330fyltpg'}, 'supplier': None, 'teams': [], 'role': {'id': 'd988bfa8-42ec-48d7-b370-87dcd70f6f42', 'code': 'pm', 'name': '项目管理员'}, 'created_at': '2026-07-29 10:45:08', 'created_by': {'id': '5997e912-bdbf-4714-a391-dd983a147e55', 'username': 'admin', 'display_name': 'admin_0724173420yqxt'}}}
+
+2026-07-29 10:43:35 | INFO | Assert equal passed: 0 == 0
+
+2026-07-29 10:43:35 | INFO | 登录请求: pm0729104333fj
+
+2026-07-29 10:43:35 | INFO | 密码已Base64编码
+
+2026-07-29 10:43:35 | INFO | 登录请求: username=pm0729104333fj
+
+2026-07-29 10:43:35 | INFO | 【API调用】POST /api/auth/login
+
+2026-07-29 10:43:35 | INFO | Request: POST http://10.19.195.58:18880/api/auth/login
+
+2026-07-29 10:43:35 | INFO | Json: {'username': 'pm0729104333fj', 'password': 'YWRtaW4xMjM='}
+
+2026-07-29 10:43:36 | INFO | Response: 200
+
+2026-07-29 10:43:36 | INFO | Response Body: {'code': 0, 'msg': 'success', 'data': {'id': 'd2869d5f-3bda-4fc1-9b00-8a78eaca7cde', 'user_code': None, 'username': 'pm0729104333fj', 'email': '', 'display_name': 'pm_0729104333un5vxr', 'phone': None, 'remark': None, 'is_active': True, 'is_system_admin': False, 'organization': {'id': 'e785170e-bd1e-4c88-936f-5afc63106e00', 'name': 'org_0729104330fyltpg'}, 'supplier': None, 'teams': [], 'role': {'id': 'd988bfa8-42ec-48d7-b370-87dcd70f6f42', 'code': 'pm', 'name': '项目管理员'}, 'created_at': '2026-07-29 10:45:08', 'created_by': None, 'access_token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkMjg2OWQ1Zi0zYmRhLTRmYzEtOWIwMC04YTc4ZWFjYTdjZGUiLCJleHAiOjE3ODUzMzYzMTB9.p1L6Vmmi-8g1oLTlBf72e74xZyuEqFBFwczCCNR4UWQ', 'token_type': 'bearer'}}
+
+2026-07-29 10:43:36 | INFO | 登录成功: pm0729104333fj
+
+2026-07-29 10:43:36 | INFO | 切换鉴权身份: pm0729104333fj
+
+2026-07-29 10:43:36 | INFO | 【API调用】POST /api/datasets/,请求参数:{'name': '', 'data_type': 'image', 'description': '缺名称', 'org_id': 'e785170e-bd1e-4c88-936f-5afc63106e00'}
+
+2026-07-29 10:43:36 | INFO | Request: POST http://10.19.195.58:18880/api/datasets/
+
+2026-07-29 10:43:36 | INFO | Json: {'name': '', 'data_type': 'image', 'description': '缺名称', 'org_id': 'e785170e-bd1e-4c88-936f-5afc63106e00'}
+
+2026-07-29 10:43:36 | INFO | Response: 200
+
+2026-07-29 10:43:36 | INFO | Response Body: {'code': 422, 'msg': '字符串长度不能少于 1 个字符', 'data': None}
+
+2026-07-29 10:43:36 | INFO | Assert status code passed: 200 == 200
+
+2026-07-29 10:43:36 | INFO | Assert true passed
+
+2026-07-29 10:43:36 | INFO | ---------- 测试执行结束: test_create_dataset_invalid_input ----------
+
+2026-07-29 10:43:36 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:43:36 | INFO | ========== 开始清理测试数据 ==========
+
+2026-07-29 10:43:37 | INFO | 备份成员记录: 2 条
+
+2026-07-29 10:43:37 | INFO | 删项目: 0 条
+
+2026-07-29 10:43:37 | INFO | 删数据集: 0 条
+
+2026-07-29 10:43:37 | INFO | 删成员: 2 条
+
+2026-07-29 10:43:37 | INFO | 删团队(成员关联): 0 条
+
+2026-07-29 10:43:37 | INFO | 删团队(组织关联): 0 条
+
+2026-07-29 10:43:37 | INFO | 删供应商(成员关联): 0 条
+
+2026-07-29 10:43:37 | INFO | 删供应商(组织关联): 0 条
+
+2026-07-29 10:43:37 | INFO | 删用户: 2 条
+
+2026-07-29 10:43:37 | INFO | 删组织: 1 条
+
+2026-07-29 10:43:37 | INFO | 备份表已删除
+
+2026-07-29 10:43:38 | DEBUG | 事务已提交
+
+2026-07-29 10:43:38 | INFO | ==================== 测试数据清理完成 ====================
+
+2026-07-29 10:43:39 | DEBUG | 数据库连接成功: 10.19.195.109:5432/ls_platform_new
+
+2026-07-29 10:43:39 | INFO | ========== 开始清理测试数据 ==========
+
+2026-07-29 10:43:39 | INFO | 备份成员记录: 0 条
+
+2026-07-29 10:43:39 | INFO | 删项目: 0 条
+
+2026-07-29 10:43:39 | INFO | 删数据集: 0 条
+
+2026-07-29 10:43:39 | INFO | 删成员: 0 条
+
+2026-07-29 10:43:39 | INFO | 删团队(成员关联): 0 条
+
+2026-07-29 10:43:39 | INFO | 删团队(组织关联): 0 条
+
+2026-07-29 10:43:39 | INFO | 删供应商(成员关联): 0 条
+
+2026-07-29 10:43:39 | INFO | 删供应商(组织关联): 0 条
+
+2026-07-29 10:43:39 | INFO | 删用户: 0 条
+
+2026-07-29 10:43:40 | INFO | 删组织: 0 条
+
+2026-07-29 10:43:40 | INFO | 备份表已删除
+
+2026-07-29 10:43:40 | DEBUG | 事务已提交
+
+2026-07-29 10:43:40 | INFO | ==================== 测试数据清理完成 ====================
+
+2026-07-29 10:43:40 | INFO | ========== 测试会话结束 ==========
+

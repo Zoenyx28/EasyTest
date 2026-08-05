@@ -1,0 +1,66 @@
+test_create_org_success:
+  description: "创建组织成功"
+  request:
+    name: "auto_generated"
+    description: "权限测试共享组织"
+  expect:
+    status_code: 200
+    code: 0
+    msg: "success"
+    data:
+      id: not_none
+      name: not_none
+      description: "权限测试共享组织"
+      is_active: true
+      member_count: not_none
+      created_at: not_none
+
+test_create_org_empty_name:
+  description: "创建组织-名称为空（已存在空名称组织则返回409）"
+  expect:
+    status_code: 200
+    code: 409
+    msg: "组织名称已存在"
+    data: null
+
+test_create_org_max_orgname:
+  description: "创建组织-名称为最大长度21个字符"
+  request:
+    name: "aaaaaaaaaaaaaaaaaaaaa"
+    description: "权限测试共享组织"
+  expect:
+    status_code: 200
+    code: 0
+    msg: "success"
+    data:
+      id: not_none
+      name: "aaaaaaaaaaaaaaaaaaaaa"
+      description: "权限测试共享组织"
+      is_active: true
+      member_count: not_none
+      created_at: not_none
+
+test_create_org_max_orgdesc:
+  description: "创建组织-描述为最大长度201个字符"
+  request:
+    name: "5561"
+    description: "权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织权限测试共享组织"
+  expect:
+    status_code: 200
+    code: 0
+    msg: "success"
+    data:
+      id: not_none
+      name: "123"
+      description: "权限测试共享组织aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      is_active: true
+      member_count: not_none
+      created_at: not_none
+
+test_create_org_duplicate_name:
+  description: "创建组织失败-重复名称（先创建再重复创建同名组织）"
+  expect:
+    status_code: 200
+    code: 409
+    msg: "组织名称已存在"
+    data: null

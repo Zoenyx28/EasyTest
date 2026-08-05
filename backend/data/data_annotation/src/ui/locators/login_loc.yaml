@@ -1,0 +1,25 @@
+login_page:
+  username_input:
+    by: "ID"
+    value: "username"
+  password_input:
+    by: "ID"
+    value: "password"
+  login_button:
+    by: "XPATH"
+    value: "//button[@type='submit']"
+  error_message:
+    by: "CSS_SELECTOR"
+    value: ".error-message"
+  welcome_text:
+    by: "CSS_SELECTOR"
+    value: ".welcome-text"
+  logout_button:
+    by: "CSS_SELECTOR"
+    value: ".logout-btn"
+  remember_me:
+    by: "ID"
+    value: "remember-me"
+  forgot_password_link:
+    by: "XPATH"
+    value: "//a[contains(text(), '忘记密码')]"

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Defect Detail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        surface: "#ffffff",
+                        "on-surface": "#1d1b20",
+                        "surface-container": "#f3edf7",
+                        "on-surface-variant": "#49454f",
+                        "outline": "#79747e",
+                        "outline-variant": "#cac4d0",
+                        primary: "#6750a4",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#eaddff",
+                        "on-primary-container": "#21005d",
+                        secondary: "#625b71",
+                        "on-secondary": "#ffffff",
+                        "secondary-container": "#e8def8",
+                        "on-secondary-container": "#1d192b",
+                        error: "#b3261e",
+                        "on-error": "#ffffff",
+                        "error-container": "#f9dedc",
+                        "on-error-container": "#410e0b",
+                        warning: "#ffb400",
+                        "on-warning": "#ffffff"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    fontFamily: {
+                        headline: ["Public Sans", "sans-serif"],
+                        display: ["Public Sans", "sans-serif"],
+                        body: ["Public Sans", "sans-serif"],
+                        label: ["Public Sans", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-on-surface/20 font-body text-on-surface h-screen w-screen flex items-center justify-center p-4">
+<!-- Modal Overlay Backdrop (implicit in body bg, but explicit here for structure) -->
+<div class="fixed inset-0 z-40 bg-on-surface/30 backdrop-blur-sm flex justify-center items-center overflow-y-auto pt-10 pb-10">
+<!-- Modal Container -->
+<div class="bg-surface rounded-xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] relative z-50">
+<!-- Modal Header -->
+<div class="flex items-start justify-between p-6 border-b border-outline-variant shrink-0">
+<div class="flex-1 pr-4">
+<div class="flex items-center gap-3 mb-2 flex-wrap">
+<span class="text-on-surface-variant font-medium text-sm border border-outline-variant rounded px-2 py-0.5">#1024</span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-container text-on-primary-container">
+                            Confirmed
+                        </span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-error-container text-on-error-container border border-error/20">
+                            P0
+                        </span>
+<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-error-container text-on-error-container border border-error/20">
+                            Severity: P0
+                        </span>
+</div>
+<h2 class="text-xl font-headline font-semibold text-on-surface leading-tight">
+                        Cart total calculation fails with multiple discount codes
+                    </h2>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors p-2 rounded-full hover:bg-surface-container">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Modal Content (Scrollable) -->
+<div class="flex-1 overflow-y-auto p-6 space-y-8">
+<!-- Info Grid Bento -->
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 bg-surface-container rounded-lg p-5">
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Project</p>
+<p class="text-sm font-medium">E-Commerce Core</p>
+</div>
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Branch</p>
+<p class="text-sm font-medium">main / v2.4</p>
+</div>
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Module</p>
+<p class="text-sm font-medium">Checkout / Cart</p>
+</div>
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Creator</p>
+<div class="flex items-center gap-2">
+<img class="w-5 h-5 rounded-full object-cover" data-alt="A small circular avatar placeholder image showing a professional headshot of a software tester in a well-lit modern office setting, bright and clear." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDLuvEqJlvxKL5RfjeycdyorzWmKW-VJ1ZJXHzfcJQbUGBcHBxG78c4WcVC4P-wUSjcnCpXmaXreKOLg7USkKUzGN_5sclbJ_w2dtV19rtH_TOv4sdFpN9Sum0XpDruzo5h5UgRIbr6xCgCEkXVQ3pHUkk0qmdivoS3_3QxUE8LhBsq9h9Nw4M7IkVD_S25X73IhFJRwmsdVvrF90fdaMucrcv1gVIjBbp28EaQvVTYtcE9CVv5ALel"/>
+<p class="text-sm font-medium">Sarah Jenkins</p>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Assigned To</p>
+<div class="flex items-center gap-2">
+<img class="w-5 h-5 rounded-full object-cover" data-alt="A small circular avatar placeholder image showing a professional headshot of a software developer in a well-lit modern office setting, bright and clear." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAqJ9nNPbOmB_4ZnShZrl2M1_frKS079crUdwHvkeW8L46XkUYY3Cpth0nPEJGld4f1dy-VcVoV2TtLPQgZzjt9kUuGYo_VDreSo8CONH2i5F1B7N_RWGundQh9fwdF2WX9lacDZgkStwxCI7cJcR4DIXVExZ8m8aOmSy3KVj-BZtucW6twEJ8DyV-aUaeYqu4AGYWp8SueBco_uO_r8PuB3dzLWQYgevycaQ-t9GMKBk35XIji3j0K"/>
+<p class="text-sm font-medium text-primary">Alex Chen</p>
+</div>
+</div>
+<div class="space-y-1">
+<p class="text-xs text-on-surface-variant font-medium uppercase tracking-wider">Created Time</p>
+<p class="text-sm font-medium text-on-surface-variant">Oct 24, 2023 14:30</p>
+</div>
+</div>
+<!-- Description -->
+<div>
+<h3 class="text-lg font-headline font-semibold mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">description</span>
+                        Description
+                    </h3>
+<div class="text-sm text-on-surface leading-relaxed whitespace-pre-wrap bg-surface border border-outline-variant rounded-lg p-4">When a user applies a fixed-amount discount code (e.g., "$10 OFF") and then subsequently applies a percentage-based discount code (e.g., "15% OFF"), the final cart total calculates the percentage off the *original* subtotal rather than the subtotal after the first discount. This results in an unexpectedly large total discount, sometimes driving the cart total below zero.</div>
+</div>
+<!-- Reproduction Steps -->
+<div>
+<h3 class="text-lg font-headline font-semibold mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">integration_instructions</span>
+                        Reproduction Steps
+                    </h3>
+<div class="bg-surface border border-outline-variant rounded-lg p-4 text-sm prose prose-sm max-w-none">
+<ol class="list-decimal pl-4 space-y-2 text-on-surface">
+<li>Log in to the staging environment (user: test_buyer).</li>
+<li>Add "Premium Widget" ($100) to the cart.</li>
+<li>Navigate to checkout.</li>
+<li>Apply promo code <code>MINUS10</code> ($10 off). Observe total is $90.</li>
+<li>Apply promo code <code>FIFTEEN</code> (15% off).</li>
+<li><strong>Expected:</strong> Total should be $90 - ($90 * 0.15) = $76.50</li>
+<li><strong>Actual:</strong> Total is $90 - ($100 * 0.15) = $75.00</li>
+</ol>
+<div class="mt-4">
+<img class="rounded border border-outline-variant max-w-md w-full object-cover" data-alt="A screenshot of a shopping cart interface showing a calculation error. The interface is clean and modern, white background with subtle grey borders, highlighting the total price section with a red box indicating the bug." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCqoLOXC2i75JyApePoOxY2avbFEMNVsuvs1vvYcfO7yxHrOgvsElg10MtVk0XiXXMeLh7iqNxJx3331YSvoCCLz-h-iUBO0lrkUrTp0xMYvhNjVMKyOqWcYowzkl3d4XjBTwZ2Uz9YREyU467PSgoRL9y0xT-pfv9iqJ_i1-dLAv7eqJInBqLq5ynT4d3V_jAOU4pb-yezO09-3TU6nBGQwKuY6_ywnACBk-jSrN_WJOnQClW50QMj"/>
+</div>
+</div>
+</div>
+<!-- Attachments -->
+<div>
+<h3 class="text-lg font-headline font-semibold mb-3 flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">attach_file</span>
+                        Attachments (2)
+                    </h3>
+<div class="flex flex-col gap-2">
+<div class="flex items-center justify-between p-3 border border-outline-variant rounded-lg hover:bg-surface-container transition-colors group cursor-pointer">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-error">picture_as_pdf</span>
+<div>
+<p class="text-sm font-medium text-on-surface">discount_logic_spec.pdf</p>
+<p class="text-xs text-on-surface-variant">1.2 MB</p>
+</div>
+</div>
+<button class="text-outline hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined">download</span>
+</button>
+</div>
+<div class="flex items-center justify-between p-3 border border-outline-variant rounded-lg hover:bg-surface-container transition-colors group cursor-pointer">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">image</span>
+<div>
+<p class="text-sm font-medium text-on-surface">cart_error_screenshot.png</p>
+<p class="text-xs text-on-surface-variant">450 KB</p>
+</div>
+</div>
+<button class="text-outline hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined">download</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Operation Log (Timeline) -->
+<div>
+<h3 class="text-lg font-headline font-semibold mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">history</span>
+                        Operation Log
+                    </h3>
+<div class="relative pl-6 border-l-2 border-outline-variant space-y-6">
+<!-- Log Item 1 -->
+<div class="relative">
+<div class="absolute -left-[31px] bg-primary rounded-full p-1 border-4 border-surface">
+<span class="material-symbols-outlined text-[12px] text-on-primary">check</span>
+</div>
+<div class="bg-surface-container rounded-lg p-3 text-sm">
+<div class="flex justify-between items-center mb-1">
+<span class="font-medium text-on-surface">Alex Chen</span>
+<span class="text-xs text-on-surface-variant">Oct 24, 2023 15:10</span>
+</div>
+<p class="text-on-surface-variant">Changed Status from <span class="line-through text-outline">New</span> to <span class="font-medium text-on-surface">Confirmed</span></p>
+</div>
+</div>
+<!-- Log Item 2 -->
+<div class="relative">
+<div class="absolute -left-[31px] bg-outline-variant rounded-full p-1 border-4 border-surface">
+<span class="material-symbols-outlined text-[12px] text-on-surface">add</span>
+</div>
+<div class="bg-surface-container rounded-lg p-3 text-sm">
+<div class="flex justify-between items-center mb-1">
+<span class="font-medium text-on-surface">Sarah Jenkins</span>
+<span class="text-xs text-on-surface-variant">Oct 24, 2023 14:30</span>
+</div>
+<p class="text-on-surface-variant">Created the defect</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Modal Footer / Actions -->
+<div class="p-4 border-t border-outline-variant bg-surface flex justify-end gap-3 shrink-0 rounded-b-xl">
+<button class="px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container rounded transition-colors">
+                    Cancel
+                </button>
+<button class="px-4 py-2 text-sm font-medium bg-primary text-on-primary rounded hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">build</span>
+                    Assign for Treatment
+                </button>
+</div>
+</div>
+</div>
+</body></html>

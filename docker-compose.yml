@@ -1,0 +1,16 @@
+version: "3.8"
+
+# Convenience compose file for local development.
+# For production deployment, use the individual compose files in each directory:
+#   cd infra  && docker-compose up -d
+#   cd backend && docker-compose up -d
+#   cd frontend && docker-compose up -d
+
+include:
+  - infra/docker-compose.yml
+  - backend/docker-compose.yml
+  - frontend/docker-compose.yml
+
+networks:
+  easy-test-net:
+    external: true

@@ -156,7 +156,7 @@ const STATUS_LABELS: Record<string, string> = {
     >
       <div class="p-[14px] px-[10px] border-b" style="border-color: var(--sidebar-border);">
         <div class="flex justify-between items-center">
-          <div class="text-[11.5px] font-semibold uppercase tracking-[0.03em]" style="color: var(--text-tertiary);">历史报告</div>
+          <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">历史报告</h3>
           <button
             @click="loadReportList()"
             class="text-[12px] cursor-pointer transition-colors"

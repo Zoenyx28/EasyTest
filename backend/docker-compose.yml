@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  backend:
+    image: easy-test-backend:${BACKEND_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: easy-test-backend
+    ports:
+      - "8040:8000"
+    environment:
+      - DATABASE_URL=mysql+aiomysql://insist_test:insist_test@10.19.83.140:39306/test_platform?charset=utf8mb4
+      - REDIS_URL=redis://easy-test-redis:6379/0
+      - CELERY_BROKER_URL=redis://easy-test-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://easy-test-redis:6379/0
+      - PROJECTS_DATA_DIR=/data
+      - CORS_ORIGINS=http://localhost:15731,http://127.0.0.1:15731,http://frontend:15731
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - /data/easy-test/data/projects:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  celery-worker:
+    image: easy-test-backend:${BACKEND_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: easy-test-worker
+    command: celery -A app.scheduler.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=mysql+aiomysql://insist_test:insist_test@10.19.83.140:39306/test_platform?charset=utf8mb4
+      - REDIS_URL=redis://easy-test-redis:6379/0
+      - CELERY_BROKER_URL=redis://easy-test-redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://easy-test-redis:6379/0
+      - PROJECTS_DATA_DIR=/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - /data/easy-test/data/projects:/data
+    restart: unless-stopped
+
+networks:
+  default:
+    name: easy-test-net
+    external: true

@@ -1,0 +1,26 @@
+2026-07-29 10:05:14 | INFO | 使用缓存的token: admin
+
+2026-07-29 10:05:14 | INFO | 切换鉴权身份: 系统管理员(admin)
+
+2026-07-29 10:05:14 | INFO | 
+---------- 开始执行测试: test_create_batch_name_too_long ----------
+
+2026-07-29 10:05:14 | ERROR | 数据库连接失败: connection to server at "10.19.195.109", port 5432 failed: FATAL:  password authentication failed for user "ls_platform"
+
+
+2026-07-29 10:05:14 | INFO | ---------- 测试执行结束: test_create_batch_name_too_long ----------
+
+2026-07-29 10:05:15 | ERROR | 数据库连接失败: connection to server at "10.19.195.109", port 5432 failed: FATAL:  password authentication failed for user "ls_platform"
+
+
+2026-07-29 10:05:15 | WARNING | 模块级数据清理失败（跳过）: connection to server at "10.19.195.109", port 5432 failed: FATAL:  password authentication failed for user "ls_platform"
+
+
+2026-07-29 10:05:15 | ERROR | 数据库连接失败: connection to server at "10.19.195.109", port 5432 failed: FATAL:  password authentication failed for user "ls_platform"
+
+
+2026-07-29 10:05:15 | WARNING | 测试数据清理失败（跳过）: connection to server at "10.19.195.109", port 5432 failed: FATAL:  password authentication failed for user "ls_platform"
+
+
+2026-07-29 10:05:15 | INFO | ========== 测试会话结束 ==========
+

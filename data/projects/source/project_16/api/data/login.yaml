@@ -1,0 +1,67 @@
+test_login_success:
+  description: "登录成功（密码base64编码）"
+  request:
+    username: "admin"
+    password: "admin123"
+    encode_password: true
+  expect:
+    status_code: 200
+    code: 0
+    msg: "success"
+    data:
+      username: "admin"
+      email: "cshao@example.com"
+      display_name: not_none
+      token_type: "bearer"
+      is_active: true
+      is_system_admin: true
+      access_token: not_none
+      id: not_none
+
+test_login_password_not_base64:
+  description: "登录失败-密码未base64编码"
+  request:
+    username: "admin"
+    password: "admin123"
+    encode_password: false
+  expect:
+    status_code: 200
+    code: 422
+    msg: "密码格式错误"
+    data: null
+
+test_login_wrong_password:
+  description: "登录失败-密码错误"
+  request:
+    username: "admin"
+    password: "wrong_password"
+    encode_password: true
+  expect:
+    status_code: 200
+    code: 401
+    msg: "用户名或密码错误"
+    data: null
+
+test_login_empty_username:
+  description: "登录失败-用户名为空"
+  request:
+    username: ""
+    password: "admin123"
+    encode_password: true
+  expect:
+    status_code: 200
+    code: 401
+    msg: "用户名或密码错误"
+    data: null
+
+test_login_empty_password:
+  description: "登录失败-密码为空"
+  request:
+    username: "admin"
+    password: ""
+    encode_password: true
+  expect:
+    status_code: 200
+    code: 401
+    msg: "用户名或密码错误"
+    data: null
