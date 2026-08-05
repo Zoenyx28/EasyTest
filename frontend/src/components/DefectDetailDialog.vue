@@ -209,7 +209,6 @@ function handleClose() {
   logs.value = [];
   attachments.value = [];
   comments.value = [];
-  commentContent.value = '';
   activeTab.value = 'details';
   isEditing.value = false;
   emit('close');
