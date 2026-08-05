@@ -339,7 +339,7 @@ onMounted(() => {
           </p>
           <div class="flex justify-end gap-2">
             <button @click="showDeleteConfirm = false; branchToDelete = null" class="px-4 py-2 rounded-[8px] text-[12px]" style="background-color: var(--input-bg); color: var(--text-secondary);">取消</button>
-            <button @click="confirmDeleteBranch" class="px-4 py-2 rounded-[8px] text-[12px] font-medium" style="background-color: #e74c3c; color: white;">确认删除</button>
+            <button @click="confirmDeleteBranch" class="px-4 py-2 rounded-[8px] text-[12px] font-medium" style="background-color: var(--color-danger); color: white;">确认删除</button>
           </div>
         </div>
       </div>

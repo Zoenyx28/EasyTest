@@ -76,21 +76,21 @@ const bugTypeOptions = [
 ];
 
 const severityColors: Record<string, string> = {
-  P0: '#ffdad6', P1: '#ffd6a5', P2: '#fff6cc', P3: '#d4edda',
+  P0: 'var(--priority-p0-bg)', P1: 'var(--priority-p1-bg)', P2: 'var(--priority-p2-bg)', P3: 'var(--priority-p3-bg)',
 };
 
 const severityTextColors: Record<string, string> = {
-  P0: '#93000a', P1: '#7a4400', P2: '#655500', P3: '#155724',
+  P0: 'var(--priority-p0-text)', P1: 'var(--priority-p1-text)', P2: 'var(--priority-p2-text)', P3: 'var(--priority-p3-text)',
 };
 
 const statusColors: Record<string, string> = {
-  unconfirmed: 'var(--border)', confirmed: '#d8e2ff', in_progress: '#ffd6a5',
-  resolved: '#d4edda', closed: 'var(--border)',
+  unconfirmed: 'var(--border)', confirmed: 'var(--status-confirmed-bg)', in_progress: 'var(--status-in-progress-bg)',
+  resolved: 'var(--status-resolved-bg)', closed: 'var(--border)',
 };
 
 const statusTextColors: Record<string, string> = {
-  unconfirmed: 'var(--text-secondary)', confirmed: 'var(--color-primary)', in_progress: '#7a4400',
-  resolved: '#155724', closed: 'var(--text-secondary)',
+  unconfirmed: 'var(--text-secondary)', confirmed: 'var(--status-confirmed-text)', in_progress: 'var(--status-in-progress-text)',
+  resolved: 'var(--status-resolved-text)', closed: 'var(--text-secondary)',
 };
 
 function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name: string; depth: number }[] {

@@ -91,8 +91,33 @@
     /* Interaction */
     --hover-bg: rgba(0, 0, 0, 0.04);
     --selected-bg: rgba(37, 99, 235, 0.10);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.15);
+    --overlay-bg: rgba(0, 0, 0, 0.4);
+
+    /* Status soft backgrounds */
+    --success-soft: rgba(22, 163, 74, 0.15);
+    --danger-soft: rgba(220, 38, 38, 0.15);
+    --warning-soft: rgba(245, 158, 11, 0.15);
+
+    /* Priority (severity) colors */
+    --priority-p0-bg: rgba(220, 38, 38, 0.12);
+    --priority-p0-text: #991B1B;
+    --priority-p1-bg: rgba(245, 158, 11, 0.15);
+    --priority-p1-text: #92400E;
+    --priority-p2-bg: rgba(250, 204, 21, 0.15);
+    --priority-p2-text: #854D0E;
+    --priority-p3-bg: rgba(22, 163, 74, 0.12);
+    --priority-p3-text: #166534;
+
+    /* Status tag colors */
+    --status-confirmed-bg: rgba(37, 99, 235, 0.12);
+    --status-confirmed-text: #1D4ED8;
+    --status-in-progress-bg: rgba(245, 158, 11, 0.15);
+    --status-in-progress-text: #92400E;
+    --status-resolved-bg: rgba(22, 163, 74, 0.12);
+    --status-resolved-text: #166534;
 
     /* Compat aliases (for gradual migration) */
     --accent: var(--color-primary);
@@ -156,8 +181,33 @@
 
     --hover-bg: rgba(255, 255, 255, 0.04);
     --selected-bg: rgba(59, 130, 246, 0.18);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.4);
+    --overlay-bg: rgba(0, 0, 0, 0.5);
+
+    /* Status soft backgrounds */
+    --success-soft: rgba(34, 197, 94, 0.15);
+    --danger-soft: rgba(239, 68, 68, 0.15);
+    --warning-soft: rgba(245, 158, 11, 0.15);
+
+    /* Priority (severity) colors */
+    --priority-p0-bg: rgba(239, 68, 68, 0.15);
+    --priority-p0-text: #FCA5A5;
+    --priority-p1-bg: rgba(245, 158, 11, 0.15);
+    --priority-p1-text: #FCD34D;
+    --priority-p2-bg: rgba(250, 204, 21, 0.15);
+    --priority-p2-text: #FDE68A;
+    --priority-p3-bg: rgba(34, 197, 94, 0.12);
+    --priority-p3-text: #86EFAC;
+
+    /* Status tag colors */
+    --status-confirmed-bg: rgba(59, 130, 246, 0.18);
+    --status-confirmed-text: #93C5FD;
+    --status-in-progress-bg: rgba(245, 158, 11, 0.15);
+    --status-in-progress-text: #FCD34D;
+    --status-resolved-bg: rgba(34, 197, 94, 0.15);
+    --status-resolved-text: #86EFAC;
 
     /* Compat aliases */
     --accent: var(--color-primary);
