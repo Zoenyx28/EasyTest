@@ -852,9 +852,8 @@ const TASK_STATUS_LABELS: Record<string, string> = {
     <aside 
       class="execution-sidebar w-[260px] flex flex-col shrink-0 min-h-0 glass"
     >
-      <!-- macOS Traffic Light Dots -->
-      <div class="traffic-lights flex items-center gap-[8px] px-[14px] pt-[14px] pb-[10px] shrink-0">
-        <span class="flex items-center justify-between px-[16px] py-[12px] shrink-0">测试任务</span>
+      <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
+        <span class="text-[11.5px] font-semibold uppercase tracking-[0.03em]" style="color: var(--text-tertiary);">测试任务</span>
       </div>
 
       <!-- Task List -->
