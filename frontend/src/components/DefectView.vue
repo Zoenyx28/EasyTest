@@ -190,6 +190,12 @@ async function loadDefects() {
     defects.value = defectResult.items;
     total.value = defectResult.total;
     modules.value = moduleResult;
+    // Auto-expand root modules that have children
+    const expanded = new Set<number>();
+    for (const m of moduleResult) {
+      if (m.children && m.children.length > 0) expanded.add(m.id);
+    }
+    expandedModules.value = expanded;
   } catch (e: any) {
     emit('showToast', e.message || '加载缺陷列表失败');
     defects.value = [];

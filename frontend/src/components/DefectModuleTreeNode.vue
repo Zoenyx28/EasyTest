@@ -39,8 +39,12 @@ const canAddChild = computed(() => props.depth < 4);
   <!-- Module row -->
   <div
     @click="emit('select', module.id)"
-    class="group flex items-center gap-[6px] px-[10px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors relative"
-    :style="isSelected ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
+    class="group flex items-center gap-[6px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors relative"
+    :style="{ 
+      paddingLeft: `${(depth - 1) * 16 + 10}px`,
+      paddingRight: '10px',
+      ...(isSelected ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-secondary)' })
+    }"
     @mouseenter="(e: MouseEvent) => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
     @mouseleave="(e: MouseEvent) => { if (!isRenaming) (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
   >
