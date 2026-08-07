@@ -7,6 +7,7 @@ venv/
 
 # 虚拟环境（误提交的历史文件已从版本库移除）
 backend/.venv/
+data/projects/venvs/
 
 # 日志
 *.log
