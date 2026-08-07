@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue';
 import { useApi } from '../composables/useApi';
 import { useProject } from '../composables/useProject';
 import { useWebSocket } from '../composables/useWebSocket';
@@ -28,6 +28,9 @@ interface TestCaseState {
   methodName: string;
   className: string;
   id: number;
+  duration_ms?: number;
+  /** Case-defined steps JSON (from the case detail: 调用xxx接口 / 断言xxx). */
+  steps?: string;
 }
 
 const tasks = ref<TestTask[]>([]);
@@ -245,6 +248,7 @@ async function createTask(uids: string[]) {
         description: info.description || '',
         methodName: info.methodName || '',
         className: info.className || '',
+        steps: info.steps || '',
       });
     } catch {
       states.push({ uid, id: 0, status: 'waiting', name: uid, description: '', methodName: '', className: '' });
@@ -298,6 +302,9 @@ async function pollExecutionState(executionId: string, taskId: string) {
           if (apiCase.id && !localCase.id) {
             localCase.id = apiCase.id;
           }
+          if (apiCase.duration_ms != null) {
+            localCase.duration_ms = apiCase.duration_ms;
+          }
         }
       }
     }
@@ -326,6 +333,9 @@ async function refreshCaseStates(executionId: string, taskId: string) {
           localCase.status = apiCase.status as any;
           if (apiCase.id && !localCase.id) {
             localCase.id = apiCase.id;
+          }
+          if (apiCase.duration_ms != null) {
+            localCase.duration_ms = apiCase.duration_ms;
           }
         }
       }
@@ -617,6 +627,8 @@ function isClickable(status: string) {
 async function showDetail(item: TestCaseState) {
   selectedCaseId.value = item.uid;
   detailLog.value = null;
+  highlightLine.value = -1;
+  activeStepIndex.value = -1;
   if (isClickable(item.status) && item.id > 0) {
     detailLoading.value = true;
     try {
@@ -629,6 +641,8 @@ async function showDetail(item: TestCaseState) {
         message: logData.message || '',
         trace: logData.trace || '',
         logs: logData.logs || logData.message || '',
+        steps: logData.steps || '',
+        screenshots: logData.screenshots || '',
         executed_at: logData.end_time || logData.start_time || '',
       };
     } catch { /* ignore */ }
@@ -637,6 +651,211 @@ async function showDetail(item: TestCaseState) {
   if (!isClickable(item.status) || item.id <= 0) {
     detailLog.value = null;
   }
+}
+
+// ── Step ↔ Log linking ──
+const highlightLine = ref(-1);
+const activeStepIndex = ref(-1);
+const logLineRefs = ref<HTMLElement[]>([]);
+
+interface ParsedStep {
+  name: string;
+  status: string;
+  type?: 'api' | 'assert';
+  /** Exact 0-based log line this step maps to (when parsed from the log). */
+  line?: number;
+}
+
+/** Parse steps directly from the execution log text:
+ *  - API calls: 【API调用】POST /api/xxx  → status from following Response line
+ *  - Assertions: Assert xxx passed/failed  → status from the line itself
+ *  Each step records its exact log line so clicking it can scroll precisely.
+ */
+function parseLogStepsFromText(logs: string): ParsedStep[] {
+  const steps: ParsedStep[] = [];
+  const lines = logs.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const apiMatch = line.match(/【API调用】\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\/\S+)/);
+    if (apiMatch) {
+      steps.push({ name: `${apiMatch[1]} ${apiMatch[2]}`, status: '', type: 'api', line: i });
+      continue;
+    }
+    const assertMatch = line.match(/Assert\s+([^:]+?)\s+(passed|failed)(?::\s*(.*))?$/);
+    if (assertMatch) {
+      const detail = assertMatch[3] ? ` (${assertMatch[3]})` : '';
+      steps.push({ name: `断言: ${assertMatch[1].trim()}${detail}`, status: assertMatch[2], type: 'assert', line: i });
+      continue;
+    }
+    const respMatch = line.match(/Response:\s*(\d{3})/);
+    if (respMatch) {
+      const code = parseInt(respMatch[1], 10);
+      let j = steps.length - 1;
+      while (j >= 0 && steps[j].status) j--;
+      if (j >= 0) {
+        steps[j].status = code >= 200 && code < 300 ? 'passed' : 'failed';
+      }
+      continue;
+    }
+  }
+  return steps;
+}
+
+/** Match case-defined steps (from the case detail: 调用xxx接口 / 断言xxx) against
+ *  the steps parsed from the execution log, so each definition step gets a
+ *  precise log line + result status. Matching strategy:
+ *   1. api steps: try to match the source method name (from `method`/`code`) against
+ *      the raw log line of each unassigned api log-step;
+ *   2. otherwise align by order within the same type (api/assert);
+ *   3. steps with no remaining log counterpart are left unexecuted (status '').
+ */
+function buildDefinitionSteps(rawSteps: string, logs: string): ParsedStep[] {
+  let defs: any[] = [];
+  try {
+    defs = JSON.parse(rawSteps || '');
+  } catch { /* fall through */ }
+  if (!Array.isArray(defs) || defs.length === 0) return [];
+
+  const logSteps = parseLogStepsFromText(logs || '');
+  const lines = (logs || '').split('\n');
+  const used = new Set<number>(); // indices of already-assigned log steps
+
+  function matchByKeyword(def: any, type: 'api' | 'assert', candidates: number[]): number {
+    let kw = '';
+    if (type === 'api') {
+      kw = String(def.method || '');
+      if (!kw && def.code) {
+        const m = String(def.code).match(/(?:\.|\b)([A-Za-z_]\w*)\s*\(/);
+        kw = m ? m[1] : '';
+      }
+    }
+    if (!kw) return -1;
+    for (const ci of candidates) {
+      if (used.has(ci)) continue;
+      if ((lines[logSteps[ci].line!] || '').includes(kw)) return ci;
+    }
+    return -1;
+  }
+
+  const byType: Record<string, number[]> = { api: [], assert: [] };
+  logSteps.forEach((s, i) => { if (s.type) byType[s.type].push(i); });
+
+  return defs.map((def: any) => {
+    const type: 'api' | 'assert' = def.type === 'assert' ? 'assert' : 'api';
+    const candidates = byType[type];
+    let assigned = -1;
+    // 1) keyword match on the raw log line
+    assigned = matchByKeyword(def, type, candidates);
+    // 2) order-based alignment within the same type
+    if (assigned < 0) {
+      for (const ci of candidates) {
+        if (!used.has(ci)) { assigned = ci; break; }
+      }
+    }
+    let status = '';
+    let line: number | undefined;
+    if (assigned >= 0) {
+      used.add(assigned);
+      status = logSteps[assigned].status || '';
+      line = logSteps[assigned].line;
+    }
+    return {
+      name: def.description || def.code || '',
+      status,
+      type,
+      line,
+    };
+  });
+}
+
+const parsedSteps = computed<ParsedStep[]>(() => {
+  // 1) Case-defined steps from the case detail (用例总览里的步骤), linked to the log
+  if (activeCase.value?.steps) {
+    const defSteps = buildDefinitionSteps(activeCase.value.steps, detailLog.value?.logs || '');
+    if (defSteps.length > 0) return defSteps;
+  }
+  // 2) Allure-style execution steps (name + status)
+  if (detailLog.value?.steps) {
+    try {
+      const raw = JSON.parse(detailLog.value.steps);
+      if (Array.isArray(raw) && raw.length > 0) {
+        return raw
+          .filter((s: any) => s && typeof s.name === 'string')
+          .map((s: any) => ({ name: s.name, status: s.status || '' }));
+      }
+    } catch {
+      /* fall through to log parsing */
+    }
+  }
+  // 3) Steps parsed from the log itself (precise line linking)
+  return parseLogStepsFromText(detailLog.value?.logs || '');
+});
+
+const logLines = computed<string[]>(() => {
+  const logs = detailLog.value?.logs || '';
+  if (!logs) return [];
+  return logs.split('\n');
+});
+
+function statusOfStep(status: string): string {
+  if (status === 'passed' || status === 'pass') return 'success';
+  if (status === 'failed' || status === 'fail') return 'fail';
+  if (status === 'broken') return 'broken';
+  if (status === 'skipped' || status === 'skip') return 'skip';
+  return '';
+}
+
+/** Result glyph for a step: ✓ pass / ✗ fail / – skip / '' not executed */
+function stepResultSymbol(status: string): string {
+  const s = statusOfStep(status);
+  if (s === 'success') return '✓';
+  if (s === 'fail' || s === 'broken') return '✗';
+  if (s === 'skip') return '–';
+  return '';
+}
+
+/** Find the log line (0-based) that best matches a step keyword. */
+function findLogLineIndex(keyword: string): number {
+  if (!keyword) return -1;
+  const kw = keyword.trim();
+  const lines = logLines.value;
+  // 1) exact substring match (first occurrence)
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(kw)) return i;
+  }
+  // 2) fuzzy: split keyword into words, match line containing all words
+  const words = kw.split(/[\s_\-:/，。；：]+/).filter(w => w.length >= 2);
+  if (words.length > 0) {
+    for (let i = 0; i < lines.length; i++) {
+      if (words.every(w => lines[i].includes(w))) return i;
+    }
+  }
+  // 3) fallback to next step's start or last line
+  return -1;
+}
+
+function jumpToStep(index: number) {
+  const step = parsedSteps.value[index];
+  if (!step) return;
+  activeStepIndex.value = index;
+  let lineIdx = step.line ?? -1;
+  if (lineIdx < 0) {
+    lineIdx = findLogLineIndex(step.name);
+  }
+  if (lineIdx >= 0) {
+    highlightLine.value = lineIdx;
+    nextTick(() => {
+      const el = logLineRefs.value[lineIdx];
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  } else {
+    highlightLine.value = -1;
+  }
+}
+
+function stepStatusBadgeClass(status: string): string {
+  const s = statusOfStep(status);
+  return s ? 'step-badge-' + s : '';
 }
 
 function copyPath() {
@@ -656,17 +875,14 @@ function formatElapsed(secs: number) {
   return `${h}:${m}:${s}`;
 }
 
-function formatDateTime(iso: string) {
-  if (!iso) return '--';
-  try {
-    return new Date(iso).toLocaleString('zh-CN', { 
-      month: '2-digit', 
-      day: '2-digit', 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  } catch { return iso; }
+function formatDurationMs(ms?: number): string {
+  if (ms == null || ms <= 0) return '';
+  if (ms < 1000) return ms + 'ms';
+  const secs = ms / 1000;
+  if (secs < 60) return secs.toFixed(1) + 's';
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return `${m}m${s}s`;
 }
 
 function formatExecTime(iso: string) {
@@ -726,14 +942,21 @@ async function loadHistoryTasks() {
         try {
           const casesResp = await get<{ items: ExecutionCaseItem[]; total: number }>(`/executions/${exec.execution_id}/cases/all`);
           for (const c of casesResp.items || []) {
+            let defSteps = '';
+            try {
+              const info = await get<TestCaseInfo>(`/tests/${c.uid}`);
+              defSteps = info.steps || '';
+            } catch { /* definition steps unavailable for this uid */ }
             caseStates.push({
               uid: c.uid,
               id: c.id,
               status: c.status as TestCaseState['status'],
-              name: c.case_name || c.method_name || c.uid,
-              description: '',
+              name: c.description || c.case_name || c.method_name || c.uid,
+              description: c.description || '',
               methodName: c.method_name || '',
               className: c.class_name || '',
+              duration_ms: c.duration_ms != null ? c.duration_ms : undefined,
+              steps: defSteps,
             });
           }
         } catch { /* fallback */ }
@@ -754,6 +977,7 @@ async function loadHistoryTasks() {
                 description: info.description || '',
                 methodName: info.methodName || '',
                 className: info.className || '',
+                steps: info.steps || '',
               });
             } catch {
               caseStates.push({ uid, id: 0, status: 'waiting', name: uid, description: '', methodName: '', className: '' });
@@ -1052,7 +1276,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
             :class="selectedStatusFilters.size === 0 ? 'filter-pill-active' : 'filter-pill-inactive'"
             :style="{ backgroundColor: selectedStatusFilters.size === 0 ? 'var(--accent)' : 'var(--input-bg)' }"
           >
-            全部<span class="ml-[4px] opacity-70">{{ filterCounts.all }}</span>
+            全部<span class="ml-[4px] opacity-70"></span>
           </button>
           <button
             v-for="seg in barChartSegments"
@@ -1103,7 +1327,12 @@ const TASK_STATUS_LABELS: Record<string, string> = {
                       {{ STATUS_LABELS[item.status] }}
                     </span>
                   </div>
-                  <div class="text-[11px] mt-[3px] truncate" style="color: var(--text-tertiary);" :title="item.methodName">{{ item.methodName }}</div>
+                  <div class="flex items-center justify-between gap-2 mt-[3px]">
+                    <div class="text-[11px] truncate min-w-0" style="color: var(--text-tertiary);" :title="item.methodName">{{ item.methodName }}</div>
+                    <span v-if="item.duration_ms != null && item.duration_ms > 0" class="queue-duration shrink-0 text-[10.5px] font-mono" style="color: var(--text-tertiary);">
+                      {{ formatDurationMs(item.duration_ms) }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1118,21 +1347,57 @@ const TASK_STATUS_LABELS: Record<string, string> = {
                 <div class="detail-path font-code text-[12px] mb-[14px]" style="color: var(--text-secondary);">
                   {{ activeCase.className ? activeCase.className + ' :: ' : '' }}{{ activeCase.methodName || activeCase.name }}
                 </div>
-                <div class="section-label text-[11.5px] font-semibold uppercase tracking-[0.04em] mb-[6px]" style="color: var(--text-tertiary);">描述</div>
-                <div 
-                  class="detail-description p-[10px_12px] rounded-[10px] text-[13px] mb-[8px]"
-                  style="background-color: var(--card-bg); border: 1px solid var(--border); color: var(--text-secondary);"
-                >
-                  {{ activeCase.description || '暂无描述' }}
-                </div>
-                <div v-if="detailLog && detailLog.executed_at" class="mb-[14px] text-[11px]" style="color: var(--text-tertiary);">
-                  执行时间: {{ formatDateTime(detailLog.executed_at) }}
-                </div>
                 <div v-if="detailLoading" class="text-center py-4" style="color: var(--text-tertiary);">
                   加载中...
                 </div>
                 <template v-else-if="detailLog">
-                  <div class="flex-1 min-h-0 flex flex-col">
+                  <!-- Steps directory + log lines (linked) -->
+                  <div v-if="parsedSteps.length > 0" class="flex-1 min-h-0 flex flex-col mt-[4px]">
+                    <div class="section-label text-[11.5px] font-semibold uppercase tracking-[0.04em] mb-[6px]" style="color: var(--text-tertiary);">步骤与日志</div>
+                    <div class="steps-log-layout flex-1 min-h-0 flex gap-[10px]">
+                      <!-- Steps directory -->
+                      <div class="steps-panel w-[220px] min-w-[180px] shrink-0 flex flex-col rounded-[10px] overflow-hidden"
+                        style="background-color: var(--card-bg); border: 1px solid var(--border);"
+                      >
+                        <div class="steps-panel-header px-[10px] py-[7px] text-[11px] font-semibold" style="color: var(--text-tertiary); border-bottom: 1px solid var(--border);">步骤目录</div>
+                        <div class="steps-list flex-1 overflow-y-auto py-[4px]">
+                          <div
+                            v-for="(step, idx) in parsedSteps"
+                            :key="idx"
+                            @click="jumpToStep(idx)"
+                            class="step-item px-[10px] py-[6px] cursor-pointer text-[12px] flex items-start gap-[7px]"
+                            :class="[ activeStepIndex === idx ? 'step-item-active' : '', 'step-item-' + statusOfStep(step.status) ]"
+                          >
+                            <span class="step-result shrink-0 mt-[1px] w-[16px] text-center font-semibold"
+                              :class="'step-result-' + statusOfStep(step.status)"
+                            >{{ stepResultSymbol(step.status) }}</span>
+                            <span class="step-name min-w-0 flex-1 break-words">{{ step.name }}</span>
+                          </div>
+                          <div v-if="parsedSteps.length === 0" class="px-[10px] py-[8px] text-[11.5px]" style="color: var(--text-tertiary);">暂无步骤</div>
+                        </div>
+                      </div>
+                      <!-- Log lines -->
+                      <div class="log-panel flex-1 min-w-0 flex flex-col rounded-[10px] overflow-hidden"
+                        style="background-color: var(--card-bg); border: 1px solid var(--border);"
+                      >
+                        <div class="log-panel-header px-[10px] py-[7px] text-[11px] font-semibold" style="color: var(--text-tertiary); border-bottom: 1px solid var(--border);">日志信息</div>
+                        <div class="log-lines flex-1 overflow-auto font-mono text-[12px] leading-[1.6]" style="color: var(--text-secondary);">
+                          <template v-if="logLines.length > 0">
+                            <div
+                              v-for="(line, idx) in logLines"
+                              :key="idx"
+                              :ref="el => { if (el) (logLineRefs as any)[idx] = el }"
+                              class="log-line px-[10px] whitespace-pre-wrap break-all"
+                              :class="{ 'log-line-highlight': highlightLine === idx, 'log-line-hover': activeStepIndex >= 0 && highlightLine === idx }"
+                            >{{ line }}</div>
+                          </template>
+                          <div v-else class="px-[10px] py-[8px]" style="color: var(--text-tertiary);">暂无日志</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Plain log fallback (no steps) -->
+                  <div v-else class="flex-1 min-h-0 flex flex-col">
                     <div class="section-label text-[11.5px] font-semibold uppercase tracking-[0.04em] mb-[6px]" style="color: var(--text-tertiary);">执行日志</div>
                     <div 
                       class="log-viewer flex-1 p-[10px_12px] rounded-[10px] text-[12px] font-code overflow-auto whitespace-pre-wrap"
@@ -1141,10 +1406,10 @@ const TASK_STATUS_LABELS: Record<string, string> = {
                       {{ detailLog.logs || detailLog.message || '暂无日志' }}
                     </div>
                   </div>
-                  <div v-if="detailLog.trace" class="mt-[12px] flex-1 min-h-0 flex flex-col">
+                  <div v-if="detailLog.trace" class="mt-[12px] shrink-0 flex flex-col" style="max-height: 35%;">
                     <div class="section-label text-[11.5px] font-semibold uppercase tracking-[0.04em] mb-[6px]" style="color: var(--red);">错误堆栈</div>
                     <div 
-                      class="trace-viewer flex-1 p-[10px_12px] rounded-[10px] text-[12px] font-code overflow-auto whitespace-pre-wrap"
+                      class="trace-viewer p-[10px_12px] rounded-[10px] text-[12px] font-code overflow-auto whitespace-pre-wrap"
                       style="background-color: rgba(255,59,48,0.05); border: 1px solid var(--red); color: var(--red);"
                     >
                       {{ detailLog.trace }}
@@ -1182,6 +1447,10 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   border-right: 1px solid var(--sidebar-border);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  /* Raise the sidebar's stacking context so its popup menus (task-menu)
+     are never covered by right-side detail elements (which also create
+     stacking contexts via backdrop-filter). */
+  z-index: 5;
 }
 
 /* Task Cards */
@@ -1423,7 +1692,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   box-shadow: 0 0.5px 1px rgba(0,0,0,0.04);
 }
 .detail-path {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
 }
 .section-label {
   letter-spacing: 0.04em;
@@ -1442,5 +1711,85 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   line-height: 1.6;
   tab-size: 2;
+}
+
+/* ── Steps ↔ Log linking ── */
+.steps-log-layout {
+  min-height: 0;
+}
+
+.steps-panel,
+.log-panel {
+  min-height: 0;
+}
+
+.steps-panel-header,
+.log-panel-header {
+  flex-shrink: 0;
+}
+
+.steps-list,
+.log-lines {
+  min-height: 0;
+}
+
+.step-item {
+  transition: background 0.12s ease;
+}
+
+.step-item:hover {
+  background: var(--row-hover);
+}
+
+.step-item-active {
+  background: var(--selected-bg);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.step-result {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}
+
+.step-result-success {
+  color: var(--color-success);
+}
+.step-result-fail {
+  color: var(--red);
+}
+.step-result-broken {
+  color: var(--purple);
+}
+.step-result-skip {
+  color: var(--text-tertiary);
+}
+
+.step-item-success .step-name {
+  color: var(--color-success);
+}
+.step-item-fail .step-name {
+  color: var(--red);
+}
+.step-item-broken .step-name {
+  color: var(--purple);
+}
+.step-item-skip .step-name {
+  color: var(--text-tertiary);
+}
+
+.log-lines {
+  scrollbar-width: thin;
+}
+
+.log-line {
+  transition: background 0.15s ease;
+}
+
+.log-line-highlight {
+  background: rgba(255, 204, 0, 0.22) !important;
+  color: var(--text-primary) !important;
+  box-shadow: inset 2px 0 0 var(--color-warning);
 }
 </style>

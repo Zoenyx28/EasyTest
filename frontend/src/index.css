@@ -59,7 +59,7 @@
     --color-primary-dark: #1D4ED8;
     --color-primary-soft: rgba(37, 99, 235, 0.10);
 
-    /* Accent / CTA */
+    /* 强调色（橙）：仅用于高风险操作 / 警告 / P0-P1 优先级，禁止用于常规 CTA —— ADR-0008 */
     --color-accent: #EA580C;
     --color-accent-dark: #C2410C;
 
@@ -91,8 +91,11 @@
     /* Interaction */
     --hover-bg: rgba(0, 0, 0, 0.04);
     --selected-bg: rgba(37, 99, 235, 0.10);
+    /* Shadows（分级，ADR-0008 吸收方案 B 的投影分层） */
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.10);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.15);
     --overlay-bg: rgba(0, 0, 0, 0.4);
 
@@ -119,19 +122,21 @@
     --status-resolved-bg: rgba(22, 163, 74, 0.12);
     --status-resolved-text: #166534;
 
-    /* Compat aliases (for gradual migration) */
+    /* Compat aliases（兼容别名） */
     --accent: var(--color-primary);
     --accent-soft: var(--color-primary-soft);
     --green: var(--color-success);
     --red: var(--color-danger);
     --amber: var(--color-warning);
     --purple: var(--color-broken);
-    --radius-lg: 14px;
-    --radius-md: 10px;
-    --radius-sm: 7px;
-    --font: "DM Sans", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-    --font-heading: "Space Grotesk", system-ui, -apple-system, sans-serif;
-    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    /* 圆角（ADR-0008：7/10/14 → 8/12/16 微调） */
+    --radius-lg: 16px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+    /* 字体（ADR-0008：保留西文字体 + 中文系统栈） */
+    --font: "DM Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    --font-heading: "Space Grotesk", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sidebar-bg: var(--bg-sidebar);
     --sidebar-border: var(--border);
     --content-bg: var(--bg-content);
@@ -142,6 +147,7 @@
     --text-tertiary: var(--text-muted);
     --row-hover: var(--hover-bg);
     --input-bg: var(--bg-input);
+    --accent-bg: var(--color-primary-soft);
     --success: var(--color-success);
     --danger: var(--color-danger);
     --broken: var(--color-broken);
@@ -181,8 +187,10 @@
 
     --hover-bg: rgba(255, 255, 255, 0.04);
     --selected-bg: rgba(59, 130, 246, 0.18);
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.15);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.4);
     --overlay-bg: rgba(0, 0, 0, 0.5);
 
@@ -226,6 +234,7 @@
     --text-tertiary: var(--text-muted);
     --row-hover: var(--hover-bg);
     --input-bg: var(--bg-input);
+    --accent-bg: var(--color-primary-soft);
     --success: var(--color-success);
     --danger: var(--color-danger);
     --broken: var(--color-broken);

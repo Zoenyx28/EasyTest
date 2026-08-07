@@ -122,7 +122,7 @@ async def register(data: dict):
         'username': username,
         'nickname': nickname,
         'avatar_url': avatar_url,
-        'created_at': datetime.utcnow().isoformat(),
+        'created_at': crud.dt_iso(datetime.utcnow()),
     }
     return ok({'token': token, 'user': user_info}, msg='注册成功')
 

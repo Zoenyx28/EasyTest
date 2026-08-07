@@ -11,7 +11,10 @@ import DefectConfirmDialog from './DefectConfirmDialog.vue';
 import DefectResolveDialog from './DefectResolveDialog.vue';
 import DefectCloseDialog from './DefectCloseDialog.vue';
 import DefectActivateDialog from './DefectActivateDialog.vue';
+import DefectAssignDialog from './DefectAssignDialog.vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 import DefectModuleTreeNode from './DefectModuleTreeNode.vue';
+import BaseButton from './base/BaseButton.vue';
 import type { DefectInfo, DefectModuleInfo } from '../types';
 
 const props = defineProps<{
@@ -37,7 +40,7 @@ const total = ref(0);
 const loading = ref(false);
 const modules = ref<DefectModuleInfo[]>([]);
 const currentPage = ref(1);
-const pageSize = ref(20);
+const pageSize = ref(10);
 const initialized = ref(false);
 
 const filterStatus = ref('');
@@ -54,8 +57,13 @@ const showConfirmDialog = ref(false);
 const showResolveDialog = ref(false);
 const showCloseDialog = ref(false);
 const showActivateDialog = ref(false);
+const showAssignDialog = ref(false);
 const selectedDefectId = ref<number | null>(null);
 const selectedDefect = ref<DefectInfo | null>(null);
+const confirmDialog = ref<InstanceType<typeof ConfirmDialog> | null>(null);
+const defectListRef = ref<InstanceType<typeof DefectList> | null>(null);
+
+const listSelectedCount = computed(() => defectListRef.value?.selectedCount ?? 0);
 
 // Module tree state
 const selectedModuleId = ref<number | null>(null);
@@ -117,7 +125,7 @@ async function addChildModule(parentId: number) {
   const name = newChildName.value.trim();
   if (!name) return;
   try {
-    await defectApi.createModule({ project_id: projectId.value, name, parent_id: parentId });
+    await defectApi.createModule({ project_id: projectId.value, name, parent_id: parentId }, branchId.value);
     expandedModules.value.add(parentId);
     expandedModules.value = new Set(expandedModules.value);
     addingChildParentId.value = null;
@@ -189,7 +197,7 @@ async function loadDefects() {
         page: currentPage.value,
         page_size: pageSize.value,
       }),
-      defectApi.getModules(projectId.value),
+      defectApi.getModules(projectId.value, branchId.value),
     ]);
     defects.value = defectResult.items;
     total.value = defectResult.total;
@@ -234,11 +242,6 @@ function handlePageChange(page: number) {
   loadDefects();
 }
 
-function handleSelectDefect(defect: DefectInfo) {
-  selectedDefectId.value = defect.id;
-  showDetailDialog.value = true;
-}
-
 function handleCreated() {
   loadDefects();
 }
@@ -259,6 +262,8 @@ function handleListAction(action: string, defect: DefectInfo) {
     showCloseDialog.value = true;
   } else if (action === 'edit') {
     showDetailDialog.value = true;
+  } else if (action === 'view') {
+    showDetailDialog.value = true;
   } else if (action === 'copy') {
     handleCopyDefect(defect);
   }
@@ -274,11 +279,70 @@ async function handleCopyDefect(defect: DefectInfo) {
   }
 }
 
+async function handleDeleteDefects(ids: number[]) {
+  if (!ids.length) return;
+  const confirmed = await confirmDialog.value?.confirm({
+    title: '删除缺陷',
+    message: `确定删除选中的 ${ids.length} 个缺陷吗？将同时删除其附件、日志和评论，此操作不可撤销。`,
+    confirmText: '删除',
+    confirmColor: 'var(--color-danger)',
+  });
+  if (!confirmed) return;
+
+  let okCount = 0;
+  for (const id of ids) {
+    try {
+      await defectApi.deleteDefect(id);
+      okCount++;
+    } catch (e: any) {
+      emit('showToast', e.message || `删除缺陷 #${id} 失败`);
+    }
+  }
+  if (okCount > 0) {
+    emit('showToast', `已删除 ${okCount} 个缺陷`);
+    // 当前页被删空时回退一页
+    if (defects.value.length === okCount && currentPage.value > 1) {
+      currentPage.value--;
+    }
+    await loadDefects();
+    // 删除成功后清空选中状态
+    defectListRef.value?.clearSelection();
+  }
+}
+
+async function handleDeleteSelected() {
+  const ids = defectListRef.value?.getSelectedIds() ?? [];
+  if (!ids.length) return;
+  await handleDeleteDefects(ids);
+}
+
+function handleAssignDone() {
+  loadDefects();
+}
+
 async function initPage() {
   try {
     await getActiveProject();
     if (projectId.value) {
       await loadBranches(projectId.value);
+    }
+    // Default filter: show "assigned to me" if the current user has assigned defects;
+    // otherwise show all defects.
+    if (currentUserId.value && branchId.value) {
+      try {
+        const mine = await defectApi.getDefects({
+          project_id: projectId.value,
+          branch_id: branchId.value,
+          assignee_id: currentUserId.value,
+          page: 1,
+          page_size: 1,
+        });
+        if (mine.total > 0) {
+          filterAssigneeId.value = currentUserId.value;
+        }
+      } catch {
+        // ignore — fall back to showing all defects
+      }
     }
     await loadDefects();
   } catch {
@@ -318,8 +382,8 @@ onMounted(() => {
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <p class="text-[13px] font-medium" style="color: var(--text-secondary); margin: 0 0 6px;">请先选择活跃项目</p>
-        <p class="text-[11px]" style="color: var(--text-tertiary); margin: 0;">在项目管理页面选择并激活一个项目</p>
+        <p class="text-[13px] font-medium" style="color: var(--text-secondary); margin: 0 0 6px;">请先创建项目</p>
+        <p class="text-[11px]" style="color: var(--text-tertiary); margin: 0;">在项目管理页面创建并激活一个项目后，即可管理缺陷</p>
       </div>
     </div>
 
@@ -364,7 +428,6 @@ onMounted(() => {
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
             <span class="flex-1 truncate">全部</span>
-            <span class="text-[11px] opacity-60 mr-[2px]">{{ total }}</span>
             <button
               @click.stop="startAddRoot()"
               class="w-[20px] h-[20px] rounded-[4px] flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
@@ -440,22 +503,35 @@ onMounted(() => {
           <h2 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷管理</h2>
           <div class="flex gap-[8px]">
             <button
-              @click="showCreateDialog = true"
+              v-if="listSelectedCount > 0"
+              @click="handleDeleteSelected"
               class="flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-              style="background-color: var(--accent); color: #fff;"
+              style="background-color: transparent; color: var(--color-danger); border: 1px solid var(--color-danger);"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+              删除({{ listSelectedCount }})
+            </button>
+            <BaseButton
+              @click="showCreateDialog = true"
+              variant="primary"
+              size="md"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
               创建缺陷
-            </button>
+            </BaseButton>
           </div>
         </div>
 
         <!-- Defect list -->
         <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
           <DefectList
+            ref="defectListRef"
             :defects="defects"
             :total="total"
             :loading="loading"
@@ -464,14 +540,18 @@ onMounted(() => {
             :modules="modules"
             :currentUserId="currentUserId"
             :externalModuleId="selectedModuleId"
-            @select="handleSelectDefect"
+            :filterAssigneeId="filterAssigneeId"
+            :filterCreatorId="filterCreatorId"
             @pageChange="handlePageChange"
             @filterChange="handleFilterChange"
             @confirm="(d: DefectInfo) => handleListAction('confirm', d)"
             @resolve="(d: DefectInfo) => handleListAction('resolve', d)"
             @close="(d: DefectInfo) => handleListAction('close', d)"
             @edit="(d: DefectInfo) => handleListAction('edit', d)"
+            @view="(d: DefectInfo) => handleListAction('view', d)"
             @copy="(d: DefectInfo) => handleListAction('copy', d)"
+            @assign="(d: DefectInfo) => { selectedDefect = d; selectedDefectId = d.id; showAssignDialog = true }"
+            @delete="handleDeleteDefects"
           />
         </div>
       </main>
@@ -535,6 +615,19 @@ onMounted(() => {
       :projectId="projectId"
       @close="showActivateDialog = false"
       @done="handleUpdated"
+      @showToast="(msg: string) => emit('showToast', msg)"
+    />
+
+    <!-- Global confirm dialog -->
+    <ConfirmDialog ref="confirmDialog" />
+
+    <!-- Assign dialog -->
+    <DefectAssignDialog
+      :isOpen="showAssignDialog"
+      :defect="selectedDefect"
+      :projectId="projectId"
+      @close="showAssignDialog = false"
+      @done="handleAssignDone"
       @showToast="(msg: string) => emit('showToast', msg)"
     />
   </div>

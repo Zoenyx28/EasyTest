@@ -1,16 +1,43 @@
 <script setup lang="ts">
-import { ref, nextTick } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 
 const props = defineProps<{
   modelValue: string;
   placeholder?: string;
+  /** 上传图片并返回可直接显示的 URL（例如临时附件地址）。未提供时回退为 base64 内嵌。 */
+  uploadImage?: (file: File) => Promise<string>;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', val: string): void;
+  (e: 'error', msg: string): void;
 }>();
 
 const editorRef = ref<HTMLDivElement | null>(null);
+
+// 链接弹窗状态
+const linkOpen = ref(false);
+const linkUrl = ref('');
+
+/**
+ * 光标修复：不通过 v-html 双向绑定（每次 emit 后 innerHTML 被重设会把光标
+ * 重置到内容最前面）。仅在外部 modelValue 与当前内容不一致时同步 DOM，
+ * 用户自己输入触发的事件不会重设，从而保留光标位置。
+ */
+function syncFromModel() {
+  const el = editorRef.value;
+  if (el && props.modelValue !== el.innerHTML) {
+    el.innerHTML = props.modelValue;
+  }
+}
+
+onMounted(syncFromModel);
+watch(() => props.modelValue, syncFromModel);
+
+function emitValue() {
+  const html = editorRef.value?.innerHTML || '';
+  if (html !== props.modelValue) emit('update:modelValue', html);
+}
 
 function execCommand(cmd: string, value?: string) {
   document.execCommand(cmd, false, value);
@@ -18,38 +45,77 @@ function execCommand(cmd: string, value?: string) {
   emitValue();
 }
 
-function insertImage() {
+function sanitizeHref(url: string): string {
+  return url.replace(/["'<>]/g, '').trim();
+}
+
+function insertImage(file: File) {
+  if (props.uploadImage) {
+    props.uploadImage(file)
+      .then((url) => execCommand('insertImage', url))
+      .catch((e: any) => emit('error', e?.message || '图片上传失败'));
+    return;
+  }
+  // Fallback: inline base64 data URL
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    execCommand('insertImage', e.target?.result as string);
+  };
+  reader.readAsDataURL(file);
+}
+
+function pickImage() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = async () => {
+  input.onchange = () => {
     const file = input.files?.[0];
-    if (!file) return;
-    // For standalone image insertion without a defect context, we insert a placeholder
-    // In actual usage within DefectCreateDialog, the image will be uploaded after defect creation
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const url = e.target?.result as string;
-      execCommand('insertImage', url);
-    };
-    reader.readAsDataURL(file);
+    if (file) insertImage(file);
   };
   input.click();
 }
 
-function insertLink() {
-  const url = prompt('请输入链接地址:');
-  if (url) {
-    execCommand('createLink', url);
-  }
+function openLinkDialog() {
+  linkUrl.value = '';
+  linkOpen.value = true;
+  // 下一帧聚焦输入框
+  requestAnimationFrame(() => {
+    (document.querySelector('.link-input') as HTMLInputElement | null)?.focus();
+  });
 }
 
-function emitValue() {
-  const html = editorRef.value?.innerHTML || '';
-  emit('update:modelValue', html);
+function applyLink() {
+  const raw = linkUrl.value.trim();
+  linkOpen.value = false;
+  if (!raw) return;
+  const href = sanitizeHref(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  if (!href) return;
+  const sel = window.getSelection();
+  const hasSelection = !!sel && !sel.isCollapsed && !!editorRef.value?.contains(sel.anchorNode);
+  if (hasSelection) {
+    execCommand('createLink', href);
+  } else {
+    execCommand(
+      'insertHTML',
+      `<a href="${href}" target="_blank" rel="noopener">${raw.replace(/[<>]/g, '')}</a>`,
+    );
+  }
+  linkUrl.value = '';
 }
 
 function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items;
+  if (items) {
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) insertImage(file);
+        return;
+      }
+    }
+  }
+  // Fallback: insert as plain text
   e.preventDefault();
   const text = e.clipboardData?.getData('text/plain') || '';
   document.execCommand('insertText', false, text);
@@ -77,10 +143,10 @@ function focusEditor() {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg>
       </button>
       <span class="toolbar-separator"></span>
-      <button type="button" class="toolbar-btn" title="插入图片" @click="insertImage">
+      <button type="button" class="toolbar-btn" title="插入图片" @click="pickImage">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       </button>
-      <button type="button" class="toolbar-btn" title="插入链接" @click="insertLink">
+      <button type="button" class="toolbar-btn" title="插入链接" @click="openLinkDialog">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
       </button>
     </div>
@@ -91,8 +157,25 @@ function focusEditor() {
       :data-placeholder="placeholder"
       @input="onInput"
       @paste="onPaste"
-      v-html="modelValue"
     ></div>
+
+    <!-- Link dialog -->
+    <div v-if="linkOpen" class="link-overlay" @click.self="linkOpen = false">
+      <div class="link-panel">
+        <div class="link-title">插入链接</div>
+        <input
+          v-model="linkUrl"
+          class="link-input"
+          placeholder="输入链接地址，如 https://example.com"
+          @keyup.enter="applyLink"
+          @keyup.esc="linkOpen = false"
+        />
+        <div class="link-actions">
+          <button type="button" class="link-btn cancel" @click="linkOpen = false">取消</button>
+          <button type="button" class="link-btn ok" @click="applyLink">确定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -173,5 +256,85 @@ function focusEditor() {
 .editor-content :deep(a) {
   color: var(--accent);
   text-decoration: underline;
+}
+
+/* ── Link dialog ── */
+.link-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
+.link-panel {
+  width: 360px;
+  padding: 16px;
+  border-radius: 10px;
+  background-color: var(--bg-card);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+}
+
+.link-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.link-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  outline: none;
+}
+
+.link-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.18);
+}
+
+.link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.link-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+.link-btn.cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.link-btn.cancel:hover {
+  background: var(--row-hover);
+}
+
+.link-btn.ok {
+  background: var(--accent);
+  color: var(--bg-card);
+}
+
+.link-btn.ok:hover {
+  filter: brightness(0.95);
 }
 </style>

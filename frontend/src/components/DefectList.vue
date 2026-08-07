@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { buildModulePath } from '../composables/useDefect';
 import type { DefectInfo, DefectModuleInfo } from '../types';
+import UserAvatar from './UserAvatar.vue';
 
 const props = defineProps<{
   defects: DefectInfo[];
@@ -12,19 +13,59 @@ const props = defineProps<{
   modules: DefectModuleInfo[];
   currentUserId: number;
   externalModuleId?: number | null;
+  filterAssigneeId?: number | null;
+  filterCreatorId?: number | null;
 }>();
 
 const emit = defineEmits<{
-  (e: 'select', defect: DefectInfo): void;
   (e: 'pageChange', page: number): void;
   (e: 'pageSizeChange', size: number): void;
   (e: 'filterChange', filters: { status: string; severity: string; priority: string; moduleId: number | null; assigneeId: number | null; creatorId: number | null; search: string }): void;
   (e: 'confirm', defect: DefectInfo): void;
   (e: 'resolve', defect: DefectInfo): void;
   (e: 'close', defect: DefectInfo): void;
+  (e: 'view', defect: DefectInfo): void;
   (e: 'edit', defect: DefectInfo): void;
   (e: 'copy', defect: DefectInfo): void;
+  (e: 'assign', defect: DefectInfo): void;
+  (e: 'delete', ids: number[]): void;
 }>();
+
+const selectedIds = ref<Set<number>>(new Set());
+
+const selectedCount = computed(() => selectedIds.value.size);
+
+const isAllSelected = computed(
+  () => props.defects.length > 0 && props.defects.every(d => selectedIds.value.has(d.id)),
+);
+
+function toggleSelect(defect: DefectInfo) {
+  const next = new Set(selectedIds.value);
+  if (next.has(defect.id)) next.delete(defect.id);
+  else next.add(defect.id);
+  selectedIds.value = next;
+}
+
+function toggleSelectAll() {
+  const next = new Set(selectedIds.value);
+  if (isAllSelected.value) {
+    props.defects.forEach(d => next.delete(d.id));
+  } else {
+    props.defects.forEach(d => next.add(d.id));
+  }
+  selectedIds.value = next;
+}
+
+function clearSelection() {
+  selectedIds.value = new Set();
+}
+
+// Expose selection state to parent (DefectView) so the delete button can live in the header
+defineExpose({
+  selectedCount,
+  getSelectedIds: () => Array.from(selectedIds.value),
+  clearSelection,
+});
 
 const filterStatus = ref('');
 const filterSeverity = ref('');
@@ -63,6 +104,7 @@ const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.page
 
 function goToPage(page: number) {
   if (page < 1 || page > totalPages.value) return;
+  clearSelection();
   emit('pageChange', page);
 }
 
@@ -132,6 +174,7 @@ function formatTime(iso: string): string {
 }
 
 function applyFilters() {
+  if (syncingParent) return;
   emit('filterChange', {
     status: filterStatus.value,
     severity: filterSeverity.value,
@@ -144,10 +187,14 @@ function applyFilters() {
 }
 
 function toggleAssigneeFilter() {
+  // Mutually exclusive with "我创建的": selecting one clears the other
+  filterCreatorId.value = null;
   filterAssigneeId.value = filterAssigneeId.value === props.currentUserId ? null : props.currentUserId;
 }
 
 function toggleCreatorFilter() {
+  // Mutually exclusive with "指派给我": selecting one clears the other
+  filterAssigneeId.value = null;
   filterCreatorId.value = filterCreatorId.value === props.currentUserId ? null : props.currentUserId;
 }
 
@@ -189,6 +236,24 @@ function clearFilters() {
 }
 
 watch([filterStatus, filterSeverity, filterPriority, filterModuleId, filterAssigneeId, filterCreatorId, filterSearch], applyFilters);
+
+// Sync assignee/creator filters from parent (used for default "指派给我" on first load)
+let syncingParent = false;
+watch(() => props.filterAssigneeId, (v) => {
+  const next = v ?? null;
+  if (next === filterAssigneeId.value) return;
+  syncingParent = true;
+  filterAssigneeId.value = next;
+  syncingParent = false;
+});
+
+watch(() => props.filterCreatorId, (v) => {
+  const next = v ?? null;
+  if (next === filterCreatorId.value) return;
+  syncingParent = true;
+  filterCreatorId.value = next;
+  syncingParent = false;
+});
 
 // Sync external module filter from parent sidebar
 watch(() => props.externalModuleId, (newVal) => {
@@ -246,7 +311,7 @@ watch(() => props.externalModuleId, (newVal) => {
         <select
           class="filter-select"
           :value="filterStatus"
-          @change="filterStatus = $event.target.value"
+          @change="filterStatus = ($event.target as HTMLSelectElement).value"
         >
           <option v-for="opt in statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
@@ -256,7 +321,7 @@ watch(() => props.externalModuleId, (newVal) => {
         <select
           class="filter-select"
           :value="filterSeverity"
-          @change="filterSeverity = $event.target.value"
+          @change="filterSeverity = ($event.target as HTMLSelectElement).value"
         >
           <option v-for="opt in severityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
@@ -266,7 +331,7 @@ watch(() => props.externalModuleId, (newVal) => {
         <select
           class="filter-select"
           :value="filterPriority"
-          @change="filterPriority = $event.target.value"
+          @change="filterPriority = ($event.target as HTMLSelectElement).value"
         >
           <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
@@ -276,7 +341,7 @@ watch(() => props.externalModuleId, (newVal) => {
         <select
           class="filter-select"
           :value="filterModuleId || ''"
-          @change="filterModuleId = $event.target.value ? Number($event.target.value) : null"
+          @change="filterModuleId = ($event.target as HTMLSelectElement).value ? Number(($event.target as HTMLSelectElement).value) : null"
         >
           <option value="">全部模块</option>
           <option v-for="mod in flattenModules(modules)" :key="mod.id" :value="mod.id">{{ mod.name }}</option>
@@ -306,7 +371,12 @@ watch(() => props.externalModuleId, (newVal) => {
         <thead>
           <tr>
             <th class="col-checkbox">
-              <input type="checkbox" class="table-checkbox" />
+              <input
+                type="checkbox"
+                class="table-checkbox"
+                :checked="isAllSelected"
+                @change="toggleSelectAll"
+              />
             </th>
             <th class="col-id">ID</th>
             <th class="col-title">标题</th>
@@ -323,14 +393,20 @@ watch(() => props.externalModuleId, (newVal) => {
             v-for="defect in defects"
             :key="defect.id"
             class="defect-row"
-            @click="emit('select', defect)"
+            :class="{ 'defect-row-selected': selectedIds.has(defect.id) }"
           >
             <td class="col-checkbox">
-              <input type="checkbox" class="table-checkbox" @click.stop />
+              <input
+                type="checkbox"
+                class="table-checkbox"
+                :checked="selectedIds.has(defect.id)"
+                @change="toggleSelect(defect)"
+                @click.stop
+              />
             </td>
             <td class="cell-id">#{{ defect.id }}</td>
             <td class="cell-title">
-              <div class="cell-title-main">{{ defect.title }}</div>
+              <div class="cell-title-main cell-title-clickable" title="点击查看详情" @click="emit('view', defect)">{{ defect.title }}</div>
               <div class="cell-title-sub">{{ buildModulePath(props.modules, defect.module_id) }}</div>
             </td>
             <td class="cell-severity">
@@ -359,10 +435,15 @@ watch(() => props.externalModuleId, (newVal) => {
               </span>
             </td>
             <td class="cell-assignee">
-              <div v-if="defect.assignee_name" class="user-avatar">
-                <span class="user-avatar-text">{{ defect.assignee_name.charAt(0).toUpperCase() }}</span>
+              <div
+                class="assignee-cell assignee-cell-clickable"
+                :class="{ 'assignee-cell-unassigned': !defect.assignee_name }"
+                title="点击指派/重新指派"
+                @click.stop="emit('assign', defect)"
+              >
+                <UserAvatar :name="defect.assignee_name || '未指派'" :avatar="defect.assignee_avatar || ''" :size="24" />
+                <span class="assignee-cell-name">{{ defect.assignee_name || '未指派' }}</span>
               </div>
-              <span v-else class="text-muted">--</span>
             </td>
             <td class="cell-creator">
               <span class="text-muted">{{ defect.creator_name }}</span>
@@ -494,6 +575,7 @@ watch(() => props.externalModuleId, (newVal) => {
   gap: 24px;
   padding: 16px 0;
   background-color: var(--bg-card);
+  margin-left: 16px;
   flex-shrink: 0;
 }
 
@@ -542,8 +624,8 @@ watch(() => props.externalModuleId, (newVal) => {
   border: none;
   background: transparent;
   font-family: var(--font);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
   color: var(--text-secondary);
   border-radius: 100px;
   cursor: pointer;
@@ -795,16 +877,19 @@ watch(() => props.externalModuleId, (newVal) => {
 }
 
 .col-time {
-  width: 160px;
+  width: 185px;
 }
 
 .defect-row {
   border-bottom: 1px solid var(--border);
-  cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .defect-row:hover {
+  background-color: var(--color-primary-soft);
+}
+
+.defect-row-selected {
   background-color: var(--color-primary-soft);
 }
 
@@ -826,7 +911,7 @@ watch(() => props.externalModuleId, (newVal) => {
   font-weight: 700;
   color: var(--text-muted);
   font-size: 11px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
 }
 
 .cell-title {
@@ -839,10 +924,25 @@ watch(() => props.externalModuleId, (newVal) => {
   line-height: 18px;
 }
 
+.cell-title-clickable {
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: color 0.15s;
+}
+
+.cell-title-clickable:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 .cell-title-sub {
   font-size: 12px;
   color: var(--text-muted);
   line-height: 16px;
+}
+
+.cell-time {
+  white-space: nowrap;
 }
 
 .severity-badge {
@@ -868,20 +968,49 @@ watch(() => props.externalModuleId, (newVal) => {
   font-weight: 600;
 }
 
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: var(--color-primary);
-  display: flex;
+.assignee-cell {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 6px;
+  min-width: 0;
 }
 
-.user-avatar-text {
-  color: var(--bg-card);
-  font-size: 13px;
-  font-weight: 600;
+.assignee-cell-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  border-radius: 100px;
+  padding: 2px 6px 2px 2px;
+  margin-left: -2px;
+}
+
+.assignee-cell-clickable:hover {
+  background-color: var(--color-primary-soft);
+}
+
+.assignee-cell-clickable.text-muted:hover {
+  color: var(--color-primary);
+}
+
+.assignee-cell-unassigned {
+  color: var(--text-muted);
+}
+
+.assignee-cell-unassigned .assignee-cell-name {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.assignee-cell-unassigned:hover .assignee-cell-name {
+  color: var(--color-primary);
+}
+
+.assignee-cell-name {
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .text-muted {

@@ -1,4 +1,4 @@
-import { useApi } from './useApi';
+import { useApi, authHeaders } from './useApi';
 import type {
   DefectModuleInfo,
   DefectInfo,
@@ -7,6 +7,7 @@ import type {
   DefectCommentInfo,
   DefectCreateData,
   DefectDetailResponse,
+  TestCaseInfo,
 } from '../types';
 
 export interface TempAttachmentInfo {
@@ -39,12 +40,16 @@ export function buildModulePath(modules: DefectModuleInfo[], targetId: number): 
 export function useDefect(projectId?: number) {
   const api = useApi(projectId);
 
-  async function getModules(projectId: number): Promise<DefectModuleInfo[]> {
-    return api.get<DefectModuleInfo[]>(`/defects/modules?project_id=${projectId}`);
+  async function getModules(projectId: number, branchId?: number): Promise<DefectModuleInfo[]> {
+    let path = `/defects/modules?project_id=${projectId}`;
+    if (branchId) path += `&branch_id=${branchId}`;
+    return api.get<DefectModuleInfo[]>(path);
   }
 
-  async function createModule(data: { project_id: number; name: string; parent_id: number }): Promise<void> {
-    await api.post(`/defects/modules?project_id=${data.project_id}`, {
+  async function createModule(data: { project_id: number; name: string; parent_id: number }, branchId?: number): Promise<void> {
+    let path = `/defects/modules?project_id=${data.project_id}`;
+    if (branchId) path += `&branch_id=${branchId}`;
+    await api.post(path, {
       name: data.name,
       parent_id: data.parent_id,
       sort_order: 0,
@@ -133,6 +138,10 @@ export function useDefect(projectId?: number) {
     return api.post<{ id: number }>(`/defects/${id}/copy`, {});
   }
 
+  async function deleteDefect(id: number): Promise<void> {
+    await api.del(`/defects/${id}`);
+  }
+
   async function getLogs(id: number): Promise<DefectLogInfo[]> {
     return api.get<DefectLogInfo[]>(`/defects/${id}/logs`);
   }
@@ -180,6 +189,26 @@ export function useDefect(projectId?: number) {
     );
   }
 
+  async function getDefectsByCase(projectId: number, caseUid: string): Promise<DefectInfo[]> {
+    return api.get<DefectInfo[]>(
+      `/defects/by-case?project_id=${projectId}&case_uid=${encodeURIComponent(caseUid)}`,
+    );
+  }
+
+  /** Load test cases for a given project + version (branch). Version-isolated. */
+  async function loadCases(projectId: number, branchId: number): Promise<TestCaseInfo[]> {
+    const res = await fetch(`/api/tests?project_id=${projectId}&version=${branchId}`, {
+      headers: { ...authHeaders() },
+    });
+    const json = await res.json();
+    if (json.code !== 200) throw new Error(json.msg || '加载用例失败');
+    const data = json.data;
+    if (!data || !data.modules) return [];
+    return (data.modules as any[]).flatMap(
+      (m: any) => (m.classes as any[]).flatMap((c: any) => c.items),
+    );
+  }
+
   async function getComments(defectId: number): Promise<DefectCommentInfo[]> {
     return api.get<DefectCommentInfo[]>(`/defects/${defectId}/comments`);
   }
@@ -208,10 +237,13 @@ export function useDefect(projectId?: number) {
     updateDefect,
     transitionDefect,
     copyDefect,
+    deleteDefect,
     getLogs,
     getAttachments,
     getRecentDefects,
     getMyDefects,
+    getDefectsByCase,
+    loadCases,
     uploadAttachment,
     uploadTempAttachment,
     deleteAttachment,

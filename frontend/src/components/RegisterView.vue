@@ -3,6 +3,8 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '../composables/useAuth';
 import { defaultAvatars } from '../assets/default-avatars';
+import BaseButton from './base/BaseButton.vue';
+import BaseInput from './base/BaseInput.vue';
 
 const router = useRouter();
 const auth = useAuth();
@@ -113,53 +115,37 @@ async function handleRegister() {
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">用户名</label>
-          <input
+          <BaseInput
             v-model="username"
             type="text"
             placeholder="输入用户名"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">昵称</label>
-          <input
+          <BaseInput
             v-model="nickname"
             type="text"
             placeholder="输入昵称"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">密码</label>
-          <input
+          <BaseInput
             v-model="password"
             type="password"
             placeholder="至少6位密码"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
         <div class="mb-4">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">确认密码</label>
-          <input
+          <BaseInput
             v-model="confirmPassword"
             type="password"
             placeholder="再次输入密码"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
@@ -204,17 +190,15 @@ async function handleRegister() {
           </div>
         </div>
 
-        <button
+        <BaseButton
+          variant="primary"
+          size="md"
+          class="w-full"
           @click="handleRegister"
           :disabled="loading"
-          class="w-full py-2.5 rounded-[8px] text-[13px] font-medium cursor-pointer transition-all"
-          style="background-color: var(--accent); color: #fff;"
-          :style="{ opacity: loading ? 0.7 : 1 }"
-          @mouseenter="!loading && (($event.target as HTMLElement).style.opacity = '0.9')"
-          @mouseleave="!loading && (($event.target as HTMLElement).style.opacity = '1')"
         >
           {{ loading ? '注册中...' : '注册' }}
-        </button>
+        </BaseButton>
 
         <div class="mt-4 text-center">
           <span class="text-[12.5px]" style="color: var(--text-secondary);">已有账号？</span>

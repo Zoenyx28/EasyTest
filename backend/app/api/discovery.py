@@ -1,14 +1,15 @@
-"""Test discovery API endpoints."""
+"""测试发现 API 端点"""
 from __future__ import annotations
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from app.models.schemas import DiscoverResponse, TestCaseInfo, TestClassInfo, TestModuleInfo, TestHistoryItem
 from app.config import PROJECTS_SOURCE_DIR
 from app.services import discoverer
 from app.services.executor import set_discovery_cache
 from app.db import crud
 from app.api.common import ok
+from app.api.auth import get_current_user
 
 router = APIRouter(prefix='/api/tests', tags=['discovery'])
 
@@ -44,6 +45,7 @@ def _build_discovery_response(items: list[dict]) -> DiscoverResponse:
                     module=c.get('module', ''),
                     fullName=c.get('fullName', ''),
                     description=c.get('description', ''),
+                    steps=c.get('steps', ''),
                     tags=c.get('tags', []),
                     filePath=c.get('filePath', ''),
                     testType=c.get('testType', 'api'),
@@ -67,7 +69,7 @@ def _build_discovery_response(items: list[dict]) -> DiscoverResponse:
 
 @router.get('/count')
 async def get_tests_count(project_id: int = Query(default=None), version: int = Query(default=0)):
-    """Return how many test cases are stored in DB."""
+    """返回数据库中存储的测试用例数量"""
     branch_id = 0
     if project_id:
         branch_id = await crud.resolve_branch_id(project_id, version)
@@ -78,11 +80,17 @@ async def get_tests_count(project_id: int = Query(default=None), version: int = 
 
 
 @router.get('')
-async def get_tests(project_id: int = Query(default=None), version: int = Query(default=0)):
-    """Return test cases from database cache only; no auto-collection."""
+async def get_tests(request: Request, project_id: int = Query(default=None), version: int = Query(default=0)):
+    """返回数据库缓存中的测试用例；不自动收集"""
     target_project_id = project_id
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        user_id = user['id']
+    except Exception:
+        user_id = None
     if not target_project_id:
-        active_project = await crud.get_active_project()
+        active_project = await crud.get_active_project(user_id=user_id)
         if active_project:
             target_project_id = active_project['id']
     
@@ -101,11 +109,17 @@ async def get_tests(project_id: int = Query(default=None), version: int = Query(
 
 
 @router.post('/refresh')
-async def refresh_tests(project_id: int = Query(default=None), version: int = Query(default=0)):
+async def refresh_tests(request: Request, project_id: int = Query(default=None), version: int = Query(default=0)):
     """Run pytest collection, persist to DB, then return results."""
     target_project_id = project_id
+    user_id = None
+    try:
+        user = await get_current_user(request)
+        user_id = user['id']
+    except Exception:
+        user_id = None
     if not target_project_id:
-        active_project = await crud.get_active_project()
+        active_project = await crud.get_active_project(user_id=user_id)
         if active_project:
             target_project_id = active_project['id']
     
@@ -113,7 +127,7 @@ async def refresh_tests(project_id: int = Query(default=None), version: int = Qu
     
     # Determine discovery path from project's source directory
     discovery_path = str(PROJECTS_SOURCE_DIR / f'project_{target_project_id}') if target_project_id else None
-    data = await discoverer.discover_tests_at_path(discovery_path) if discovery_path else await discoverer.discover_tests()
+    data = await discoverer.discover_tests_at_path(discovery_path, target_project_id or 0) if discovery_path else await discoverer.discover_tests()
     flat_items = []
     for mod in data.modules:
         for cls in mod.classes:
@@ -166,6 +180,31 @@ async def get_test_history(uid: str, limit: int = 5):
     items = await crud.get_test_history(uid, limit=limit)
     data = [TestHistoryItem(**item).model_dump() for item in items]
     return ok(data)
+
+
+@router.put('/{uid}')
+async def update_test_detail(
+    uid: str,
+    body: dict = Body(...),
+    project_id: int = Query(default=None),
+    version: int = Query(default=0),
+):
+    """Update editable fields (description/steps/module) of a single test case."""
+    branch_id = await crud.resolve_branch_id(project_id or 0, version)
+    description = body.get('description')
+    steps = body.get('steps')
+    module = body.get('module')
+    info = await crud.update_test_case(
+        uid=uid,
+        project_id=project_id or 0,
+        branch_id=branch_id,
+        description=description,
+        steps=steps,
+        module=module,
+    )
+    if info is None:
+        raise HTTPException(status_code=404, detail='未找到测试用例')
+    return ok(info)
 
 
 @router.get('/{uid}')

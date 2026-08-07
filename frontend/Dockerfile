@@ -1,15 +1,5 @@
-# Build stage
-FROM node:20-alpine AS build
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-# Serve stage
+# Single-stage image: dist is built on the build machine (npm run build)
+# then copied in, so the server only needs the nginx base image.
 FROM nginx:stable-alpine
 
 # Fix: run as root so nginx can write pid file
@@ -22,7 +12,7 @@ RUN sed -i 's|pid\s\+/run/nginx.pid;|pid /tmp/nginx.pid;|g' /etc/nginx/nginx.con
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 RUN sed -i 's/listen 80;/listen 15731;/g' /etc/nginx/conf.d/default.conf
 
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY dist /usr/share/nginx/html
 
 # Override entrypoint: bypass privilege drop so nginx runs as root
 ENTRYPOINT []

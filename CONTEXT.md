@@ -193,7 +193,8 @@ CRUD 操作用于项目级别对缺陷进行分类的模块树。
 
 ### 镜像标签
 
-手动部署阶段使用的镜像标签，格式 `easy-test-<component>:v<N>`（如 `easy-test-backend:v2`、`easy-test-frontend:v2`）。Jenkins 接入后切换为 Registry 路径 `10.19.195.109:5000/easytest-<component>:<tag>`。详见 ADR-0004。
+当前版本`<version>:v1`
+手动部署阶段使用的镜像标签，格式 `easy-test-<component>:<version>`（如 `easy-test-backend:v2`、`easy-test-frontend:v2`）。Jenkins 接入后切换为 Registry 路径 `10.19.195.109:5000/easytest-<component>:<tag>`。详见 ADR-0004。
 
 ### 部署单元
 

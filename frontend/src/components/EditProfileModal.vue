@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useAuth } from '../composables/useAuth';
 import { defaultAvatars } from '../assets/default-avatars';
+import BaseButton from './base/BaseButton.vue';
+import BaseInput from './base/BaseInput.vue';
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -18,16 +20,32 @@ const previewUrl = ref<string | null>(null);
 
 const currentAvatar = ref(auth.currentUser.value?.avatar_url || '');
 
-function getDefaultAvatarColor(id: string): string {
-  const colors: Record<string, string> = {
-    'default:1': '#FF6B6B',
-    'default:2': '#4ECDC4',
-    'default:3': '#45B7D1',
-    'default:4': '#96CEB4',
-    'default:5': '#FFEAA7',
-  };
-  return colors[id] || 'var(--accent)';
+function getDefaultSvgFor(url: string): string {
+  let num = 0;
+  const m = url.match(/^\/avatars\/(\d+)\.svg$/);
+  if (m) num = parseInt(m[1], 10);
+  else if (url.startsWith('default:')) num = parseInt(url.split(':')[1], 10);
+  const av = defaultAvatars[num - 1];
+  return av ? av.svg : '';
 }
+
+function isDefaultAvatar(url: string): boolean {
+  return /^\/avatars\/\d+\.svg$/.test(url) || url.startsWith('default:');
+}
+
+// Preview: newly selected default avatar → its SVG; otherwise nothing
+const previewDefaultSvg = computed(() => {
+  if (selectedAvatar.value) return getDefaultSvgFor(selectedAvatar.value);
+  if (currentAvatar.value && isDefaultAvatar(currentAvatar.value)) return getDefaultSvgFor(currentAvatar.value);
+  return '';
+});
+
+// Preview: newly uploaded image (data URL) or the current custom image
+const previewImageUrl = computed(() => {
+  if (previewUrl.value) return previewUrl.value;
+  if (currentAvatar.value && !isDefaultAvatar(currentAvatar.value)) return currentAvatar.value;
+  return '';
+});
 
 function selectDefaultAvatar(id: string) {
   selectedAvatar.value = id;
@@ -109,21 +127,26 @@ async function handleSave() {
           {{ error }}
         </div>
 
-        <!-- Current avatar preview -->
+        <!-- Avatar preview (updates live while selecting) -->
         <div class="flex justify-center mb-4">
           <div
             class="w-[64px] h-[64px] rounded-full overflow-hidden flex items-center justify-center text-[24px] font-bold"
             :style="{
-              backgroundColor: currentAvatar.startsWith('default:') ? getDefaultAvatarColor(currentAvatar) : 'var(--card-bg-2)',
+              backgroundColor: previewDefaultSvg ? 'transparent' : 'var(--card-bg-2)',
               border: '2px solid var(--border-strong)',
             }"
           >
             <img
-              v-if="currentAvatar && !currentAvatar.startsWith('default:')"
-              :src="currentAvatar"
+              v-if="previewImageUrl"
+              :src="previewImageUrl"
               class="w-full h-full object-cover"
-              alt="current avatar"
+              alt="avatar preview"
             />
+            <span
+              v-else-if="previewDefaultSvg"
+              class="avatar-preview-svg"
+              v-html="previewDefaultSvg"
+            ></span>
             <span v-else style="color: #fff;">{{ auth.currentUser?.nickname?.charAt(0) || '?' }}</span>
           </div>
         </div>
@@ -131,14 +154,10 @@ async function handleSave() {
         <!-- Nickname -->
         <div class="mb-4">
           <label class="block text-[12px] font-medium mb-1.5" style="color: var(--text-secondary);">昵称</label>
-          <input
+          <BaseInput
             v-model="nickname"
             type="text"
             placeholder="输入昵称"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
@@ -195,16 +214,27 @@ async function handleSave() {
         >
           取消
         </button>
-        <button
+        <BaseButton
+          variant="primary"
+          size="md"
           @click="handleSave"
           :disabled="saving"
-          class="px-4 py-1.5 rounded-[8px] text-[12.5px] font-medium cursor-pointer transition-all"
-          style="background-color: var(--accent); color: #fff;"
-          :style="{ opacity: saving ? 0.7 : 1 }"
         >
           {{ saving ? '保存中...' : '保存' }}
-        </button>
+        </BaseButton>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.avatar-preview-svg {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.avatar-preview-svg :deep(svg) {
+  width: 100%;
+  height: 100%;
+}
+</style>

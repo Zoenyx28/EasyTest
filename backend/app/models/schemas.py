@@ -1,7 +1,7 @@
 """Pydantic data models for the test management platform."""
 from __future__ import annotations
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 from pydantic import BaseModel
 
 
@@ -35,6 +35,7 @@ class TestCaseInfo(BaseModel):
     module: str
     fullName: str
     description: str = ''
+    steps: str | None = ''  # JSON string of test steps, e.g. [{"type":"api","description":"调用login接口","code":"auth_api.login"}]
     tags: list[str] = []
     filePath: str = ''
     testType: str = 'api'
@@ -282,6 +283,7 @@ class DefectCreate(BaseModel):
     severity: str = 'P3'
     priority: str = 'P3'
     assignee_id: int = 0
+    case_uid: str = ''
     bug_type: str = 'code_error'
     deadline: str = ''
     attachments: list[dict] = []
@@ -291,10 +293,11 @@ class DefectUpdate(BaseModel):
     title: str = ''
     description: str = ''
     steps: str = ''
-    module_id: int = 0
+    module_id: Optional[int] = None
     severity: str = ''
     priority: str = ''
-    assignee_id: int = 0
+    assignee_id: Optional[int] = None
+    case_uid: Optional[str] = None
     bug_type: str = ''
     deadline: str = ''
     resolved_version: int = 0

@@ -11,7 +11,7 @@ RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debi
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

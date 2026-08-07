@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useAuth } from '../composables/useAuth';
+import BaseInput from './base/BaseInput.vue';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -96,40 +97,28 @@ function handleClose() {
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">当前密码</label>
-          <input
+          <BaseInput
             v-model="oldPassword"
             type="password"
             placeholder="输入当前密码"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">新密码</label>
-          <input
+          <BaseInput
             v-model="newPassword"
             type="password"
             placeholder="至少6位新密码"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
 
         <div class="mb-3">
           <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">确认新密码</label>
-          <input
+          <BaseInput
             v-model="confirmNewPassword"
             type="password"
             placeholder="再次输入新密码"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
           />
         </div>
       </div>

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useApi } from '../composables/useApi';
 import { useProject } from '../composables/useProject';
 import type { TestModuleInfo, TestClassInfo, TestCaseInfo, TestHistoryItem } from '../types';
+import CaseDetailDialog from './CaseDetailDialog.vue';
 
 defineProps<{
   globalSearch: string;
@@ -37,6 +38,16 @@ const statusMap = ref<Record<string, string>>({});
 const viewedNewUids = ref<Set<string>>(new Set());
 const searchQuery = ref('');
 const initialLoadDone = ref(false);
+
+const projectId = computed(() => activeProject.value?.id || 0);
+const selectedCase = ref<TestCaseInfo | null>(null);
+const showCaseDetail = ref(false);
+
+function openCaseDetail(item: TestCaseInfo) {
+  selectedCase.value = item;
+  markViewed(item.uid);
+  showCaseDetail.value = true;
+}
 
 function markViewed(uid: string) {
   if (!viewedNewUids.value.has(uid)) {
@@ -445,6 +456,10 @@ function formatDuration(ms: number): string {
   return (ms / 1000).toFixed(1) + 's';
 }
 
+function chineseNameOf(item: TestCaseInfo): string {
+  return item.description !== item.name ? (item.description || item.name) : item.name;
+}
+
 function formatTime(iso: string): string {
   if (!iso) return '--';
   try { return iso.substring(11, 19); } catch { return iso; }
@@ -492,14 +507,13 @@ function formatTime(iso: string): string {
           <!-- All tests root -->
           <div
             @click="selectAll"
-            class="tree-item"
+            class="tree-item tree-item-root"
             :class="!selectedModule ? 'tree-item-active' : 'tree-item-hoverable'"
           >
             <svg class="tree-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             </svg>
             <span class="tree-item-label">tests</span>
-            <span class="tree-item-count">{{ filteredModules.reduce((s, m) => s + m.total, 0) }}</span>
           </div>
 
           <div class="tree-scroll-area">
@@ -647,7 +661,7 @@ function formatTime(iso: string): string {
                       </label>
                     </td>
                     <td class="cell-name">
-                      <div class="test-name" :class="item.isNew && !viewedNewUids.has(item.uid) ? 'text-new' : ''">
+                      <div class="test-name clickable" :class="item.isNew && !viewedNewUids.has(item.uid) ? 'text-new' : ''" @click="openCaseDetail(item)" :title="chineseNameOf(item)">
                         {{ item.description !== item.name ? (item.description || item.name) : item.name }}
                       </div>
                       <div v-if="item.description !== item.name && item.description" class="test-method-name">{{ item.name }}</div>
@@ -730,6 +744,16 @@ function formatTime(iso: string): string {
         </template>
       </div>
     </main>
+
+    <!-- Case Detail Dialog -->
+    <CaseDetailDialog
+      :isOpen="showCaseDetail"
+      :case="selectedCase"
+      :projectId="projectId"
+      @close="showCaseDetail = false"
+      @updated="loadTests"
+      @showToast="(msg: string) => emit('showToast', msg)"
+    />
   </div>
 </template>
 
@@ -845,6 +869,14 @@ function formatTime(iso: string): string {
 
 .tree-item-hoverable:hover {
   background: var(--row-hover);
+}
+
+.tree-item-root {
+  font-size: 11.5px;
+}
+
+.tree-item-root.tree-item-active {
+  font-weight: 400;
 }
 
 .tree-item-active {
@@ -1190,6 +1222,15 @@ function formatTime(iso: string): string {
   font-weight: 500;
   color: var(--text-primary);
   line-height: 1.35;
+}
+
+.test-name.clickable {
+  cursor: pointer;
+}
+
+.test-name.clickable:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .text-new {

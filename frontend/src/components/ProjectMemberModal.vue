@@ -3,6 +3,7 @@ import { ref, watch, onMounted } from 'vue';
 import { useProjectMembers } from '../composables/useProjectMembers';
 import { useAuth } from '../composables/useAuth';
 import type { ProjectMemberInfo, UserSearchResult } from '../types';
+import UserAvatar from './UserAvatar.vue';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -146,12 +147,11 @@ watch(searchQuery, () => {
               style="background-color: var(--input-bg);"
             >
               <!-- Avatar -->
-              <div
-                class="w-[28px] h-[28px] rounded-full shrink-0 flex items-center justify-center text-[11px] font-medium"
-                style="background-color: var(--accent); color: #fff;"
-              >
-                {{ member.nickname ? member.nickname.charAt(0).toUpperCase() : '?' }}
-              </div>
+              <UserAvatar
+                :name="member.nickname || member.username"
+                :avatar="member.avatar_url"
+                :size="28"
+              />
               <!-- User info -->
               <div class="flex-1 min-w-0">
                 <div class="text-[12.5px] font-medium truncate" style="color: var(--text-primary);">
@@ -183,14 +183,11 @@ watch(searchQuery, () => {
         <!-- Add member section -->
         <div>
           <label class="block text-[12px] font-medium mb-2" style="color: var(--text-secondary);">添加成员</label>
-          <input
+          <BaseInput
             v-model="searchQuery"
             type="text"
             placeholder="搜索用户昵称或用户名"
-            class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none transition-all mb-2"
-            style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-            @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-            @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
+            class="mb-2"
           />
           <!-- Search results -->
           <div class="max-h-[160px] overflow-y-auto space-y-1">
@@ -207,12 +204,11 @@ watch(searchQuery, () => {
               style="background-color: var(--input-bg);"
               @click="handleAddMember(user.id)"
             >
-              <div
-                class="w-[28px] h-[28px] rounded-full shrink-0 flex items-center justify-center text-[11px] font-medium"
-                style="background-color: var(--accent); color: #fff;"
-              >
-                {{ user.nickname ? user.nickname.charAt(0).toUpperCase() : '?' }}
-              </div>
+              <UserAvatar
+                :name="user.nickname || user.username"
+                :avatar="user.avatar_url"
+                :size="28"
+              />
               <div class="flex-1 min-w-0">
                 <div class="text-[12.5px] font-medium truncate" style="color: var(--text-primary);">{{ user.nickname || user.username }}</div>
                 <div class="text-[10.5px] truncate" style="color: var(--text-tertiary);">@{{ user.username }}</div>

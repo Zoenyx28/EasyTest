@@ -300,12 +300,11 @@ onMounted(() => {
           <h3 class="text-[14px] font-semibold mb-4" style="color: var(--text-primary);">新建分支</h3>
           <div class="mb-3">
             <label class="block text-[12px] mb-1" style="color: var(--text-secondary);">分支名称</label>
-            <input
+            <BaseInput
               v-model="newBranchName"
+              type="text"
               placeholder="输入分支名称"
-              class="w-full px-3 py-2 rounded-[8px] text-[13px] outline-none"
-              style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary);"
-              @keyup.enter="handleCreateBranch"
+              @enter="handleCreateBranch"
             />
           </div>
           <div class="mb-4">

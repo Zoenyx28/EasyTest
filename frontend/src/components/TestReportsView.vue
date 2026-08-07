@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { useApi } from '../composables/useApi';
 import { useProject } from '../composables/useProject';
+import BaseTag from './base/BaseTag.vue';
 import type { ReportListSummary, HistoryReport, ReportSummary, HistoryReportResult } from '../types';
 
 defineProps<{
@@ -376,17 +377,12 @@ const STATUS_LABELS: Record<string, string> = {
                           <div class="text-[12.5px]" style="color: var(--text-primary);">{{ extractMName(item.fullName) }}</div>
                           <div class="text-[11px] font-code mt-[1px]" style="color: var(--text-tertiary);">{{ item.fullName }}</div>
                         </div>
-                        <span
-                          class="text-[10.5px] font-semibold px-2 py-[2px] rounded-full"
-                          :class="{
-                            'bg-[var(--green)]/16 text-[var(--color-success)]': item.status === 'passed',
-                            'bg-[var(--red)]/15 text-[var(--red)]': item.status === 'failed',
-                            'bg-[var(--purple)]/15 text-[var(--purple)]': item.status === 'broken',
-                            'bg-[var(--input-bg)] text-[var(--text-secondary)]': item.status === 'skipped'
-                          }"
+                        <BaseTag
+                          size="sm"
+                          :tone="item.status === 'passed' ? 'green' : item.status === 'failed' ? 'red' : item.status === 'broken' ? 'purple' : 'gray'"
                         >
                           {{ STATUS_LABELS[item.status] || item.status }}
-                        </span>
+                        </BaseTag>
                       </div>
                     </template>
                   </template>

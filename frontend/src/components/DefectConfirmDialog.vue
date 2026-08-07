@@ -61,6 +61,10 @@ function resetForm() {
 
 async function handleSubmit() {
   if (!props.defect) return;
+  if (!assigneeId.value) {
+    emit('showToast', '请选择指派对象');
+    return;
+  }
   saving.value = true;
   try {
     await defectApi.transitionDefect(
@@ -69,6 +73,7 @@ async function handleSubmit() {
       assigneeId.value,
       undefined,
       comment.value,
+      undefined,
       undefined,
       bugType.value,
       priority.value,
@@ -103,9 +108,9 @@ watch(() => props.isOpen, async (newVal) => {
 
         <div class="dialog-body">
           <div class="form-group">
-            <label class="form-label">指派给</label>
+            <label class="form-label">指派给 <span class="required-mark">*</span></label>
             <select class="form-select" v-model="assigneeId">
-              <option :value="0">未指派</option>
+              <option :value="0" disabled>请选择指派对象</option>
               <option v-for="m in members" :key="m.id" :value="m.user_id">
                 {{ m.nickname || m.username }}
               </option>
@@ -242,6 +247,11 @@ watch(() => props.isOpen, async (newVal) => {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-family: var(--font);
+}
+
+.required-mark {
+  color: #e64545;
+  text-transform: none;
 }
 
 .form-select {

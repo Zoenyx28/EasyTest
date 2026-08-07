@@ -31,7 +31,7 @@ watch(() => props.message, (msg) => {
   <Transition name="toast">
     <div 
       v-if="visible && message" 
-      class="fixed right-[20px] bottom-[20px] flex items-center gap-[8px] px-[14px] py-[9px] rounded-[10px] border text-[12.5px] z-60"
+      class="fixed right-[20px] bottom-[20px] flex items-center gap-[8px] px-[14px] py-[9px] rounded-[10px] border text-[12.5px] z-[200]"
       style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 10px 24px rgba(0,0,0,.16); color: var(--text-primary);"
     >
       <span class="w-[7px] h-[7px] rounded-full shrink-0" style="background-color: var(--accent);"></span>

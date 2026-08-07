@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useDefect, buildModulePath } from '../composables/useDefect';
 import type { TempAttachmentInfo } from '../composables/useDefect';
 import type {
@@ -8,9 +8,11 @@ import type {
   DefectAttachmentInfo,
   DefectCommentInfo,
   DefectModuleInfo,
+  TestCaseInfo,
 } from '../types';
 import DefectRichEditor from './DefectRichEditor.vue';
 import DefectHistoryTimeline from './DefectHistoryTimeline.vue';
+import UserAvatar from './UserAvatar.vue';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -37,6 +39,20 @@ const uploading = ref(false);
 const saving = ref(false);
 const activeTab = ref<'details' | 'activity'>('details');
 const isEditing = ref(false);
+const showAssignDialog = ref(false);
+
+// Image lightbox preview (click on images inside rendered steps)
+const imagePreviewUrl = ref<string | null>(null);
+
+function handleContentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement;
+  if (target.tagName === 'IMG') {
+    const src = (target as HTMLImageElement).getAttribute('src');
+    if (src) {
+      imagePreviewUrl.value = src;
+    }
+  }
+}
 
 // Attachment edit state
 const originalAttachments = ref<DefectAttachmentInfo[]>([]);
@@ -47,11 +63,18 @@ let pendingFileIdCounter = 0;
 // Edit form state
 const editSeverity = ref('');
 const editPriority = ref('');
+const editTitle = ref('');
 const editModuleId = ref(0);
 const editDescription = ref('');
 const editSteps = ref('');
 const editBugType = ref('code_error');
 const editDeadline = ref('');
+const editCaseUid = ref('');
+
+// Case association state (edit mode)
+const cases = ref<TestCaseInfo[]>([]);
+const caseSearch = ref('');
+const caseDropdownOpen = ref(false);
 
 const severityOptions = [
   { value: 'P0', label: 'P0' },
@@ -126,8 +149,45 @@ function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name
 
 async function loadModules() {
   try {
-    modules.value = await defectApi.getModules(props.projectId);
+    modules.value = await defectApi.getModules(props.projectId, defect.value?.branch_id || 0);
   } catch { /* ignore */ }
+}
+
+async function loadCases() {
+  const branchId = defect.value?.branch_id || 0;
+  if (!props.projectId || !branchId) {
+    cases.value = [];
+    return;
+  }
+  try {
+    cases.value = await defectApi.loadCases(props.projectId, branchId);
+  } catch {
+    cases.value = [];
+  }
+}
+
+function caseDisplayName(c: TestCaseInfo): string {
+  return c.description && c.description !== c.name ? c.description : c.name;
+}
+
+const filteredCases = computed(() => {
+  if (!caseSearch.value.trim()) return cases.value;
+  const q = caseSearch.value.trim().toLowerCase();
+  return cases.value.filter(c => {
+    const chinese = c.description && c.description !== c.name ? c.description : c.name;
+    return chinese.toLowerCase().includes(q)
+      || c.name.toLowerCase().includes(q)
+      || c.methodName.toLowerCase().includes(q)
+      || (c.module || '').toLowerCase().includes(q);
+  });
+});
+
+const selectedCaseInfo = computed(() => cases.value.find(c => c.uid === editCaseUid.value) || null);
+
+function selectCase(c: TestCaseInfo) {
+  editCaseUid.value = c.uid;
+  caseDropdownOpen.value = false;
+  caseSearch.value = '';
 }
 
 async function loadDefect() {
@@ -146,8 +206,14 @@ async function loadDefect() {
   }
 }
 
+async function handleAssignDone() {
+  await loadDefect();
+  emit('updated');
+}
+
 function enterEditMode() {
   if (!defect.value) return;
+  editTitle.value = defect.value.title || '';
   editSeverity.value = defect.value.severity || '';
   editPriority.value = defect.value.priority || '';
   editModuleId.value = defect.value.module_id || 0;
@@ -155,6 +221,7 @@ function enterEditMode() {
   editSteps.value = defect.value.steps || '';
   editBugType.value = defect.value.bug_type || 'code_error';
   editDeadline.value = defect.value.deadline || '';
+  editCaseUid.value = defect.value.case_uid || '';
   // Snapshot current attachments
    originalAttachments.value = [...attachments.value];
    pendingFiles.value = [];
@@ -177,6 +244,7 @@ async function handleSaveEdit() {
   saving.value = true;
   try {
     await defectApi.updateDefect(props.defectId, {
+      title: editTitle.value || '',
       severity: editSeverity.value || '',
       priority: editPriority.value || '',
       module_id: editModuleId.value || 0,
@@ -184,6 +252,7 @@ async function handleSaveEdit() {
       steps: editSteps.value || '',
       bug_type: editBugType.value || '',
       deadline: editDeadline.value || '',
+      case_uid: editCaseUid.value || '',
       attachments: pendingFiles.value,
     });
     // Delete marked attachments
@@ -223,6 +292,12 @@ function handleFileUpload(event: Event) {
   target.value = '';
 }
 
+/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL */
+async function uploadEditorImage(file: File): Promise<string> {
+  const info = await defectApi.uploadTempAttachment(file);
+  return `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
+}
+
 function handleDeleteAttachment(attachmentId: number) {
   // If it's a server-side attachment, mark for deletion
   if (originalAttachments.value.some(a => a.id === attachmentId)) {
@@ -254,6 +329,7 @@ function handleClose() {
   comments.value = [];
   activeTab.value = 'details';
   isEditing.value = false;
+  caseDropdownOpen.value = false;
   emit('close');
 }
 
@@ -261,6 +337,9 @@ watch(() => props.isOpen, async (newVal) => {
   if (newVal) {
     await loadModules();
     await loadDefect();
+    await loadCases();
+  } else {
+    caseDropdownOpen.value = false;
   }
 });
 
@@ -268,7 +347,23 @@ watch(() => props.defectId, async () => {
   if (props.isOpen) {
     isEditing.value = false;
     await loadDefect();
+    await loadCases();
   }
+});
+
+function handleDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (caseDropdownOpen.value && !target.closest('.case-selector')) {
+    caseDropdownOpen.value = false;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick);
 });
 </script>
 
@@ -278,8 +373,7 @@ watch(() => props.defectId, async () => {
       <div class="dialog-container large">
         <div class="dialog-header">
           <div class="defect-header-left">
-            <h2 class="dialog-title" v-if="defect">#{{ defect.id }} {{ defect.title }}</h2>
-            <h2 class="dialog-title" v-else>加载中...</h2>
+            <h2 class="dialog-title">缺陷详情</h2>
           </div>
           <div class="header-actions">
             <button
@@ -342,6 +436,21 @@ watch(() => props.defectId, async () => {
           <div v-else-if="activeTab === 'details'" class="details-tab">
             <div class="details-grid">
               <div class="details-main">
+                <!-- Title (editable in edit mode) -->
+                <div class="info-item title-info-item">
+                  <label class="info-label">缺陷标题</label>
+                  <template v-if="isEditing">
+                    <input
+                      v-model="editTitle"
+                      class="form-input title-input"
+                      placeholder="请输入缺陷标题"
+                    />
+                  </template>
+                  <template v-else>
+                    <span class="title-text">#{{ defect.id }} {{ defect.title }}</span>
+                  </template>
+                </div>
+
                 <!-- Status & Assignee (always read-only) -->
                 <div class="info-row">
                   <div class="info-item">
@@ -358,9 +467,19 @@ watch(() => props.defectId, async () => {
                   </div>
                   <div class="info-item">
                     <label class="info-label">指派给</label>
-                    <span class="text-muted">
-                      {{ defect.assignee_name || '未指派' }}
-                    </span>
+                    <div
+                      class="assignee-tag"
+                      :class="{ 'assignee-tag-readonly': isEditing }"
+                      :title="isEditing ? '' : '点击重新指派'"
+                      @click="!isEditing && (showAssignDialog = true)"
+                    >
+                      <UserAvatar
+                        :name="defect.assignee_name || '未指派'"
+                        :avatar="defect.assignee_avatar || ''"
+                        :size="22"
+                      />
+                      <span class="assignee-name">{{ defect.assignee_name || '未指派' }}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -432,6 +551,75 @@ watch(() => props.defectId, async () => {
                   </div>
                 </div>
 
+                <!-- Associated Case -->
+                <div class="info-section">
+                  <label class="info-label">关联用例</label>
+                  <template v-if="isEditing">
+                    <div class="case-selector">
+                      <div
+                        class="case-selector-input"
+                        :class="{ 'case-selector-open': caseDropdownOpen }"
+                        @click="caseDropdownOpen = !caseDropdownOpen"
+                      >
+                        <template v-if="editCaseUid && selectedCaseInfo">
+                          <span class="case-selected-name">{{ caseDisplayName(selectedCaseInfo) }}</span>
+                          <code class="case-selected-method">{{ selectedCaseInfo.methodName }}</code>
+                        </template>
+                        <span v-else-if="editCaseUid && !selectedCaseInfo" class="case-selected-name">关联用例 #{{ editCaseUid }}</span>
+                        <span v-else class="case-placeholder">选择关联用例（可选）</span>
+                        <svg class="case-chevron" :class="{ 'case-chevron-open': caseDropdownOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </div>
+                      <div v-if="caseDropdownOpen" class="case-dropdown">
+                        <div class="case-dropdown-search">
+                          <input
+                            v-model="caseSearch"
+                            type="text"
+                            placeholder="搜索用例名称/方法/模块"
+                            class="form-input"
+                            @click.stop
+                          />
+                        </div>
+                        <div class="case-dropdown-list">
+                          <div v-if="filteredCases.length === 0" class="case-dropdown-empty">暂无用例（当前版本下没有已同步的用例）</div>
+                          <div
+                            v-for="c in filteredCases"
+                            :key="c.uid"
+                            class="case-dropdown-item"
+                            :class="{ 'case-dropdown-item-active': c.uid === editCaseUid }"
+                            @click="selectCase(c)"
+                          >
+                            <div class="case-dropdown-name">{{ caseDisplayName(c) }}</div>
+                            <code class="case-dropdown-method">{{ c.methodName }}</code>
+                            <span v-if="c.module" class="case-dropdown-module">{{ c.module }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="editCaseUid" class="case-clear" @click="editCaseUid = ''; caseSearch = ''">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18"/>
+                          <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                        清除关联
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <template v-if="defect.case_name || defect.case_uid">
+                      <div class="case-chip">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <span class="case-chip-name">{{ defect.case_name || '未命名用例' }}</span>
+                        <code class="case-chip-method">{{ defect.case_uid }}</code>
+                      </div>
+                    </template>
+                    <span v-else class="text-muted">未关联用例</span>
+                  </template>
+                </div>
+
                 <!-- Description -->
                 <div class="info-section">
                   <label class="info-label">描述</label>
@@ -457,11 +645,13 @@ watch(() => props.defectId, async () => {
                     <DefectRichEditor
                       :modelValue="editSteps"
                       placeholder="输入复现步骤..."
+                      :uploadImage="uploadEditorImage"
                       @update:modelValue="editSteps = $event"
+                      @error="emit('showToast', $event)"
                     />
                   </template>
                   <template v-else>
-                    <div class="info-content markdown-content" v-html="defect.steps || '暂无步骤'">
+                    <div class="info-content markdown-content" v-html="defect.steps || '暂无步骤'" @click="handleContentClick">
                     </div>
                   </template>
                 </div>
@@ -577,6 +767,27 @@ watch(() => props.defectId, async () => {
       </div>
     </div>
   </teleport>
+
+  <!-- Assign dialog -->
+  <DefectAssignDialog
+    :isOpen="showAssignDialog"
+    :defect="defect"
+    :projectId="projectId"
+    @close="showAssignDialog = false"
+    @done="handleAssignDone"
+    @showToast="(msg: string) => emit('showToast', msg)"
+  />
+
+  <!-- Image lightbox preview -->
+  <Teleport to="body">
+    <div
+      v-if="imagePreviewUrl"
+      class="image-lightbox"
+      @click="imagePreviewUrl = null"
+    >
+      <img :src="imagePreviewUrl" class="image-lightbox-img" alt="预览" @click.stop />
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -813,6 +1024,69 @@ watch(() => props.defectId, async () => {
   font-family: var(--font);
 }
 
+.title-info-item {
+  margin-bottom: 16px;
+}
+
+.title-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 22px;
+  word-break: break-word;
+}
+
+.title-input {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.title-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.assignee-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  background-color: var(--color-primary-soft);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.assignee-tag:hover {
+  border-color: var(--color-primary);
+}
+
+.assignee-tag-readonly {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.assignee-tag-readonly:hover {
+  border-color: var(--border);
+}
+
+.assignee-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+
 .info-content {
   font-size: 14px;
   line-height: 22px;
@@ -829,6 +1103,31 @@ watch(() => props.defectId, async () => {
 .markdown-content {
   white-space: pre-wrap;
   word-wrap: break-word;
+}
+
+.markdown-content :deep(img) {
+  max-width: 100%;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+
+.image-lightbox-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }
 
 .severity-badge {
@@ -1068,5 +1367,170 @@ watch(() => props.defectId, async () => {
 .btn-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── 关联用例选择器 ── */
+.case-selector {
+  position: relative;
+}
+
+.case-selector-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.case-selector-open {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.case-selected-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-selected-method {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.case-placeholder {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+.case-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 0.18s ease;
+}
+
+.case-chevron-open {
+  transform: rotate(180deg);
+}
+
+.case-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.case-dropdown-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.case-dropdown-search .form-input {
+  padding: 8px 12px;
+}
+
+.case-dropdown-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.case-dropdown-empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.case-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.case-dropdown-item:hover {
+  background: var(--color-primary-soft);
+}
+
+.case-dropdown-item-active {
+  background: var(--color-primary-soft);
+}
+
+.case-dropdown-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.case-dropdown-method {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.case-dropdown-module {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.case-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.case-clear:hover {
+  color: var(--color-danger);
+}
+
+.case-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+}
+
+.case-chip-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.case-chip-method {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 </style>

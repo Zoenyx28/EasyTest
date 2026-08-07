@@ -298,7 +298,7 @@ const operations = computed<Operation[]>(() => {
 .op-time {
   color: var(--text-muted);
   font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 .op-operator {

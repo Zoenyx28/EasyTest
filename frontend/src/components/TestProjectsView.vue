@@ -8,6 +8,7 @@ import ConfirmDialog from './ConfirmDialog.vue';
 import ProjectNoteEditor from './ProjectNoteEditor.vue';
 import ProjectMemberModal from './ProjectMemberModal.vue';
 import DefectDetailDialog from './DefectDetailDialog.vue';
+import UserAvatar from './UserAvatar.vue';
 import type { DefectInfo, ProjectMemberInfo } from '../types';
 
 defineProps<{
@@ -389,6 +390,58 @@ function openDefectDetail(defectId: number) {
   showDefectDialog.value = true;
 }
 
+// ── Defect card helpers ──
+
+const defectStatusLabels: Record<string, string> = {
+  unconfirmed: '未确认',
+  confirmed: '已确认',
+  in_progress: '处理中',
+  resolved: '已解决',
+  closed: '已关闭',
+};
+
+const defectStatusColors: Record<string, string> = {
+  unconfirmed: 'var(--border)',
+  confirmed: 'var(--status-confirmed-bg)',
+  in_progress: 'var(--status-in-progress-bg)',
+  resolved: 'var(--status-resolved-bg)',
+  closed: 'var(--border)',
+};
+
+const defectStatusTextColors: Record<string, string> = {
+  unconfirmed: 'var(--text-secondary)',
+  confirmed: 'var(--status-confirmed-text)',
+  in_progress: 'var(--status-in-progress-text)',
+  resolved: 'var(--status-resolved-text)',
+  closed: 'var(--text-secondary)',
+};
+
+const defectLogFieldLabels: Record<string, string> = {
+  status: '状态',
+  severity: '严重程度',
+  priority: '优先级',
+  assignee_id: '处理人',
+  module_id: '模块',
+  resolution: '解决方案',
+  bug_type: '缺陷类型',
+  deadline: '截止时间',
+  title: '标题',
+  description: '描述',
+  steps: '复现步骤',
+};
+
+function formatLogValue(field: string, value: string): string {
+  if (!value) return '--';
+  if (field === 'status') return defectStatusLabels[value] || value;
+  if (field === 'assignee_id' || field === 'creator_id') return value === '0' ? '--' : `#${value}`;
+  return value;
+}
+
+function formatLog(log: any): string {
+  const fieldLabel = defectLogFieldLabels[log.field] || log.field;
+  return `${fieldLabel}: ${formatLogValue(log.field, log.old_value)} → ${formatLogValue(log.field, log.new_value)}`;
+}
+
 function navigateToExecution() {
   router.push('/execution');
 }
@@ -421,7 +474,7 @@ onMounted(() => {
     <!-- Left-right split layout -->
     <div class="flex-1 flex min-h-0 overflow-hidden">
       <!-- Left panel: project cards -->
-      <div class="w-[40%] min-w-[320px] max-w-[420px] shrink-0 flex flex-col overflow-hidden" style="border-right: 1px solid var(--border); background-color: var(--content-bg);">
+      <div class="w-[36%] min-w-[300px] max-w-[360px] shrink-0 flex flex-col overflow-hidden" style="border-right: 1px solid var(--border); background-color: var(--content-bg);">
         <div v-if="projects.length === 0" class="flex items-center justify-center flex-1 select-none" style="color: var(--text-tertiary);">
           <div class="text-center">
             <div class="w-[56px] h-[56px] mx-auto mb-[14px] rounded-[14px] flex items-center justify-center text-[24px] opacity-30" style="background-color: var(--input-bg);">📁</div>
@@ -526,8 +579,8 @@ onMounted(() => {
                 v-else
                 class="px-[6px] py-[2px] text-[10px] font-bold rounded-[4px] leading-none tracking-[0.03em]"
                 :style="{
-                  backgroundColor: project.is_active ? 'var(--accent-soft)' : 'var(--text-muted)',
-                  color: project.is_active ? 'var(--accent)' : 'var(--text-tertiary)',
+                  backgroundColor: project.is_active ? 'var(--accent-soft)' : 'var(--card-bg-2)',
+                  color: project.is_active ? 'var(--accent)' : 'var(--text-secondary)',
                   border: project.is_active ? '1px solid var(--color-primary-soft)' : '1px solid var(--border)',
                 }"
               >
@@ -535,13 +588,8 @@ onMounted(() => {
               </span>
             </div>
 
-            <!-- Info section: path + case counts -->
+            <!-- Info section: case counts -->
             <div class="p-[8px] rounded-[6px] mb-[2px]" style="background-color: var(--card-bg-2); border: 1px dashed var(--border);">
-              <div class="flex items-center justify-between text-[11px] font-mono" style="color: var(--text-tertiary);">
-                <span class="truncate max-w-[60%]" :title="project.server_path || project.source_path || ''">
-                  {{ project.source_type === 'server' ? (project.server_path || '--') : (project.source_path || '--') }}
-                </span>
-              </div>
               <div class="flex gap-[16px] mt-[4px] text-[11px] font-mono" style="color: var(--text-secondary);">
                 <span>用例: <strong style="color: var(--text-primary);">{{ project.case_count }}</strong></span>
                 <span v-if="project.new_case_count > 0" style="color: var(--color-success);">新增 {{ project.new_case_count }}</span>
@@ -646,16 +694,16 @@ onMounted(() => {
                       <div
                         v-for="(member, idx) in detailData?.members?.slice(0, 5) || []"
                         :key="member.id"
-                        class="w-[26px] h-[26px] rounded-full flex items-center justify-center text-[10px] font-semibold -ml-[5px] first:ml-0"
-                        :style="{
-                          backgroundColor: `hsl(${member.id * 60 % 360}, 55%, 75%)`,
-                          color: '#fff',
-                          border: '2px solid var(--content-bg)',
-                          zIndex: 5 - idx,
-                        }"
+                        class="-ml-[5px] first:ml-0 rounded-full"
+                        :style="{ zIndex: 5 - idx }"
                         :title="member.nickname || member.username"
                       >
-                        {{ (member.nickname || member.username || '?').charAt(0).toUpperCase() }}
+                        <UserAvatar
+                          :name="member.nickname || member.username"
+                          :avatar="member.avatar_url"
+                          :size="26"
+                          border-color="var(--content-bg)"
+                        />
                       </div>
                       <div
                         v-if="(detailData?.members?.length || 0) > 5"
@@ -738,14 +786,24 @@ onMounted(() => {
                       >
                         {{ defect.severity || 'P3' }}
                       </span>
+                      <span
+                        class="px-[4px] py-[1px] rounded-[2px] text-[9px] font-bold"
+                        :style="{
+                          backgroundColor: defectStatusColors[defect.status] || 'var(--card-bg-2)',
+                          color: defectStatusTextColors[defect.status] || 'var(--text-secondary)',
+                          border: '1px solid ' + (defectStatusColors[defect.status] || 'var(--border)'),
+                        }"
+                      >
+                        {{ defectStatusLabels[defect.status] || defect.status || '未确认' }}
+                      </span>
                       <span>提交者 <strong style="color: var(--text-primary);">{{ defect.creator_name || '--' }}</strong></span>
                     </div>
+                    <div v-if="(defect.recent_logs || []).length" class="mt-[6px] pt-[4px] space-y-[2px]" style="border-top: 1px dashed var(--border);">
+                      <div v-for="log in defect.recent_logs" :key="log.id" class="text-[10px] leading-[1.5]" style="color: var(--text-tertiary);">
+                        <span style="color: var(--text-secondary);">{{ log.operator_name || '--' }}</span> {{ formatLog(log) }}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div v-if="(detailData?.recent_defects?.length || 0) > 0" class="px-[12px] py-[6px] text-center shrink-0" style="border-top: 1px solid var(--border);">
-                  <span class="text-[11px] font-semibold cursor-pointer hover:underline" style="color: var(--accent);">
-                    查看全部缺陷
-                  </span>
                 </div>
               </div>
 
@@ -797,11 +855,6 @@ onMounted(() => {
                     </div>
                   </div>
                 </div>
-                <div v-if="(detailData?.recent_tasks?.length || 0) > 0" class="px-[12px] py-[6px] text-center shrink-0" style="border-top: 1px solid var(--border);">
-                  <span class="text-[11px] font-semibold cursor-pointer hover:underline" style="color: var(--accent);">
-                    查看全部任务
-                  </span>
-                </div>
               </div>
             </div>
           </div>
@@ -837,19 +890,10 @@ onMounted(() => {
           <!-- Project name -->
           <div>
             <label class="text-[11px] font-medium block mb-[5px] tracking-[-0.01em]" style="color: var(--text-secondary);">项目名称</label>
-            <input
+            <BaseInput
               v-model="form.name"
               type="text"
               placeholder="输入项目名称"
-              class="w-full px-[10px] py-[7px] text-[12.5px] rounded-[8px] outline-none transition-all duration-150"
-              :style="{
-                backgroundColor: 'var(--input-bg)',
-                border: '0.5px solid var(--border)',
-                color: 'var(--text-primary)',
-                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.04)',
-              }"
-              @focus="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-              @blur="($event.target as HTMLElement).style.borderColor = 'var(--border)'"
             />
           </div>
 
@@ -939,29 +983,21 @@ onMounted(() => {
 
         <!-- macOS-style modal footer -->
         <div class="flex justify-end gap-[8px] px-[20px] py-[14px]" style="border-top: 0.5px solid var(--border);">
-          <button
+          <BaseButton
+            variant="secondary"
+            size="md"
             @click="closeModal"
-            class="px-[14px] py-[6px] text-[12px] font-medium rounded-[7px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-            :style="{
-              backgroundColor: 'var(--input-bg)',
-              border: '0.5px solid var(--border)',
-              color: 'var(--text-secondary)',
-            }"
           >
             取消
-          </button>
-          <button
-            @click="editingProject ? updateProject() : createProject()"
+          </BaseButton>
+          <BaseButton
+            variant="primary"
+            size="md"
             :disabled="uploading"
-            class="px-[14px] py-[6px] text-[12px] font-medium rounded-[7px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-            :style="{
-              backgroundColor: 'var(--accent)',
-              color: '#fff',
-              opacity: uploading ? 0.6 : 1,
-            }"
+            @click="editingProject ? updateProject() : createProject()"
           >
             {{ uploading ? '上传中...' : (editingProject ? '保存' : '创建') }}
-          </button>
+          </BaseButton>
         </div>
       </div>
     </div>
@@ -976,6 +1012,7 @@ onMounted(() => {
       :creatorId="detailData?.project.creator_id || 0"
       @close="showMemberModal = false"
       @showToast="(msg: string) => emit('showToast', msg)"
+      @updated="loadProjectDetail"
     />
 
     <!-- Defect Detail Dialog -->

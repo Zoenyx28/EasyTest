@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Request, UploadFile, File, Form
+from fastapi import APIRouter, Request, UploadFile, File, Form, Body
 from fastapi import HTTPException
 
 from app.api.common import ok, fail
@@ -81,11 +81,13 @@ async def _enrich_defect(defect: dict) -> dict:
             pass
 
     assignee_name = ''
+    assignee_avatar = ''
     if defect.get('assignee_id'):
         try:
             user = await crud.get_user_by_id(defect['assignee_id'])
             if user:
-                assignee_name = user.get('nickname', '')
+                assignee_name = user.get('nickname', '') or user.get('username', '')
+                assignee_avatar = user.get('avatar_url', '')
         except Exception:
             pass
 
@@ -133,6 +135,7 @@ async def _enrich_defect(defect: dict) -> dict:
         **defect,
         'module_name': module_name,
         'assignee_name': assignee_name,
+        'assignee_avatar': assignee_avatar,
         'creator_name': creator_name,
         'branch_name': branch_name,
         'bug_type_name': _bug_type_name(defect.get('bug_type', '')),
@@ -147,19 +150,18 @@ async def _enrich_defect(defect: dict) -> dict:
 
 
 @router.get('/modules')
-async def get_modules(project_id: int):
-    """获取项目模块树（树形结构）"""
-    modules = await crud.get_defect_modules(project_id)
+async def get_modules(project_id: int, branch_id: int = 0):
+    """获取模块树（按版本隔离）"""
+    modules = await crud.get_defect_modules(project_id, branch_id)
     tree = _build_module_tree(modules)
     return ok(tree)
 
 
 @router.post('/modules')
-async def create_module(request: Request, project_id: int, data: DefectModuleCreate):
-    """创建模块"""
+async def create_module(request: Request, project_id: int, branch_id: int = 0, data: DefectModuleCreate = Body(...)):
+    """创建模块（按版本隔离）"""
     user = await get_current_user(request)
-    # Get project_id from query
-    module_id = await crud.create_defect_module(project_id, data)
+    module_id = await crud.create_defect_module(project_id, data, branch_id)
     return ok({'id': module_id}, msg='模块创建成功')
 
 
@@ -184,6 +186,16 @@ async def delete_module(module_id: int):
 # ══════════════════════════════════════════════
 # Defect Routes
 # ══════════════════════════════════════════════
+
+
+@router.get('/by-case')
+async def list_defects_by_case(project_id: int, case_uid: str):
+    """Get defects referencing a given test case."""
+    defects = await crud.get_defects_by_case_uid(project_id, case_uid)
+    enriched = []
+    for d in defects:
+        enriched.append(await _enrich_defect(d))
+    return ok(enriched)
 
 
 @router.get('')
@@ -263,6 +275,12 @@ async def create_defect(request: Request, data: DefectCreate):
                     mime_type=att.get('mime_type', ''),
                     created_by=user['id'],
                 )
+
+    # Finalize pasted images inside steps HTML — move temp files to defect dir
+    if data.steps:
+        final_steps = await _finalize_steps_images(defect_id, data.steps, user['id'])
+        if final_steps != data.steps:
+            await crud.update_defect(defect_id, DefectUpdate(steps=final_steps))
 
     return ok({'id': defect_id}, msg='缺陷创建成功')
 
@@ -390,7 +408,31 @@ async def update_defect(request: Request, defect_id: int, data: DefectUpdate):
                     created_by=user['id'],
                 )
 
+    # Finalize pasted images inside steps HTML — move temp files to defect dir
+    if data.steps:
+        final_steps = await _finalize_steps_images(defect_id, data.steps, user['id'])
+        if final_steps != data.steps:
+            await crud.update_defect(defect_id, DefectUpdate(steps=final_steps))
+
     return ok(None, msg='缺陷更新成功')
+
+
+@router.delete('/{defect_id}')
+async def delete_defect(request: Request, defect_id: int):
+    """删除缺陷（含附件、日志、评论）"""
+    user = await get_current_user(request)
+
+    success = await crud.delete_defect(defect_id)
+    if not success:
+        return fail(404, '缺陷不存在')
+
+    # 清理缺陷附件磁盘目录
+    import shutil
+    defect_dir = PROJECTS_DATA_DIR / 'defects' / str(defect_id)
+    if defect_dir.exists():
+        shutil.rmtree(defect_dir, ignore_errors=True)
+
+    return ok(None, msg='缺陷删除成功')
 
 
 @router.post('/{defect_id}/transition')
@@ -535,6 +577,90 @@ async def upload_temp_attachment(request: Request, file: UploadFile = File(...))
         'file_size': file_size,
         'mime_type': mime_type,
     })
+
+
+# ── Helper: finalize pasted images inside steps HTML ──
+
+
+async def _finalize_steps_images(defect_id: int, steps_html: str, user_id: int) -> str:
+    """将复现步骤 HTML 中粘贴的临时图片（/api/defects/attachments/temp/<file>）
+    移到缺陷目录，并把 img src 替换为缺陷内嵌图片 URL。返回替换后的 HTML。
+    内嵌图片不作为独立附件记录，因此不会出现在附件列表中。"""
+    if not steps_html or 'attachments/temp' not in steps_html:
+        return steps_html
+
+    import re
+    import shutil
+    from urllib.parse import quote, unquote
+
+    temp_dir = PROJECTS_DATA_DIR / 'defects' / 'temp'
+    defect_dir = PROJECTS_DATA_DIR / 'defects' / str(defect_id)
+    defect_dir.mkdir(parents=True, exist_ok=True)
+
+    pattern = re.compile(r'/api/defects/attachments/temp/([^"\'\s<>]+)')
+    # encoded filename -> 转正后的目标文件名（同一图片被多次引用时复用）
+    finalized: dict[str, str] = {}
+
+    def _repl(m: re.Match) -> str:
+        encoded = m.group(1)
+        if encoded in finalized:
+            return f'/api/defects/{defect_id}/images/{quote(finalized[encoded])}'
+        filename = unquote(encoded)
+        if not filename or '/' in filename or '\\' in filename:
+            return m.group(0)
+        src = temp_dir / filename
+        if not os.path.exists(src):
+            return m.group(0)
+        # 目标已存在（同名附件/重复保存）时追加序号，避免覆盖
+        dst = defect_dir / filename
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        while os.path.exists(dst):
+            dst = defect_dir / f'{base}_{counter}{ext}'
+            counter += 1
+        shutil.move(str(src), str(dst))
+        final_name = dst.name
+        finalized[encoded] = final_name
+        return f'/api/defects/{defect_id}/images/{quote(final_name)}'
+
+    result = []
+    last = 0
+    for m in pattern.finditer(steps_html):
+        result.append(steps_html[last:m.start()])
+        result.append(_repl(m))
+        last = m.end()
+    result.append(steps_html[last:])
+    return ''.join(result)
+
+
+@router.get('/attachments/temp/{filename}')
+async def download_temp_image(filename: str):
+    """临时目录图片访问（富文本编辑器粘贴图片的预览/编辑阶段使用）"""
+    from fastapi.responses import FileResponse
+    from urllib.parse import unquote
+
+    name = unquote(filename)
+    if not name or '/' in name or '\\' in name:
+        return fail(400, '非法文件名')
+    filepath = PROJECTS_DATA_DIR / 'defects' / 'temp' / name
+    if not os.path.exists(filepath):
+        return fail(404, '文件不存在')
+    return FileResponse(filepath)
+
+
+@router.get('/{defect_id}/images/{filename}')
+async def download_defect_image(defect_id: int, filename: str):
+    """缺陷内嵌图片访问（复现步骤中粘贴的图片，不属于附件列表）"""
+    from fastapi.responses import FileResponse
+    from urllib.parse import unquote
+
+    name = unquote(filename)
+    if not name or '/' in name or '\\' in name:
+        return fail(400, '非法文件名')
+    filepath = PROJECTS_DATA_DIR / 'defects' / str(defect_id) / name
+    if not os.path.exists(filepath):
+        return fail(404, '文件不存在')
+    return FileResponse(filepath)
 
 
 @router.post('/{defect_id}/attachments')

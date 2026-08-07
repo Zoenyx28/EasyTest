@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -61,10 +62,13 @@ def _extract_docstrings(file_paths: set[str], base_path: Path) -> dict[str, str]
 
 def _marker_name_from_decorator(dec: ast.expr) -> str | None:
     """Extract the pytest marker name from a decorator node.
+    从AST节点提取pytest标记名称。
 
-    Handles `@pytest.mark.ui` (ast.Attribute) and
+    处理 `@pytest.mark.ui` (ast.Attribute) 和
     `@pytest.mark.parametrize(...)` (ast.Call wrapping an Attribute).
-    Returns the mark name (e.g. 'ui') or None if not a pytest.mark.* decorator.
+    返回标记名称 (e.g. 'ui') 或 None 如果不是pytest.mark.* 装饰器。
+    ``parametrize`` 被排除因为它是一个参数化指令，不是一个业务标记
+    (参数后缀已经包含在用例名称中)。
     """
     node = dec.func if isinstance(dec, ast.Call) else dec
     # node should be an Attribute like pytest.mark.<name>
@@ -74,6 +78,8 @@ def _marker_name_from_decorator(dec: ast.expr) -> str | None:
     value = node.value
     # value should be `pytest.mark` -> ast.Attribute(attr='mark')
     if isinstance(value, ast.Attribute) and value.attr == 'mark':
+        if mark_name in ('parametrize', 'skip', 'skipif', 'xfail'):
+            return None
         return mark_name
     return None
 
@@ -136,9 +142,49 @@ def _determine_test_type(file_path: str, class_name: str, method_name: str,
     return 'api'
 
 
-def _run_discovery(discovery_path: str | None = None, project_id: int = 0) -> DiscoverResponse:
+def _build_api_desc_map(base_path: Path) -> dict[str, str]:
+    """Scan API wrapper modules (e.g. api/apis/*.py) and map method name ->
+    its Chinese description (first line of the docstring).
+
+    Keys are method names so that calls like ``project_api.create_project``
+    or ``api_client.create_user`` can be enriched with a readable description.
+    """
+    desc_map: dict[str, str] = {}
+    api_roots = [base_path / 'api', base_path / 'src' / 'api', base_path]
+    for root in api_roots:
+        if not root.exists():
+            continue
+        for py in sorted(root.rglob('*.py')):
+            if 'venv' in str(py):
+                continue
+            try:
+                source = py.read_text(encoding='utf-8')
+                tree = ast.parse(source)
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.ClassDef, ast.Module)):
+                    continue
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    doc = ast.get_docstring(node)
+                    if doc:
+                        first = doc.strip().split('\n')[0]
+                        if first and node.name not in desc_map:
+                            desc_map[node.name] = first
+    return desc_map
+
+
+def _run_discovery(discovery_path: str | None = None, project_id: int = 0,
+                   run_ai: bool = True) -> DiscoverResponse:
     """Synchronous discovery using subprocess.run with docstring extraction.
-    
+
+    Chinese titles come from:
+      1. docstring (preferred)
+      2. AI title generation (TitleGenerator, integrated in-system) when the
+         function has no docstring — parametrized cases pass their parameter
+         suffix (e.g. test_login[admin]) so titles reflect parameter values.
+    Steps come from AST analysis (StepExtractor, integrated in-system).
+
     Args:
         discovery_path: Optional path to the test directory. If None, uses
             the default PROJECTS_SOURCE_DIR.
@@ -172,10 +218,11 @@ def _run_discovery(discovery_path: str | None = None, project_id: int = 0) -> Di
     
     sys.path.insert(0, str(cwd))
     
+    cmd = [python_exe, '-m', 'pytest', '--collect-only', '-q', '--co',
+           '--override-ini=addopts=']
     result = subprocess.run(
-        [python_exe, '-m', 'pytest', '--collect-only', '-q', '--co',
-         '--override-ini=addopts='],
-        capture_output=True, text=True, timeout=60,
+        cmd,
+        capture_output=True, text=True, timeout=300,
         cwd=str(cwd),
     )
     _log.info("Discoverer: returncode = %d", result.returncode)
@@ -200,8 +247,19 @@ def _run_discovery(discovery_path: str | None = None, project_id: int = 0) -> Di
     doc_map = _extract_docstrings(file_paths, cwd)
     # Extract markers for test_type determination
     marker_map = _extract_markers(file_paths, cwd)
+    # Extract steps (API calls / assertions) from source files via AST
+    from app.services.step_extractor import StepExtractor
+    api_desc_map = _build_api_desc_map(cwd)
+    step_extractor = StepExtractor(api_desc_map=api_desc_map)
+    steps_map: dict[str, list] = {}
+    for fpath in file_paths:
+        full_path = cwd / fpath
+        if not full_path.exists():
+            continue
+        steps_map.update(step_extractor.extract_from_file_all(full_path))
 
     modules: dict[str, dict[str, list[TestCaseInfo]]] = {}
+    pending_ai: list[tuple[TestCaseInfo, str, str]] = []
 
     for line in lines:
         line = line.strip()
@@ -244,7 +302,16 @@ def _run_discovery(discovery_path: str | None = None, project_id: int = 0) -> Di
         doc_key = f'{class_name}::{method_name}' if class_name else method_name
         description = doc_map.get(doc_key, doc_map.get(method_name, ''))
 
+        # Steps come from AST extraction (integrated in-system)
+        steps_json = ''
+        steps = steps_map.get(doc_key, steps_map.get(method_name, []))
+        if steps:
+            steps_json = json.dumps(steps, ensure_ascii=False)
+
         test_type = _determine_test_type(file_path, class_name, method_name, marker_map)
+
+        # Markers as tags: class-level markers are inherited via marker_map
+        tags = sorted(marker_map.get(doc_key, marker_map.get(method_name, set())))
 
         item = TestCaseInfo(
             uid=uid,
@@ -254,16 +321,42 @@ def _run_discovery(discovery_path: str | None = None, project_id: int = 0) -> Di
             module=module,
             fullName=full_name,
             description=description,
-            tags=[],
+            steps=steps_json,
+            tags=tags,
             filePath=file_path,
             testType=test_type,
         )
+
+        # Remember this case for AI title generation if it has no docstring
+        ai_name = method_name_with_brackets if param else method_name
+        pending_ai.append((item, ai_name, param))
 
         if module not in modules:
             modules[module] = {}
         if class_name not in modules[module]:
             modules[module][class_name] = []
         modules[module][class_name].append(item)
+
+    # Generate Chinese titles via AI for cases without a Chinese docstring
+    # (empty docstrings, or English-only docstrings such as test method names
+    # or English summaries — these get translated into readable Chinese titles)
+    def _contains_cjk(text: str) -> bool:
+        return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+
+    missing = [(it, ai_name) for it, ai_name, p in pending_ai
+               if not it.description or not _contains_cjk(it.description)]
+    if missing and run_ai:
+        try:
+            from app.services.title_generator import TitleGenerator
+            generator = TitleGenerator(cache_path=cwd / '.pytest-title-cache.json')
+            names = [ai_name for _, ai_name in missing]
+            titles = generator.generate_titles(names)
+            for it, ai_name in missing:
+                title = titles.get(ai_name)
+                if title:
+                    it.description = title
+        except Exception as exc:
+            _log.warning("AI title generation failed: %s", exc)
 
     module_list: list[TestModuleInfo] = []
     total = 0
@@ -303,10 +396,13 @@ async def discover_tests() -> DiscoverResponse:
     return result
 
 
-async def discover_tests_at_path(discovery_path: str, project_id: int = 0) -> DiscoverResponse:
+async def discover_tests_at_path(discovery_path: str, project_id: int = 0,
+                                 run_ai: bool = True) -> DiscoverResponse:
     """Run pytest --collect-only at a specific path."""
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(None, _run_discovery, discovery_path, project_id)
+    result = await loop.run_in_executor(
+        None, _run_discovery, discovery_path, project_id, run_ai
+    )
     # Update the global uid-to-info cache
     _uid_cache.clear()
     for mod in result.modules:
@@ -337,6 +433,7 @@ async def get_test_by_uid(uid: str, project_id: int = 0, branch_id: int = 0) -> 
         module=row.get('module', ''),
         fullName=row.get('fullName', ''),
         description=row.get('description', ''),
+        steps=row.get('steps', ''),
         tags=row.get('tags', []),
     )
     _uid_cache[uid] = info

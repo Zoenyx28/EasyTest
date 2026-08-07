@@ -188,8 +188,14 @@ _AUTH_WHITELIST = {
 async def jwt_auth_middleware(request: Request, call_next):
     path = request.url.path
 
-    # Skip auth for whitelisted paths and static files
-    if path in _AUTH_WHITELIST or path.startswith('/api/static/'):
+    # Skip auth for whitelisted paths, static files, and GET attachment requests
+    # (img/link tags in rendered HTML cannot carry an Authorization header)
+    is_get_attachment = request.method == 'GET' and (
+        path.startswith('/api/defects/attachments/temp/')
+        or ('/attachments/' in path and path.endswith('/download'))
+        or ('/images/' in path and path.startswith('/api/defects/'))
+    )
+    if path in _AUTH_WHITELIST or path.startswith('/api/static/') or is_get_attachment:
         return await call_next(request)
 
     # Check Authorization header

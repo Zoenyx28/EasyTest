@@ -13,3 +13,6 @@ allure-pytest>=2.13.0
 python-multipart>=0.0.9
 pyjwt>=2.8.0
 passlib[bcrypt]>=1.7.4
+# passlib 1.7.4 不兼容 bcrypt>=4（读取 __about__ 失败导致 verify 抛错），固定到 3.x
+bcrypt==3.2.2
+httpx>=0.24.0

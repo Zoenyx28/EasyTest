@@ -103,6 +103,7 @@ export interface TestCaseInfo {
   isNew?: boolean;
   testType?: string;
   filePath?: string;
+  steps?: string;
 }
 
 export interface TestClassInfo {
@@ -166,6 +167,8 @@ export interface RunLogDetail {
   message: string;
   trace: string;
   logs: string;
+  steps?: string;
+  screenshots?: string;
   executed_at: string;
 }
 
@@ -209,6 +212,7 @@ export interface ExecutionCaseItem {
   id: number;
   uid: string;
   case_name: string;
+  description?: string;
   method_name: string;
   class_name: string;
   status: string;
@@ -341,8 +345,11 @@ export interface DefectInfo {
   resolution: string;
   assignee_id: number;
   assignee_name: string;
+  assignee_avatar?: string;
   creator_id: number;
   creator_name: string;
+  case_uid: string;
+  case_name: string;
   bug_type: string;
   bug_type_name: string;
   deadline: string;
@@ -393,6 +400,7 @@ export interface DefectCreateData {
   assignee_id: number;
   bug_type?: string;
   deadline?: string;
+  case_uid?: string;
 }
 
 export interface DefectCommentInfo {

@@ -1,13 +1,13 @@
-## Agent skills
+## Agent 技能
 
-### Issue tracker
+### 问题跟踪器
 
-Issues are tracked in GitHub. See `docs/agents/issue-tracker.md`.
+问题在 GitLab 中跟踪。参见 `docs/agents/issue-tracker.md`。
 
-### Triage labels
+### 分诊标签
 
-The five canonical triage labels are used with their default names. See `docs/agents/triage-labels.md`.
+五个规范分诊标签使用默认名称。参见 `docs/agents/triage-labels.md`。
 
-### Domain docs
+### 领域文档
 
-Single-context layout — one CONTEXT.md plus docs/adr/ at the repo root. See `docs/agents/domain.md`.
+单上下文布局 — 仓库根目录下一个 CONTEXT.md 加 docs/adr/。参见 `docs/agents/domain.md`。

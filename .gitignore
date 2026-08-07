@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 虚拟环境（误提交的历史文件已从版本库移除）
+backend/.venv/
+
+# 日志
+*.log
+logs/

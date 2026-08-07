@@ -11,7 +11,13 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import DATABASE_URL
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+    pool_timeout=30,
+)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -34,10 +40,12 @@ async def init_db():
         "ALTER TABLE test_case_definitions ADD COLUMN test_type VARCHAR(16) DEFAULT 'api'",
         "ALTER TABLE test_case_definitions ADD COLUMN file_path VARCHAR(512) DEFAULT ''",
         "ALTER TABLE test_case_definitions ADD COLUMN branch_id INTEGER DEFAULT 0",
+        "ALTER TABLE test_case_definitions ADD COLUMN steps TEXT",
         "ALTER TABLE execution_cases ADD COLUMN test_type VARCHAR(16) DEFAULT 'api'",
         "ALTER TABLE execution_cases ADD COLUMN steps TEXT",
         "ALTER TABLE execution_cases ADD COLUMN screenshots TEXT",
         "ALTER TABLE execution_cases ADD COLUMN branch_id INTEGER DEFAULT 0",
+        "ALTER TABLE execution_cases ADD COLUMN description TEXT",
         "ALTER TABLE test_results ADD COLUMN test_type VARCHAR(16) DEFAULT 'api'",
         "ALTER TABLE test_results ADD COLUMN steps TEXT",
         "ALTER TABLE test_results ADD COLUMN screenshots TEXT",
@@ -48,6 +56,9 @@ async def init_db():
         "ALTER TABLE projects ADD COLUMN creator_id INTEGER DEFAULT 0",
         "ALTER TABLE project_notes ADD COLUMN updated_at DATETIME",
         "ALTER TABLE project_notes ADD COLUMN updated_by INTEGER DEFAULT 0",
+        "ALTER TABLE defect_modules ADD COLUMN branch_id INTEGER DEFAULT 0",
+        "ALTER TABLE defects ADD COLUMN case_uid VARCHAR(256) DEFAULT ''",
+        "ALTER TABLE defects ADD COLUMN case_name VARCHAR(512) DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS project_members (id INTEGER PRIMARY KEY AUTO_INCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
     ]
 

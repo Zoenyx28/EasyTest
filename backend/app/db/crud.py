@@ -1,5 +1,5 @@
 """CRUD operations for test execution records and discovery cache."""
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from sqlalchemy import select, desc, delete, case, update
@@ -9,6 +9,62 @@ from .models import Branch, TestCaseDefinition, User
 from .models import Task, TaskCase, Execution, ExecutionCase
 from .models import Project, ProjectCase, Report, ProjectMember
 from .models import DefectModule, Defect, DefectAttachment, DefectLog, DefectComment, ProjectNote
+from .models import UserActiveProject
+
+
+# ── Time / duration helpers ──
+
+_TZ_CN = timezone(timedelta(hours=8))  # UTC+8 (Asia/Shanghai)
+
+
+def dt_iso(dt: datetime | None) -> str:
+    """Serialize a naive-UTC datetime as a GMT+8 ISO string (e.g. 2026-08-05T14:29:15+08:00).
+
+    Timestamps are stored as naive UTC (datetime.utcnow), so API responses must
+    be shifted to the local timezone (+08:00) before being returned to clients.
+    """
+    if not dt:
+        return ''
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_TZ_CN).isoformat()
+
+
+def dt_iso_from_str(s: str | None) -> str:
+    """Parse an ISO string (stored naive UTC) and re-emit with GMT+8 offset.
+
+    Used for VARCHAR timestamp columns (e.g. resolved_date) that are persisted
+    as naive-UTC strings but must be returned with the timezone offset.
+    """
+    if not s:
+        return ''
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return s
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_TZ_CN).isoformat()
+
+
+def fmt_duration_ms(ms: float | int | None) -> str:
+    """Format a millisecond duration like the report generator (5ms / 1.5s / 2m5s)."""
+    ms = int(ms or 0)
+    if ms < 1000:
+        return f'{ms}ms'
+    if ms < 60000:
+        return f'{ms / 1000:.1f}s'
+    m = ms // 60000
+    s = (ms % 60000) / 1000
+    return f'{m}m{s:.0f}s'
+
+
+def duration_between(start: datetime | None, end: datetime | None) -> str:
+    """Human-readable duration between two naive-UTC timestamps."""
+    if not start:
+        return ''
+    end = end or datetime.utcnow()
+    return fmt_duration_ms((end - start).total_seconds() * 1000)
 
 
 # ── Branch CRUD ──
@@ -94,8 +150,8 @@ async def list_branches(project_id: int) -> list[dict]:
                 'is_empty': b.is_empty,
                 'source_path': b.source_path,
                 'test_path': b.test_path,
-                'created_at': b.created_at.isoformat() if b.created_at else '',
-                'updated_at': b.updated_at.isoformat() if b.updated_at else '',
+                'created_at': dt_iso(b.created_at) if b.created_at else '',
+                'updated_at': dt_iso(b.updated_at) if b.updated_at else '',
             }
             for b in result.scalars().all()
         ]
@@ -210,7 +266,7 @@ async def get_latest_status_for_uids(uids: list[str]) -> dict[str, dict]:
                 'uid': r.uid,
                 'status': r.status,
                 'duration_ms': r.duration_ms,
-                'executed_at': r.end_time.isoformat() if r.end_time else '',
+                'executed_at': dt_iso(r.end_time) if r.end_time else '',
                 'run_id': r.execution_id,
             }
             for r in records
@@ -233,7 +289,7 @@ async def get_test_history(uid: str, limit: int = 5) -> list[dict]:
                 'status': r.status,
                 'duration_ms': r.duration_ms,
                 'message': r.message,
-                'executed_at': r.end_time.isoformat() if r.end_time else '',
+                'executed_at': dt_iso(r.end_time) if r.end_time else '',
                 'run_id': r.execution_id,
             }
             for r in records
@@ -261,7 +317,7 @@ async def get_test_history_for_uids(uids: list[str], limit: int = 1) -> dict[str
                     'status': r.status,
                     'duration_ms': r.duration_ms,
                     'message': r.message,
-                    'executed_at': r.end_time.isoformat() if r.end_time else '',
+                    'executed_at': dt_iso(r.end_time) if r.end_time else '',
                     'run_id': r.execution_id,
                 })
         return history_map
@@ -300,7 +356,7 @@ async def get_task(task_id: int) -> dict | None:
             'status': task.status,
             'total': len(uids),
             'uids': uids,
-            'create_time': task.create_time.isoformat() if task.create_time else '',
+            'create_time': dt_iso(task.create_time) if task.create_time else '',
         }
 
 
@@ -327,7 +383,7 @@ async def get_all_tasks(limit: int = 20, project_id: int | None = None, branch_i
                 'project_id': t.project_id,
                 'status': t.status,
                 'total': total,
-                'create_time': t.create_time.isoformat() if t.create_time else '',
+                'create_time': dt_iso(t.create_time) if t.create_time else '',
             })
         return output
 
@@ -397,6 +453,7 @@ async def create_execution(task_id: int, concurrency: int = 2, sequential: bool 
             )
             case_def = case_def.scalar_one_or_none()
             case_name = case_def.name if case_def else c.uid
+            description = case_def.description if case_def else ''
             method_name = case_def.method_name if case_def else ''
             class_name = case_def.class_name if case_def else ''
             module = case_def.module if case_def else ''
@@ -405,6 +462,7 @@ async def create_execution(task_id: int, concurrency: int = 2, sequential: bool 
                 execution_id=execution_id,
                 uid=c.uid,
                 case_name=case_name,
+                description=description,
                 method_name=method_name,
                 class_name=class_name,
                 module=module,
@@ -440,6 +498,7 @@ async def create_execution_cases_batch(execution_id: str, uids: list[str], batch
             )
             case_def = case_def.scalar_one_or_none()
             case_name = case_def.name if case_def else uid
+            description = case_def.description if case_def else ''
             method_name = case_def.method_name if case_def else ''
             class_name = case_def.class_name if case_def else ''
             module = case_def.module if case_def else ''
@@ -449,6 +508,7 @@ async def create_execution_cases_batch(execution_id: str, uids: list[str], batch
                 uid=uid,
                 branch_id=branch_id,
                 case_name=case_name,
+                description=description,
                 method_name=method_name,
                 class_name=class_name,
                 module=module,
@@ -490,8 +550,8 @@ async def get_execution(execution_id: str) -> dict | None:
             'fail': e.fail_count,
             'skip': e.skip_count,
             'concurrency': e.concurrency,
-            'start_time': e.start_time.isoformat() if e.start_time else '',
-            'end_time': e.end_time.isoformat() if e.end_time else '',
+            'start_time': dt_iso(e.start_time) if e.start_time else '',
+            'end_time': dt_iso(e.end_time) if e.end_time else '',
         }
 
 
@@ -521,8 +581,8 @@ async def get_all_executions(limit: int = 20, project_id: int | None = None, bra
                 'fail': e.fail_count,
                 'skip': e.skip_count,
                 'concurrency': e.concurrency,
-                'start_time': e.start_time.isoformat() if e.start_time else '',
-                'end_time': e.end_time.isoformat() if e.end_time else '',
+                'start_time': dt_iso(e.start_time) if e.start_time else '',
+                'end_time': dt_iso(e.end_time) if e.end_time else '',
             }
             for e in records
         ]
@@ -548,9 +608,10 @@ async def get_recent_executions(project_id: int, limit: int = 2) -> list[dict]:
                 'success': e.success_count,
                 'fail': e.fail_count,
                 'skip': e.skip_count,
-                'start_time': e.start_time.isoformat() if e.start_time else '',
-                'end_time': e.end_time.isoformat() if e.end_time else '',
-                'created_at': e.start_time.isoformat() if e.start_time else '',
+                'start_time': dt_iso(e.start_time) if e.start_time else '',
+                'end_time': dt_iso(e.end_time) if e.end_time else '',
+                'duration': duration_between(e.start_time, e.end_time),
+                'created_at': dt_iso(e.start_time) if e.start_time else '',
             }
             for e in records
         ]
@@ -571,8 +632,8 @@ async def get_executions_for_task(task_id: int) -> list[dict]:
                 'waiting': e.waiting_count, 'running': e.running_count,
                 'success': e.success_count, 'fail': e.fail_count, 'skip': e.skip_count,
                 'concurrency': e.concurrency,
-                'start_time': e.start_time.isoformat() if e.start_time else '',
-                'end_time': e.end_time.isoformat() if e.end_time else '',
+                'start_time': dt_iso(e.start_time) if e.start_time else '',
+                'end_time': dt_iso(e.end_time) if e.end_time else '',
             }
             for e in records
         ]
@@ -692,12 +753,13 @@ async def get_execution_cases(execution_id: str, page: int = 1, size: int = 50) 
             {
                 'id': r.id, 'uid': r.uid,
                 'case_name': r.case_name,
+                'description': r.description or '',
                 'method_name': r.method_name,
                 'class_name': r.class_name,
                 'status': r.status,
                 'duration_ms': r.duration_ms,
-                'start_time': r.start_time.isoformat() if r.start_time else '',
-                'end_time': r.end_time.isoformat() if r.end_time else '',
+                'start_time': dt_iso(r.start_time) if r.start_time else '',
+                'end_time': dt_iso(r.end_time) if r.end_time else '',
             }
             for r in records
         ]
@@ -739,8 +801,10 @@ async def get_execution_case_log(execution_case_id: int) -> dict | None:
             'id': r.id, 'uid': r.uid, 'case_name': r.case_name,
             'status': r.status, 'duration_ms': r.duration_ms,
             'message': r.message, 'trace': r.trace, 'logs': r.logs,
-            'start_time': r.start_time.isoformat() if r.start_time else '',
-            'end_time': r.end_time.isoformat() if r.end_time else '',
+            'steps': r.steps or '',
+            'screenshots': r.screenshots or '',
+            'start_time': dt_iso(r.start_time) if r.start_time else '',
+            'end_time': dt_iso(r.end_time) if r.end_time else '',
         }
 
 
@@ -768,6 +832,7 @@ async def get_execution_cases_full(execution_id: str) -> list[dict]:
             {
                 'uid': r.uid,
                 'case_name': r.case_name,
+                'description': r.description or '',
                 'method_name': r.method_name,
                 'class_name': r.class_name,
                 'module': r.module,
@@ -888,6 +953,7 @@ async def replace_discovery_cache(test_cases: list[dict], project_id: int = 0, b
                 module=c.get('module', ''),
                 full_name=c.get('fullName', c.get('full_name', '')),
                 description=c.get('description', ''),
+                steps=c.get('steps', ''),
                 tags=','.join(c.get('tags', [])) if isinstance(c.get('tags'), list) else c.get('tags', ''),
                 test_type=c.get('testType', c.get('test_type', 'api')),
                 file_path=c.get('filePath', c.get('file_path', '')),
@@ -919,6 +985,7 @@ async def load_discovery_cache(project_id: int = 0, branch_id: int = 0) -> tuple
                 'module': r.module,
                 'fullName': r.full_name,
                 'description': r.description,
+                'steps': r.steps,
                 'tags': [t for t in r.tags.split(',') if t] if r.tags else [],
                 'isNew': r.is_new,
                 'testType': r.test_type,
@@ -957,11 +1024,68 @@ async def get_test_case_by_uid(uid: str, project_id: int = 0, branch_id: int = 0
             'module': record.module,
             'fullName': record.full_name,
             'description': record.description,
+            'steps': record.steps,
             'tags': [t for t in record.tags.split(',') if t] if record.tags else [],
             'status': 'unknown',
             'isNew': record.is_new,
             'testType': record.test_type,
             'filePath': record.file_path,
+        }
+
+
+async def update_test_case(
+    uid: str,
+    project_id: int,
+    branch_id: int,
+    description: str | None = None,
+    steps: str | None = None,
+    module: str | None = None,
+) -> dict | None:
+    """Update editable fields of a single test case (description/steps/module)."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestCaseDefinition).where(
+                TestCaseDefinition.uid == uid,
+                TestCaseDefinition.project_id == project_id,
+                TestCaseDefinition.branch_id == branch_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            return None
+        if description is not None:
+            record.description = description
+        if steps is not None:
+            record.steps = steps
+        if module is not None:
+            record.module = module
+        record.updated_at = datetime.utcnow()
+        await session.commit()
+        # Re-read to return fresh dict
+        fresh = await session.execute(
+            select(TestCaseDefinition).where(
+                TestCaseDefinition.uid == uid,
+                TestCaseDefinition.project_id == project_id,
+                TestCaseDefinition.branch_id == branch_id,
+            )
+        )
+        rec = fresh.scalar_one_or_none()
+        if rec is None:
+            return None
+        return {
+            'uid': rec.uid,
+            'name': rec.name,
+            'methodName': rec.method_name,
+            'className': rec.class_name,
+            'module': rec.module,
+            'fullName': rec.full_name,
+            'description': rec.description,
+            'steps': rec.steps,
+            'tags': [t for t in rec.tags.split(',') if t] if rec.tags else [],
+            'status': 'unknown',
+            'isNew': rec.is_new,
+            'testType': rec.test_type,
+            'filePath': rec.file_path,
         }
 
 
@@ -1162,8 +1286,8 @@ async def get_project(project_id: int) -> dict | None:
             'creator_id': project.creator_id,
             'creator_name': creator_name,
             'member_count': member_count,
-            'last_synced_at': project.last_synced_at.isoformat() if project.last_synced_at else '',
-            'created_at': project.created_at.isoformat() if project.created_at else '',
+            'last_synced_at': dt_iso(project.last_synced_at) if project.last_synced_at else '',
+            'created_at': dt_iso(project.created_at) if project.created_at else '',
         }
 
 
@@ -1173,6 +1297,9 @@ async def get_all_projects(user_id: int | None = None) -> list[dict]:
     If user_id is provided and is not admin (id=1), filter to only show
     projects where the user is the creator or a member.
     """
+    active_id = None
+    if user_id is not None:
+        active_id = await _resolve_user_active_project_id(user_id)
     async with session_ctx() as session:
         query = select(Project).order_by(desc(Project.created_at))
 
@@ -1210,23 +1337,70 @@ async def get_all_projects(user_id: int | None = None) -> list[dict]:
                 'server_path': p.server_path,
                 'test_path': p.test_path,
                 'report_output': p.report_output,
-                'is_active': p.is_active,
+                'is_active': (active_id is not None and p.id == active_id)
+                             if user_id is not None else p.is_active,
                 'case_count': p.case_count,
                 'new_case_count': p.new_case_count,
                 'creator_id': p.creator_id,
                 'creator_name': creator_name,
                 'member_count': member_count,
-                'last_synced_at': p.last_synced_at.isoformat() if p.last_synced_at else '',
-                'created_at': p.created_at.isoformat() if p.created_at else '',
+                'last_synced_at': dt_iso(p.last_synced_at) if p.last_synced_at else '',
+                'created_at': dt_iso(p.created_at) if p.created_at else '',
             })
         return output
 
 
-async def get_active_project() -> dict | None:
-    """Get the currently active project."""
+async def _resolve_user_active_project_id(user_id: int) -> int | None:
+    """Return the active project id for a user, auto-selecting if none is recorded.
+
+    Auto-selection rule: the project the user joined most recently (by membership
+    insertion order). Returns None if the user belongs to no project.
+    """
     async with session_ctx() as session:
-        result = await session.execute(select(Project).where(Project.is_active == True))
-        project = result.scalar_one_or_none()
+        row = await session.execute(
+            select(UserActiveProject).where(UserActiveProject.user_id == user_id)
+        )
+        uap = row.scalar_one_or_none()
+        if uap:
+            exist = await session.execute(select(Project).where(Project.id == uap.project_id))
+            if exist.scalar_one_or_none():
+                return uap.project_id
+
+        members = await session.execute(
+            select(ProjectMember)
+            .where(ProjectMember.user_id == user_id)
+            .order_by(desc(ProjectMember.id))
+        )
+        latest = members.scalars().first()
+        if latest is None:
+            return None
+        pid = latest.project_id
+        if uap:
+            uap.project_id = pid
+            uap.updated_at = datetime.utcnow()
+        else:
+            session.add(UserActiveProject(user_id=user_id, project_id=pid))
+        await session.commit()
+        return pid
+
+
+async def get_active_project(user_id: int | None = None) -> dict | None:
+    """Get the active project for a user (per-user), auto-selecting if needed."""
+    project_id = None
+    if user_id is not None:
+        project_id = await _resolve_user_active_project_id(user_id)
+    async with session_ctx() as session:
+        if project_id is None and user_id is None:
+            # Global fallback (legacy) — used by internal services without a user
+            result = await session.execute(select(Project).where(Project.is_active == True))
+            project = result.scalar_one_or_none()
+            if project is not None:
+                project_id = project.id
+        if project_id is None:
+            return None
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one_or_none()
         if project is None:
             return None
         creator_name = ''
@@ -1246,26 +1420,47 @@ async def get_active_project() -> dict | None:
             'server_path': project.server_path,
             'test_path': project.test_path,
             'report_output': project.report_output,
-            'is_active': project.is_active,
+            'is_active': True,
             'case_count': project.case_count,
             'new_case_count': project.new_case_count,
             'creator_id': project.creator_id,
             'creator_name': creator_name,
             'member_count': member_count,
-            'last_synced_at': project.last_synced_at.isoformat() if project.last_synced_at else '',
-            'created_at': project.created_at.isoformat() if project.created_at else '',
+            'last_synced_at': dt_iso(project.last_synced_at) if project.last_synced_at else '',
+            'created_at': dt_iso(project.created_at) if project.created_at else '',
         }
 
 
-async def set_project_active(project_id: int) -> bool:
-    """Set a project as active and deactivate others."""
+async def set_project_active(user_id: int | None, project_id: int) -> bool:
+    """Set a project as the active project for a user (per-user)."""
     async with session_ctx() as session:
-        result = await session.execute(select(Project).where(Project.id == project_id))
-        project = result.scalar_one_or_none()
+        project = (
+            await session.execute(select(Project).where(Project.id == project_id))
+        ).scalar_one_or_none()
         if project is None:
             return False
-        await session.execute(update(Project).values(is_active=False))
-        project.is_active = True
+        if user_id is None:
+            # Global fallback (legacy)
+            await session.execute(update(Project).values(is_active=False))
+            project.is_active = True
+            await session.commit()
+            return True
+        # Verify membership before allowing activation
+        member = await session.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id, ProjectMember.user_id == user_id
+            )
+        )
+        if member.scalar_one_or_none() is None:
+            return False
+        uap = (
+            await session.execute(select(UserActiveProject).where(UserActiveProject.user_id == user_id))
+        ).scalar_one_or_none()
+        if uap:
+            uap.project_id = project_id
+            uap.updated_at = datetime.utcnow()
+        else:
+            session.add(UserActiveProject(user_id=user_id, project_id=project_id))
         await session.commit()
         return True
 
@@ -1474,7 +1669,7 @@ async def get_report_by_id(report_id: int) -> dict | None:
             'summary': json.loads(r.summary) if r.summary else {},
             'module_groups': json.loads(r.module_groups) if r.module_groups else {},
             'results': json.loads(r.results) if r.results else [],
-            'created_at': r.created_at.isoformat() if r.created_at else '',
+            'created_at': dt_iso(r.created_at) if r.created_at else '',
         }
 
 
@@ -1495,7 +1690,7 @@ async def get_report_by_execution(execution_id: str) -> dict | None:
             'summary': json.loads(r.summary) if r.summary else {},
             'module_groups': json.loads(r.module_groups) if r.module_groups else {},
             'results': json.loads(r.results) if r.results else [],
-            'created_at': r.created_at.isoformat() if r.created_at else '',
+            'created_at': dt_iso(r.created_at) if r.created_at else '',
         }
 
 
@@ -1535,7 +1730,7 @@ async def get_reports_by_project(project_id: int, page: int = 1, size: int = 20,
                 'failed': summary.get('failed', 0),
                 'passRate': summary.get('passRate', 0),
                 'totalDuration': summary.get('totalDuration', ''),
-                'created_at': r.created_at.isoformat() if r.created_at else '',
+                'created_at': dt_iso(r.created_at) if r.created_at else '',
             })
 
         return {
@@ -1588,7 +1783,7 @@ async def get_user_by_username(username: str) -> dict | None:
             'password_hash': user.password_hash,
             'avatar_url': user.avatar_url,
             'is_active': user.is_active,
-            'created_at': user.created_at.isoformat() if user.created_at else '',
+            'created_at': dt_iso(user.created_at) if user.created_at else '',
         }
 
 
@@ -1605,7 +1800,7 @@ async def get_user_by_id(user_id: int) -> dict | None:
             'nickname': user.nickname,
             'avatar_url': user.avatar_url,
             'is_active': user.is_active,
-            'created_at': user.created_at.isoformat() if user.created_at else '',
+            'created_at': dt_iso(user.created_at) if user.created_at else '',
         }
 
 
@@ -1740,7 +1935,7 @@ async def get_project_members(project_id: int) -> list[dict]:
                 'username': user.username if user else '',
                 'nickname': user.nickname if user else '',
                 'avatar_url': user.avatar_url if user else '',
-                'created_at': m.created_at.isoformat() if m.created_at else '',
+                'created_at': dt_iso(m.created_at) if m.created_at else '',
             })
         return output
 
@@ -1783,8 +1978,8 @@ async def get_project_note(project_id: int) -> dict | None:
             'project_id': note.project_id,
             'content': note.content,
             'updated_by': note.updated_by,
-            'created_at': note.created_at.isoformat() if note.created_at else '',
-            'updated_at': note.updated_at.isoformat() if note.updated_at else '',
+            'created_at': dt_iso(note.created_at) if note.created_at else '',
+            'updated_at': dt_iso(note.updated_at) if note.updated_at else '',
         }
 
 
@@ -1812,19 +2007,20 @@ async def upsert_project_note(project_id: int, content: str, updated_by: int) ->
             'project_id': note.project_id,
             'content': note.content,
             'updated_by': note.updated_by,
-            'created_at': note.created_at.isoformat() if note.created_at else '',
-            'updated_at': note.updated_at.isoformat() if note.updated_at else '',
+            'created_at': dt_iso(note.created_at) if note.created_at else '',
+            'updated_at': dt_iso(note.updated_at) if note.updated_at else '',
         }
 
 
 # ── Defect Module CRUD ──
 
 
-async def create_defect_module(project_id: int, data) -> int:
+async def create_defect_module(project_id: int, data, branch_id: int = 0) -> int:
     """Create a defect module. Returns module id."""
     async with session_ctx() as session:
         module = DefectModule(
             project_id=project_id,
+            branch_id=branch_id,
             name=data.name,
             parent_id=data.parent_id,
             sort_order=data.sort_order,
@@ -1836,24 +2032,39 @@ async def create_defect_module(project_id: int, data) -> int:
         return module_id
 
 
-async def get_defect_modules(project_id: int) -> list[dict]:
-    """Get all defect modules for a project (flat list)."""
+async def get_defect_modules(project_id: int, branch_id: int = 0) -> list[dict]:
+    """Get defect modules for a project, optionally scoped to a branch.
+
+    When branch_id > 0, only modules of that branch are returned. If that
+    branch has no modules yet, fall back to the project-level modules
+    (branch_id = 0) for backward compatibility with pre-branch data.
+    """
     async with session_ctx() as session:
+        query = select(DefectModule).where(DefectModule.project_id == project_id)
+        if branch_id > 0:
+            query = query.where(DefectModule.branch_id == branch_id)
         result = await session.execute(
-            select(DefectModule)
-            .where(DefectModule.project_id == project_id)
-            .order_by(DefectModule.sort_order, DefectModule.id)
+            query.order_by(DefectModule.sort_order, DefectModule.id)
         )
         modules = result.scalars().all()
+        if not modules and branch_id > 0:
+            # Fall back to project-level (legacy) modules
+            legacy = await session.execute(
+                select(DefectModule)
+                .where(DefectModule.project_id == project_id, DefectModule.branch_id == 0)
+                .order_by(DefectModule.sort_order, DefectModule.id)
+            )
+            modules = legacy.scalars().all()
         return [
             {
                 'id': m.id,
                 'project_id': m.project_id,
+                'branch_id': m.branch_id,
                 'name': m.name,
                 'parent_id': m.parent_id,
                 'sort_order': m.sort_order,
-                'created_at': m.created_at.isoformat() if m.created_at else '',
-                'updated_at': m.updated_at.isoformat() if m.updated_at else '',
+                'created_at': dt_iso(m.created_at) if m.created_at else '',
+                'updated_at': dt_iso(m.updated_at) if m.updated_at else '',
             }
             for m in modules
         ]
@@ -1910,8 +2121,33 @@ async def delete_defect_module(module_id: int) -> bool:
 # ── Defect CRUD ──
 
 
+async def _resolve_case_name(project_id: int, branch_id: int, case_uid: str) -> str:
+    """Resolve a test case's display name (description) for a defect link."""
+    if not case_uid:
+        return ''
+    try:
+        async with session_ctx() as session:
+            stmt = select(TestCaseDefinition).where(
+                TestCaseDefinition.uid == case_uid,
+                TestCaseDefinition.project_id == project_id,
+            )
+            # Prefer the exact branch; fall back to any branch since a case's
+            # cached branch (discovery) may differ from the defect's branch.
+            stmt = stmt.order_by(
+                (TestCaseDefinition.branch_id == branch_id).desc()  # exact match first
+            )
+            rec = (await session.execute(stmt)).scalars().first()
+            return (rec.description or rec.name or '') if rec else ''
+    except Exception:
+        return ''
+
+
 async def create_defect(data, creator_id: int) -> int:
     """Create a defect. Returns defect id."""
+    case_name = ''
+    case_uid = getattr(data, 'case_uid', None) or ''
+    if case_uid:
+        case_name = await _resolve_case_name(data.project_id, data.branch_id, case_uid)
     async with session_ctx() as session:
         defect = Defect(
             title=data.title,
@@ -1925,6 +2161,8 @@ async def create_defect(data, creator_id: int) -> int:
             status='unconfirmed',
             creator_id=creator_id,
             assignee_id=data.assignee_id or 0,
+            case_uid=case_uid,
+            case_name=case_name,
             bug_type=getattr(data, 'bug_type', None) or 'code_error',
             deadline=getattr(data, 'deadline', None) or '',
         )
@@ -1945,6 +2183,17 @@ async def get_defect(defect_id: int) -> dict | None:
         if defect is None:
             return None
         return _defect_to_dict(defect)
+
+
+async def get_defects_by_case_uid(project_id: int, case_uid: str) -> list[dict]:
+    """Get defects that reference a given test case (case_uid)."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Defect)
+            .where(Defect.project_id == project_id, Defect.case_uid == case_uid)
+            .order_by(desc(Defect.id))
+        )
+        return [_defect_to_dict(d) for d in result.scalars().all()]
 
 
 async def get_defects(project_id: int, branch_id: int, status: str = None,
@@ -2040,6 +2289,15 @@ async def update_defect(defect_id: int, data) -> bool:
             defect.priority = data.priority
         if data.assignee_id is not None:
             defect.assignee_id = data.assignee_id
+        if getattr(data, 'case_uid', None) is not None:
+            new_uid = data.case_uid or ''
+            defect.case_uid = new_uid
+            if new_uid:
+                defect.case_name = await _resolve_case_name(
+                    defect.project_id, defect.branch_id, new_uid
+                )
+            else:
+                defect.case_name = ''
         if getattr(data, 'bug_type', None):
             defect.bug_type = data.bug_type
         if getattr(data, 'deadline', None) is not None:
@@ -2061,6 +2319,10 @@ async def transition_defect(defect_id: int, action: str, operator_id: int,
 
         from app.api.defect_states import apply_transition
         transition = apply_transition(defect.status, action, **kwargs)
+
+        # 确认缺陷时必须指派处理人（未确认状态仅能通过 confirm 确认）
+        if action == 'confirm' and not kwargs.get('assignee_id'):
+            raise ValueError('确认缺陷时必须指派处理人')
 
         old_status = defect.status
         old_resolution = defect.resolution
@@ -2140,6 +2402,34 @@ async def transition_defect(defect_id: int, action: str, operator_id: int,
             await _create_defect_log(session, defect_id, 'resolution',
                                       old_resolution, defect.resolution, operator_id)
 
+        return True
+
+
+async def delete_defect(defect_id: int) -> bool:
+    """Delete a defect and its attachments, logs and comments. Returns True if deleted."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Defect).where(Defect.id == defect_id)
+        )
+        defect = result.scalar_one_or_none()
+        if defect is None:
+            return False
+
+        # Delete attachment, log and comment records
+        await session.execute(
+            delete(DefectAttachment).where(DefectAttachment.defect_id == defect_id)
+        )
+        await session.execute(
+            delete(DefectLog).where(DefectLog.defect_id == defect_id)
+        )
+        await session.execute(
+            delete(DefectComment).where(DefectComment.defect_id == defect_id)
+        )
+        # Delete the defect itself
+        await session.execute(
+            delete(Defect).where(Defect.id == defect_id)
+        )
+        await session.commit()
         return True
 
 
@@ -2225,12 +2515,14 @@ def _defect_to_dict(d) -> dict:
         'resolution': d.resolution or '',
         'assignee_id': d.assignee_id,
         'creator_id': d.creator_id,
+        'case_uid': d.case_uid or '',
+        'case_name': d.case_name or '',
         'bug_type': d.bug_type or 'code_error',
         'deadline': d.deadline or '',
         'resolved_version': d.resolved_version or 0,
-        'resolved_date': d.resolved_date or '',
-        'created_at': d.created_at.isoformat() if d.created_at else '',
-        'updated_at': d.updated_at.isoformat() if d.updated_at else '',
+        'resolved_date': dt_iso_from_str(d.resolved_date),
+        'created_at': dt_iso(d.created_at) if d.created_at else '',
+        'updated_at': dt_iso(d.updated_at) if d.updated_at else '',
     }
 
 
@@ -2276,7 +2568,30 @@ async def get_defect_logs(defect_id: int) -> list[dict]:
                 'old_value': log.old_value or '',
                 'new_value': log.new_value or '',
                 'operator_id': log.operator_id,
-                'created_at': log.created_at.isoformat() if log.created_at else '',
+                'created_at': dt_iso(log.created_at) if log.created_at else '',
+            }
+            for log in logs
+        ]
+
+
+async def get_recent_defect_logs(defect_id: int, limit: int = 3) -> list[dict]:
+    """Get the most recent logs for a defect (newest first)."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(DefectLog)
+            .where(DefectLog.defect_id == defect_id)
+            .order_by(desc(DefectLog.id))
+            .limit(limit)
+        )
+        logs = result.scalars().all()
+        return [
+            {
+                'id': log.id,
+                'field': log.field,
+                'old_value': log.old_value or '',
+                'new_value': log.new_value or '',
+                'operator_id': log.operator_id,
+                'created_at': dt_iso(log.created_at) if log.created_at else '',
             }
             for log in logs
         ]
@@ -2321,7 +2636,7 @@ async def get_defect_attachment(attachment_id: int) -> dict | None:
             'file_size': a.file_size,
             'mime_type': a.mime_type,
             'created_by': a.created_by,
-            'created_at': a.created_at.isoformat() if a.created_at else '',
+            'created_at': dt_iso(a.created_at) if a.created_at else '',
         }
 
 
@@ -2343,7 +2658,7 @@ async def get_defect_attachments(defect_id: int) -> list[dict]:
                 'file_size': a.file_size,
                 'mime_type': a.mime_type,
                 'created_by': a.created_by,
-                'created_at': a.created_at.isoformat() if a.created_at else '',
+                'created_at': dt_iso(a.created_at) if a.created_at else '',
             }
             for a in attachments
         ]
@@ -2415,8 +2730,8 @@ async def get_defect_comments(defect_id: int) -> list[dict]:
                 'content': comment.content,
                 'author_id': comment.author_id,
                 'author_name': author_name,
-                'created_at': comment.created_at.isoformat() if comment.created_at else '',
-                'updated_at': comment.updated_at.isoformat() if comment.updated_at else '',
+                'created_at': dt_iso(comment.created_at) if comment.created_at else '',
+                'updated_at': dt_iso(comment.updated_at) if comment.updated_at else '',
             })
         return enriched
 

@@ -1,10 +1,13 @@
 """Project management API endpoints."""
 from __future__ import annotations
 import asyncio
+import logging
 import shutil
 import sys
 import zipfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Request
 from app.models.schemas import ProjectCreate, ProjectInfo, ProjectSyncResult
@@ -28,6 +31,64 @@ def _ensure_pytest_config(project_dir: Path) -> None:
     has_config = any((project_dir / f).exists() for f in config_files)
     if not has_config and _DEFAULT_PYTEST_INI.exists():
         shutil.copy2(str(_DEFAULT_PYTEST_INI), str(project_dir / 'pytest.ini'))
+
+
+def _contains_cjk(text: str) -> bool:
+    """Whether the text contains CJK (Chinese) characters."""
+    return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+
+
+async def _bg_ai_title_update(project_id: int, discovery_path: str) -> None:
+    """Background task: re-discover with AI enabled and update Chinese titles.
+
+    Only writes the description when the DB value is empty or contains no
+    Chinese characters, so user-edited descriptions are never overwritten.
+    """
+    try:
+        data = await discoverer.discover_tests_at_path(
+            discovery_path, project_id=project_id, run_ai=True
+        )
+        flat_items = []
+        for mod in data.modules:
+            for cls in mod.classes:
+                for item in cls.items:
+                    flat_items.append(item.model_dump())
+
+        existing, _ = await crud.load_discovery_cache(project_id=project_id)
+        old_desc: dict[str, str] = {c['uid']: (c.get('description') or '') for c in existing}
+
+        updated = 0
+        for item in flat_items:
+            uid = item['uid']
+            new_desc = (item.get('description') or '').strip()
+            if not new_desc:
+                continue
+            cur = old_desc.get(uid, '')
+            if cur and _contains_cjk(cur):
+                # Already has a Chinese description (possibly user-edited); keep it.
+                continue
+            await crud.update_test_case(
+                uid=uid,
+                project_id=project_id,
+                branch_id=0,
+                description=new_desc,
+            )
+            updated += 1
+        logger.info('background AI title update done: project=%s updated=%s', project_id, updated)
+    except Exception:
+        logger.exception('background AI title update failed: project=%s', project_id)
+
+
+async def _bg_after_sync(project_id: int, discovery_path: str) -> None:
+    """Background: generate AI Chinese titles first, then rebuild the venv.
+
+    Run serially because rebuilding deletes the venv directory and would
+    break a concurrently running pytest collection.
+    """
+    try:
+        await _bg_ai_title_update(project_id, discovery_path)
+    finally:
+        await _rebuild_venv(project_id)
 
 
 async def _rebuild_venv(project_id: int) -> None:
@@ -86,9 +147,10 @@ async def list_server_directories():
 
 
 @router.get('/active')
-async def get_active_project():
-    """Get the currently active project."""
-    project = await crud.get_active_project()
+async def get_active_project(request: Request):
+    """Get the active project for the current user."""
+    user = await get_current_user(request)
+    project = await crud.get_active_project(user_id=user['id'])
     if project is None:
         return ok(None)
     return ok(project)
@@ -112,13 +174,12 @@ async def get_project_detail(project_id: int):
 
     members = await crud.get_project_members(project_id)
 
-    # Get recent defects (last 2, using any branch_id=0 for now)
-    # The existing get_recent_defects requires a branch_id; use the default branch
+    # Get recent defects (last 5, using the default branch)
     branch = await crud.get_default_branch(project_id)
     branch_id = branch['id'] if branch else 0
-    recent_defects = await crud.get_recent_defects(project_id, branch_id, limit=2)
+    recent_defects = await crud.get_recent_defects(project_id, branch_id, limit=5)
 
-    # Enrich defects with creator_name / assignee_name
+    # Enrich defects with creator_name / assignee_name / recent operation logs
     enriched_defects = []
     for d in recent_defects:
         creator_name = ''
@@ -131,13 +192,27 @@ async def get_project_detail(project_id: int):
             user = await crud.get_user_by_id(d['assignee_id'])
             if user:
                 assignee_name = user.get('nickname', '') or user.get('username', '')
+        recent_logs = await crud.get_recent_defect_logs(d['id'], limit=3)
+        enriched_logs = []
+        for log in recent_logs:
+            operator_name = ''
+            if log.get('operator_id'):
+                user = await crud.get_user_by_id(log['operator_id'])
+                if user:
+                    operator_name = user.get('nickname', '') or user.get('username', '')
+            enriched_logs.append({**log, 'operator_name': operator_name})
         enriched_defects.append({
             **d,
             'creator_name': creator_name,
             'assignee_name': assignee_name,
+            'recent_logs': enriched_logs,
         })
 
-    recent_tasks = await crud.get_recent_executions(project_id, limit=2)
+    recent_tasks = await crud.get_recent_executions(project_id, limit=5)
+
+    # Expose the server-side storage paths (same as the project list endpoint)
+    project['source_path'] = str(PROJECTS_SOURCE_DIR / f'project_{project_id}')
+    project['report_path'] = str(PROJECTS_REPORT_DIR / f'project_{project_id}')
 
     return ok({
         'project': project,
@@ -223,9 +298,10 @@ async def delete_project(project_id: int):
 
 
 @router.post('/{project_id}/activate')
-async def activate_project(project_id: int):
-    """Set a project as active."""
-    success = await crud.set_project_active(project_id)
+async def activate_project(project_id: int, request: Request):
+    """Set a project as active for the current user."""
+    user = await get_current_user(request)
+    success = await crud.set_project_active(user_id=user['id'], project_id=project_id)
     if not success:
         raise HTTPException(status_code=404, detail='项目不存在')
 
@@ -283,7 +359,10 @@ async def sync_project(project_id: int):
     if test_path:
         discovery_path = str(Path(discovery_path) / test_path)
 
-    data = await discoverer.discover_tests_at_path(discovery_path, project_id=project_id)
+    # Step 1: discover without AI so English info is available immediately
+    data = await discoverer.discover_tests_at_path(
+        discovery_path, project_id=project_id, run_ai=False
+    )
 
     flat_items = []
     for mod in data.modules:
@@ -299,8 +378,9 @@ async def sync_project(project_id: int):
     await crud.replace_discovery_cache(flat_items, project_id=project_id)
     set_discovery_cache(data)
 
-    # Rebuild virtualenv in background after sync
-    asyncio.ensure_future(_rebuild_venv(project_id))
+    # Step 2: in background, re-discover with AI enabled to generate Chinese
+    # titles, then rebuild the virtualenv afterwards.
+    asyncio.ensure_future(_bg_after_sync(project_id, discovery_path))
 
     return ok({
         'project_id': project_id,

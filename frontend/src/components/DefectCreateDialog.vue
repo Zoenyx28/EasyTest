@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useDefect } from '../composables/useDefect';
 import type { TempAttachmentInfo } from '../composables/useDefect';
 import { useProjectMembers } from '../composables/useProjectMembers';
-import type { DefectModuleInfo, ProjectMemberInfo, DefectCreateData } from '../types';
+import type { DefectModuleInfo, ProjectMemberInfo, DefectCreateData, TestCaseInfo } from '../types';
 import DefectRichEditor from './DefectRichEditor.vue';
 
 const props = defineProps<{
@@ -31,6 +31,10 @@ const steps = ref('');
 
 const modules = ref<DefectModuleInfo[]>([]);
 const members = ref<ProjectMemberInfo[]>([]);
+const cases = ref<TestCaseInfo[]>([]);
+const caseSearch = ref('');
+const selectedCaseUid = ref('');
+const caseDropdownOpen = ref(false);
 const saving = ref(false);
 const titleError = ref('');
 const uploading = ref(false);
@@ -64,11 +68,47 @@ function flattenModules(list: DefectModuleInfo[], depth = 0): { id: number; name
 
 async function loadModules() {
   try {
-    modules.value = await defectApi.getModules(props.projectId);
+    modules.value = await defectApi.getModules(props.projectId, props.branchId);
   } catch {
     // ignore
   }
 }
+
+async function loadCases() {
+  if (!props.projectId || !props.branchId) {
+    cases.value = [];
+    return;
+  }
+  try {
+    cases.value = await defectApi.loadCases(props.projectId, props.branchId);
+  } catch {
+    cases.value = [];
+  }
+}
+
+const filteredCases = computed(() => {
+  if (!caseSearch.value.trim()) return cases.value;
+  const q = caseSearch.value.trim().toLowerCase();
+  return cases.value.filter(c => {
+    const chinese = c.description && c.description !== c.name ? c.description : c.name;
+    return chinese.toLowerCase().includes(q)
+      || c.name.toLowerCase().includes(q)
+      || c.methodName.toLowerCase().includes(q)
+      || (c.module || '').toLowerCase().includes(q);
+  });
+});
+
+function caseDisplayName(c: TestCaseInfo): string {
+  return c.description && c.description !== c.name ? c.description : c.name;
+}
+
+function selectCase(c: TestCaseInfo) {
+  selectedCaseUid.value = c.uid;
+  caseDropdownOpen.value = false;
+  caseSearch.value = '';
+}
+
+const selectedCaseInfo = computed(() => cases.value.find(c => c.uid === selectedCaseUid.value) || null);
 
 async function loadMembers() {
   try {
@@ -96,6 +136,7 @@ async function handleSave() {
       severity: severity.value,
       priority: priority.value,
       assignee_id: assigneeId.value,
+      case_uid: selectedCaseUid.value,
       attachments: pendingFiles.value.map(pf => ({
         filename: pf.filename,
         filepath: pf.filepath,
@@ -133,6 +174,12 @@ function handleAddFile(event: Event) {
   target.value = '';
 }
 
+/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL */
+async function uploadEditorImage(file: File): Promise<string> {
+  const info = await defectApi.uploadTempAttachment(file);
+  return `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
+}
+
 function handleRemoveFile(id: number) {
   pendingFiles.value = pendingFiles.value.filter(f => f._localId !== id);
 }
@@ -145,6 +192,9 @@ function handleClose() {
   priority.value = 'P2';
   moduleId.value = 0;
   assigneeId.value = 0;
+  selectedCaseUid.value = '';
+  caseSearch.value = '';
+  caseDropdownOpen.value = false;
   titleError.value = '';
   pendingFiles.value = [];
   fileIdCounter = 0;
@@ -155,14 +205,30 @@ watch(() => props.isOpen, (newVal) => {
   if (newVal) {
     loadModules();
     loadMembers();
+    loadCases();
+  } else {
+    caseDropdownOpen.value = false;
   }
 });
 
+function handleDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement;
+  if (caseDropdownOpen.value && !target.closest('.case-selector')) {
+    caseDropdownOpen.value = false;
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('click', handleDocumentClick);
   if (props.isOpen) {
     loadModules();
     loadMembers();
+    loadCases();
   }
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick);
 });
 </script>
 
@@ -185,6 +251,62 @@ onMounted(() => {
               @input="titleError = ''"
             />
             <span v-if="titleError" class="error-text">{{ titleError }}</span>
+          </div>
+
+          <!-- 关联用例（按版本隔离，单选） -->
+          <div class="form-group">
+            <label class="form-label">关联用例</label>
+            <div class="case-selector">
+              <div
+                class="case-selector-input"
+                :class="{ 'case-selector-open': caseDropdownOpen }"
+                @click="caseDropdownOpen = !caseDropdownOpen"
+              >
+                <template v-if="selectedCaseUid && selectedCaseInfo">
+                  <span class="case-selected-name">{{ caseDisplayName(selectedCaseInfo) }}</span>
+                  <code class="case-selected-method">{{ selectedCaseInfo.methodName }}</code>
+                </template>
+                <span v-else class="case-placeholder">选择关联用例（可选）</span>
+                <svg class="case-chevron" :class="{ 'case-chevron-open': caseDropdownOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+              <div v-if="caseDropdownOpen" class="case-dropdown">
+                <div class="case-dropdown-search">
+                  <input
+                    v-model="caseSearch"
+                    type="text"
+                    placeholder="搜索用例名称/方法/模块"
+                    class="form-input"
+                    @click.stop
+                  />
+                </div>
+                <div class="case-dropdown-list">
+                  <div
+                    v-if="filteredCases.length === 0"
+                    class="case-dropdown-empty"
+                  >暂无用例（当前版本下没有已同步的用例）</div>
+                  <div
+                    v-for="c in filteredCases"
+                    :key="c.uid"
+                    class="case-dropdown-item"
+                    :class="{ 'case-dropdown-item-active': c.uid === selectedCaseUid }"
+                    @click="selectCase(c)"
+                  >
+                    <div class="case-dropdown-name">{{ caseDisplayName(c) }}</div>
+                    <code class="case-dropdown-method">{{ c.methodName }}</code>
+                    <span v-if="c.module" class="case-dropdown-module">{{ c.module }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="selectedCaseUid" class="case-clear" @click="selectedCaseUid = ''; caseSearch = ''">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+                清除
+              </div>
+            </div>
           </div>
 
           <div class="form-row">
@@ -236,7 +358,12 @@ onMounted(() => {
 
           <div class="form-group">
             <label class="form-label">复现步骤</label>
-            <DefectRichEditor v-model="steps" placeholder="如何复现这个问题？" />
+            <DefectRichEditor
+              v-model="steps"
+              placeholder="如何复现这个问题？"
+              :uploadImage="uploadEditorImage"
+              @error="emit('showToast', $event)"
+            />
           </div>
 
           <!-- Attachments -->
@@ -524,5 +651,147 @@ onMounted(() => {
 
 .btn-text:hover {
   background: rgba(186, 26, 26, 0.1);
+}
+
+/* ── 关联用例选择器 ── */
+.case-selector {
+  position: relative;
+}
+
+.case-selector-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: var(--font);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.case-selector-open {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+.case-selected-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-selected-method {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.case-placeholder {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+.case-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 0.18s ease;
+}
+
+.case-chevron-open {
+  transform: rotate(180deg);
+}
+
+.case-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 300;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.case-dropdown-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.case-dropdown-search .form-input {
+  padding: 8px 12px;
+}
+
+.case-dropdown-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.case-dropdown-empty {
+  padding: 20px 14px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.case-dropdown-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.case-dropdown-item:hover {
+  background: var(--color-primary-soft);
+}
+
+.case-dropdown-item-active {
+  background: var(--color-primary-soft);
+}
+
+.case-dropdown-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.case-dropdown-method {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.case-dropdown-module {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.case-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.case-clear:hover {
+  color: var(--color-danger);
 }
 </style>

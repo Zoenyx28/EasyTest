@@ -159,7 +159,7 @@ watch(() => props.projectId, () => {
       <textarea
         v-model="noteContent"
         class="w-full flex-1 min-h-0 p-3 rounded-[8px] text-[13px] outline-none resize-none overflow-y-auto"
-        style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary); font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace; line-height: 1.6;"
+        style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-primary); font-family: var(--font-mono); line-height: 1.6;"
         placeholder="输入 Markdown 内容..."
       ></textarea>
     </div>
@@ -167,8 +167,8 @@ watch(() => props.projectId, () => {
     <!-- Preview mode -->
     <div v-else class="markdown-preview flex flex-col flex-1 min-h-0 rounded-[8px] p-3" style="background-color: var(--input-bg); border: 1px solid var(--border);">
       <div
-        class="prose prose-sm max-w-none flex-1 min-h-0 overflow-y-auto text-[13px] select-text"
-        style="color: var(--text-primary); line-height: 1.7;"
+        class="prose prose-sm max-w-none flex-1 min-h-0 overflow-y-auto text-[12px] select-text"
+        style="color: var(--text-primary); line-height: 1.75;"
         v-html="renderMarkdown(savedContent)"
       ></div>
     </div>
@@ -176,6 +176,11 @@ watch(() => props.projectId, () => {
 </template>
 
 <style scoped>
+.markdown-preview {
+  font-family: var(--font);
+  font-size: 12px;
+}
+
 .markdown-preview :deep(h1),
 .markdown-preview :deep(h2),
 .markdown-preview :deep(h3) {
@@ -185,9 +190,9 @@ watch(() => props.projectId, () => {
   color: var(--text-primary);
 }
 
-.markdown-preview :deep(h1) { font-size: 1.25rem; }
-.markdown-preview :deep(h2) { font-size: 1.1rem; }
-.markdown-preview :deep(h3) { font-size: 1rem; }
+.markdown-preview :deep(h1) { font-size: 1.15rem; }
+.markdown-preview :deep(h2) { font-size: 1.05rem; }
+.markdown-preview :deep(h3) { font-size: 0.95rem; }
 
 .markdown-preview :deep(p) {
   margin: 0.4em 0;
@@ -198,7 +203,7 @@ watch(() => props.projectId, () => {
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   background-color: var(--card-bg-2);
   color: var(--text-primary);
 }

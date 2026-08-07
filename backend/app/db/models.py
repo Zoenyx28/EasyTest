@@ -50,6 +50,7 @@ class TestCaseDefinition(Base):
     module: Mapped[str] = mapped_column(String(128), default='')
     full_name: Mapped[str] = mapped_column(String(512), default='')
     description: Mapped[str] = mapped_column(Text, default='')
+    steps: Mapped[str] = mapped_column(Text, default='')  # JSON string of test steps
     tags: Mapped[str] = mapped_column(String(1024), default='')
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_new: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -118,6 +119,7 @@ class ExecutionCase(Base):
     uid: Mapped[str] = mapped_column(String(64), nullable=False)
     branch_id: Mapped[int] = mapped_column(Integer, default=0)
     case_name: Mapped[str] = mapped_column(String(500), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
     method_name: Mapped[str] = mapped_column(String(255), default='')
     class_name: Mapped[str] = mapped_column(String(255), default='')
     module: Mapped[str] = mapped_column(String(255), default='')
@@ -183,6 +185,17 @@ class ProjectMember(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class UserActiveProject(Base):
+    """Per-user active project — each user activates a project independently."""
+    __tablename__ = 'user_active_projects'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Report(Base):
     """Test report stored in database, replacing history.json."""
     __tablename__ = 'reports'
@@ -201,11 +214,12 @@ class Report(Base):
 
 
 class DefectModule(Base):
-    """缺陷模块 - 项目级模块树"""
+    """缺陷模块 - 项目级+版本级模块树"""
     __tablename__ = 'defect_modules'
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    branch_id: Mapped[int] = mapped_column(Integer, default=0)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     parent_id: Mapped[int] = mapped_column(Integer, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -230,6 +244,8 @@ class Defect(Base):
     resolution: Mapped[str] = mapped_column(String(64), default='')
     assignee_id: Mapped[int] = mapped_column(Integer, default=0)
     creator_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_uid: Mapped[str] = mapped_column(String(256), default='')
+    case_name: Mapped[str] = mapped_column(String(512), default='')
     bug_type: Mapped[str] = mapped_column(String(32), default='code_error')
     deadline: Mapped[str] = mapped_column(String(32), default='')
     resolved_version: Mapped[int] = mapped_column(Integer, default=0)
