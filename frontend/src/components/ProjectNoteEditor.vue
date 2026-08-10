@@ -95,10 +95,7 @@ watch(() => props.projectId, () => {
           <button
             v-if="!isEditMode"
             @click="isEditMode = true"
-            class="flex items-center gap-1 px-3 py-1.5 rounded-[6px] text-[11.5px] font-medium cursor-pointer transition-all"
-            style="background-color: var(--accent); color: #fff;"
-            @mouseenter="($event.currentTarget as HTMLElement).style.opacity = '0.9'"
-            @mouseleave="($event.currentTarget as HTMLElement).style.opacity = '1'"
+            class="clay-btn clay-btn-primary flex items-center gap-1 px-3 py-1.5 text-[11.5px] font-medium"
           >
             <svg class="w-[12px] h-[12px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 20h9"></path>
@@ -110,9 +107,7 @@ watch(() => props.projectId, () => {
             v-if="isEditMode"
             @click="handleSave"
             :disabled="saving"
-            class="flex items-center gap-1 px-3 py-1.5 rounded-[6px] text-[11.5px] font-medium cursor-pointer transition-all"
-            style="background-color: var(--accent); color: #fff;"
-            :style="{ opacity: saving ? 0.5 : 1 }"
+            class="clay-btn clay-btn-primary flex items-center gap-1 px-3 py-1.5 text-[11.5px] font-medium"
           >
             <svg class="w-[12px] h-[12px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
@@ -124,8 +119,7 @@ watch(() => props.projectId, () => {
           <button
             v-if="isEditMode"
             @click="cancelEdit"
-            class="flex items-center gap-1 px-3 py-1.5 rounded-[6px] text-[11.5px] font-medium cursor-pointer transition-all"
-            style="background-color: var(--input-bg); color: var(--text-secondary); border: 1px solid var(--border);"
+            class="clay-btn clay-btn-secondary flex items-center gap-1 px-3 py-1.5 text-[11.5px] font-medium"
           >
             取消
           </button>
@@ -165,7 +159,7 @@ watch(() => props.projectId, () => {
     </div>
 
     <!-- Preview mode -->
-    <div v-else class="markdown-preview flex flex-col flex-1 min-h-0 rounded-[8px] p-3" style="background-color: var(--input-bg); border: 1px solid var(--border);">
+    <div v-else class="markdown-preview flex flex-col flex-1 min-h-0 p-3" style="background-color: var(--input-bg); border: 2px solid var(--outline); border-radius: var(--radius-sm);">
       <div
         class="prose prose-sm max-w-none flex-1 min-h-0 overflow-y-auto text-[12px] select-text"
         style="color: var(--text-primary); line-height: 1.75;"
@@ -176,6 +170,66 @@ watch(() => props.projectId, () => {
 </template>
 
 <style scoped>
+/* ── Clay 按钮 ── */
+.clay-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow-hard-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.clay-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.clay-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+.clay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clay-btn-primary {
+  background-color: var(--cta);
+  color: #fff;
+}
+.clay-btn-primary:hover {
+  background-color: var(--cta-dark);
+}
+.clay-btn-secondary {
+  background-color: var(--color-secondary);
+  color: var(--text-primary);
+}
+.clay-btn-secondary:hover {
+  background-color: var(--color-secondary-dark);
+}
+
+/* ── 备注编辑框 ── */
+.note-textarea {
+  background-color: var(--input-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.note-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
+}
+
 .markdown-preview {
   font-family: var(--font);
   font-size: 12px;

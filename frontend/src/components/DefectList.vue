@@ -584,11 +584,19 @@ watch(() => props.externalModuleId, (newVal) => {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background-color: var(--color-primary-soft);
-  border-radius: 8px;
-  border: 1px solid var(--border);
+  background-color: var(--input-bg);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   flex: 1;
   max-width: 400px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.search-input-wrapper:focus-within {
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .search-icon {
@@ -612,34 +620,47 @@ watch(() => props.externalModuleId, (newVal) => {
 
 .quick-filters {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
-  padding: 2px;
-  background-color: var(--bg-soft);
-  border-radius: 100px;
+  padding: 3px;
+  background-color: var(--input-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm);
+  overflow: hidden;
 }
 
 .quick-filter-button {
   padding: 6px 14px;
-  border: none;
+  border: 2px solid transparent;
   background: transparent;
   font-family: var(--font);
   font-size: 12px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-secondary);
-  border-radius: 100px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .quick-filter-button:hover {
+  background-color: var(--color-primary-soft);
   color: var(--text-primary);
 }
 
 .quick-filter-active {
-  background-color: var(--bg-card);
+  background-color: var(--color-primary);
+  border-color: var(--outline);
   color: var(--text-primary);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.quick-filter-active:hover {
+  background-color: var(--color-primary);
+  color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .filter-bar {
@@ -649,6 +670,7 @@ watch(() => props.externalModuleId, (newVal) => {
   gap: 16px;
   padding: 16px 0;
   background-color: var(--bg-card);
+  border-bottom: 2px solid var(--outline);
   flex-shrink: 0;
 }
 
@@ -749,20 +771,23 @@ watch(() => props.externalModuleId, (newVal) => {
 
 .filter-select {
   padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--outline);
   font-size: 13px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
   outline: none;
   cursor: pointer;
   min-width: 150px;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .filter-select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .loading-state {
@@ -902,7 +927,7 @@ watch(() => props.externalModuleId, (newVal) => {
   width: 16px;
   height: 16px;
   cursor: pointer;
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
   border-radius: 4px;
   accent-color: var(--color-primary);
 }
@@ -1055,19 +1080,22 @@ watch(() => props.externalModuleId, (newVal) => {
   padding: 0 8px;
   font-size: 13px;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease;
   font-family: var(--font);
-  background: transparent;
+  background: var(--card-bg-2);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .page-button:hover:not(:disabled):not(.page-button-active) {
-  background-color: var(--color-primary-soft);
-  border-color: var(--border-hover);
+  background-color: var(--bg-card-hover);
+  border-color: var(--outline);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .page-button:disabled {
@@ -1076,9 +1104,15 @@ watch(() => props.externalModuleId, (newVal) => {
 }
 
 .page-button-active {
-  background-color: var(--text-primary);
-  color: var(--bg-card);
-  border-color: var(--text-primary);
+  background-color: var(--color-primary);
+  color: var(--text-primary);
+  font-weight: 600;
+  border-color: var(--outline);
+}
+
+.page-button-active:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .page-ellipsis {
@@ -1109,7 +1143,7 @@ watch(() => props.externalModuleId, (newVal) => {
   width: 30px;
   height: 30px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-card);
   color: var(--text-muted);
   cursor: pointer;

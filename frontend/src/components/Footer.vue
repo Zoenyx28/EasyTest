@@ -35,21 +35,21 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <footer class="fixed bottom-0 left-0 right-0 h-8 flex items-center justify-between px-6 z-40 border-t text-xs font-code" style="background-color: var(--bg-window); border-color: var(--border);">
+  <footer class="footer-bar fixed bottom-0 left-0 right-0 h-8 flex items-center justify-between px-6 z-40 border-t text-xs font-code">
     <div class="flex items-center gap-2">
       <span
         class="w-2 h-2 rounded-full inline-block"
         :class="{
-          'bg-yellow-400 animate-pulse': backendStatus === 'checking',
+          'bg-[var(--color-warning)] animate-pulse': backendStatus === 'checking',
           'bg-[var(--color-success)] animate-pulse': backendStatus === 'connected',
-          'bg-red-500': backendStatus === 'disconnected',
+          'bg-[var(--color-danger)]': backendStatus === 'disconnected',
         }"
       ></span>
       <span
         :class="{
-          'text-yellow-400': backendStatus === 'checking',
+          'text-[var(--color-warning)]': backendStatus === 'checking',
           'text-[var(--color-success)]': backendStatus === 'connected',
-          'text-red-500': backendStatus === 'disconnected',
+          'text-[var(--color-danger)]': backendStatus === 'disconnected',
         }"
       >
         <template v-if="backendStatus === 'checking'">Checking backend...</template>
@@ -60,3 +60,11 @@ onUnmounted(() => {
 
   </footer>
 </template>
+
+<style scoped>
+.footer-bar {
+  background-color: var(--bg-window);
+  border-color: var(--border);
+  color: var(--text-tertiary);
+}
+</style>

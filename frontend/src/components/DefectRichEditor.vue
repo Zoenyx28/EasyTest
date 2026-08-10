@@ -181,16 +181,18 @@ function focusEditor() {
 
 <style scoped>
 .rich-editor {
-  border: 1px solid var(--border);
+  border: 2px solid var(--outline);
   border-radius: var(--radius-sm);
   overflow: hidden;
   background-color: var(--input-bg);
-  transition: border-color 0.15s ease;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .rich-editor:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2.5px rgba(10, 132, 255, 0.18);
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .editor-toolbar {
@@ -266,16 +268,16 @@ function focusEditor() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: var(--overlay-bg);
 }
 
 .link-panel {
   width: 360px;
   padding: 16px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background-color: var(--bg-card);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+  border: 3px solid var(--outline);
 }
 
 .link-title {
@@ -283,24 +285,27 @@ function focusEditor() {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 10px;
+  font-family: var(--font-heading);
 }
 
 .link-input {
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
-  font-family: inherit;
+  font-family: var(--font);
   background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
 }
 
 .link-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.18);
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .link-actions {
@@ -312,29 +317,35 @@ function focusEditor() {
 
 .link-btn {
   padding: 6px 16px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: none;
-  font-family: inherit;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
+  font-family: var(--font);
+  transition: all 0.15s ease;
 }
 
 .link-btn.cancel {
-  background: transparent;
+  background: var(--bg-soft);
   color: var(--text-secondary);
 }
 
 .link-btn.cancel:hover {
   background: var(--row-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .link-btn.ok {
-  background: var(--accent);
-  color: var(--bg-card);
+  background: var(--cta);
+  color: #fff;
 }
 
 .link-btn.ok:hover {
   filter: brightness(0.95);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 </style>

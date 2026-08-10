@@ -281,17 +281,19 @@ function formatTime(iso: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  background-color: var(--overlay-bg);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .dialog-container {
   width: 680px;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
-  background-color: var(--bg-card);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   overflow: hidden;
 }
 .dialog-header {
@@ -310,10 +312,10 @@ function formatTime(iso: string): string {
 }
 .dialog-title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
-  font-family: var(--font);
+  font-family: var(--font-heading);
 }
 .dialog-close-btn {
   width: 32px;
@@ -321,35 +323,41 @@ function formatTime(iso: string): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
   color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 .dialog-close-btn:hover {
   background: var(--color-primary-soft);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .btn-edit {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   font-family: var(--font);
   background-color: var(--color-primary-soft);
-  color: var(--color-primary);
-  border: none;
+  color: var(--color-primary-dark);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 .btn-edit:hover {
   background-color: var(--color-primary-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .dialog-body {
   flex: 1;
@@ -386,37 +394,40 @@ function formatTime(iso: string): string {
   font-size: 14px;
   font-weight: 600;
   padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
   background: var(--bg-input, #fff);
   color: var(--text-primary);
   font-family: var(--font);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-sizing: border-box;
 }
 .title-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 .form-input,
 .form-textarea {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--bg-input);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
   outline: none;
-  transition: all 0.15s ease;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   box-sizing: border-box;
 }
 .form-input:focus,
 .form-textarea:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 .form-textarea {
   resize: vertical;
@@ -549,31 +560,42 @@ function formatTime(iso: string): string {
 }
 .btn {
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, filter 0.15s ease;
   font-family: var(--font);
-  border: none;
+  border: 2px solid var(--outline);
   line-height: 20px;
 }
 .btn-cancel {
-  background-color: transparent;
-  color: var(--text-primary);
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
   font-weight: 500;
+  box-shadow: var(--shadow-hard-sm);
 }
-.btn-cancel:hover {
-  background-color: var(--bg-muted);
+.btn-cancel:hover:not(:disabled) {
+  background-color: var(--bg-card-hover);
+  color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .btn-save {
-  background-color: var(--color-primary);
-  color: var(--bg-card);
+  background-color: var(--cta);
+  color: #fff;
+  box-shadow: var(--shadow-hard-sm);
 }
 .btn-save:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-cancel:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -69,18 +69,17 @@ function handleClose() {
   <div
     v-if="isOpen"
     class="fixed inset-0 flex items-center justify-center z-50 p-4"
-    style="background: rgba(0,0,0,.32);"
+    style="background-color: var(--overlay-bg);"
     @click.self="handleClose"
   >
     <div
-      class="w-[380px] max-w-[90vw] rounded-[14px] border overflow-hidden"
-      style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.3);"
+      class="password-panel w-[380px] max-w-[90vw] overflow-hidden"
     >
       <div
         class="flex items-center justify-between px-[18px] py-[14px] border-b"
         style="border-color: var(--border);"
       >
-        <h3 class="text-[15px] font-semibold" style="color: var(--text-primary);">修改密码</h3>
+        <h3 class="password-title">修改密码</h3>
         <button
           @click="handleClose"
           class="cursor-pointer text-[15px]"
@@ -91,7 +90,7 @@ function handleClose() {
       </div>
 
       <div class="px-[18px] py-[16px]">
-        <div v-if="error" class="mb-4 px-3 py-2 rounded-[8px] text-[12.5px]" style="background-color: rgba(255, 69, 58, 0.1); color: var(--danger);">
+        <div v-if="error" class="mb-4 px-3 py-2 rounded-[8px] text-[12.5px]" style="background-color: var(--danger-soft); color: var(--danger);">
           {{ error }}
         </div>
 

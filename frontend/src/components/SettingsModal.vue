@@ -57,16 +57,15 @@ const handleSave = () => {
 </script>
 
 <template>
-  <div v-if="isOpen" class="fixed inset-0 flex items-center justify-center z-50 p-4" style="background: rgba(0,0,0,.32);">
+  <div v-if="isOpen" class="fixed inset-0 flex items-center justify-center z-50 p-4" style="background-color: var(--overlay-bg);">
     <div 
-      class="w-[380px] max-w-[90vw] rounded-[14px] border overflow-hidden"
-      style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.3);"
+      class="settings-panel w-[380px] max-w-[90vw] overflow-hidden"
     >
       <div 
         class="flex items-center justify-between px-[18px] py-[14px] border-b"
         style="border-color: var(--border);"
       >
-        <h3 class="text-[15px] font-semibold" style="color: var(--text-primary);">执行设置</h3>
+        <h3 class="settings-title">执行设置</h3>
         <button 
           @click="emit('close')" 
           class="cursor-pointer text-[15px]"
@@ -82,16 +81,14 @@ const handleSave = () => {
           <div class="flex items-center gap-[10px]">
             <button 
               @click="timeoutSec = Math.max(1, timeoutSec - 1)" 
-              class="w-[26px] h-[26px] rounded-[7px] border text-[14px] cursor-pointer"
-              style="border-color: var(--border-strong); background-color: var(--card-bg-2); color: var(--text-primary);"
+              class="step-btn w-[26px] h-[26px] text-[14px] cursor-pointer"
             >
               −
             </button>
             <span class="text-[14px] font-semibold min-w-[24px] text-center" style="color: var(--text-primary);">{{ timeoutSec }}</span>
             <button 
               @click="timeoutSec = Math.min(10, timeoutSec + 1)" 
-              class="w-[26px] h-[26px] rounded-[7px] border text-[14px] cursor-pointer"
-              style="border-color: var(--border-strong); background-color: var(--card-bg-2); color: var(--text-primary);"
+              class="step-btn w-[26px] h-[26px] text-[14px] cursor-pointer"
             >
               +
             </button>
@@ -104,15 +101,15 @@ const handleSave = () => {
           <div class="flex gap-[8px]">
             <div 
               @click="autoRetry = true"
-              class="flex-1 text-center px-2 py-[8px] rounded-[8px] border text-[12.5px] cursor-pointer"
-              :class="autoRetry ? 'border-[var(--accent)] bg-[var(--selected-bg)] text-[var(--accent)] font-semibold' : 'border-[var(--border)] text-[var(--text-secondary)]'"
+              class="option-card flex-1 text-center px-2 py-[8px] text-[12.5px] cursor-pointer"
+              :class="autoRetry ? 'option-card--active' : ''"
             >
               并发执行
             </div>
             <div 
               @click="autoRetry = false"
-              class="flex-1 text-center px-2 py-[8px] rounded-[8px] border text-[12.5px] cursor-pointer"
-              :class="!autoRetry ? 'border-[var(--accent)] bg-[var(--selected-bg)] text-[var(--accent)] font-semibold' : 'border-[var(--border)] text-[var(--text-secondary)]'"
+              class="option-card flex-1 text-center px-2 py-[8px] text-[12.5px] cursor-pointer"
+              :class="!autoRetry ? 'option-card--active' : ''"
             >
               顺序执行
             </div>
@@ -126,15 +123,13 @@ const handleSave = () => {
       >
         <button 
           @click="emit('close')" 
-          class="px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition-colors"
-          style="background-color: var(--card-bg-2); border: 1px solid var(--border-strong); color: var(--text-primary);"
+          class="btn-cancel px-4 py-1.5 text-sm font-medium rounded cursor-pointer"
         >
           取消
         </button>
         <button 
           @click="handleSave" 
-          class="px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition-colors"
-          style="background-color: var(--accent); border-color: var(--accent); color: #fff;"
+          class="btn-save px-4 py-1.5 text-sm font-medium rounded cursor-pointer"
         >
           保存
         </button>
@@ -142,3 +137,90 @@ const handleSave = () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ── Claymorphism：弹窗面板（3px 硬描边 + 硬阴影 + 柔和投影） ── */
+.settings-panel {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+
+/* ── Claymorphism：弹窗标题 ── */
+.settings-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Claymorphism：步进按钮 ── */
+.step-btn {
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg-2);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.step-btn:hover {
+  background-color: var(--bg-card-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
+/* ── Claymorphism：模式选项卡片 ── */
+.option-card {
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow-hard-sm);
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.option-card:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.option-card--active {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Claymorphism：次级按钮 ── */
+.btn-cancel {
+  background-color: var(--card-bg-2);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.btn-cancel:hover {
+  background-color: var(--bg-card-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
+/* ── Claymorphism：主 CTA 按钮（绿） ── */
+.btn-save {
+  background-color: var(--cta);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, filter 0.15s ease;
+}
+.btn-save:hover {
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.btn-save:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+</style>

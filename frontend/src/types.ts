@@ -360,6 +360,8 @@ export interface DefectInfo {
   resolved_date: string;
   created_at: string;
   updated_at: string;
+  /** 最近活动日志（项目详情接口附带，最多 3 条） */
+  recent_logs?: DefectLogInfo[];
 }
 
 export interface DefectLogInfo {
@@ -379,6 +381,8 @@ export interface DefectAttachmentInfo {
   mime_type: string;
   created_by: number;
   created_at: string;
+  /** 短时效签名下载 URL（需在有效期内访问） */
+  download_url?: string;
 }
 
 export interface DefectDetailResponse {

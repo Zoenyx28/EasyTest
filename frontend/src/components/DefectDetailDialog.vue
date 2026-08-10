@@ -292,10 +292,10 @@ function handleFileUpload(event: Event) {
   target.value = '';
 }
 
-/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL */
+/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL（短时效签名） */
 async function uploadEditorImage(file: File): Promise<string> {
   const info = await defectApi.uploadTempAttachment(file);
-  return `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
+  return info.url || `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
 }
 
 function handleDeleteAttachment(attachmentId: number) {
@@ -664,7 +664,7 @@ onUnmounted(() => {
                     <div v-for="att in attachments" :key="'a' + att.id" class="attachment-item">
                       <a
                         class="attachment-name attachment-link"
-                        :href="defectApi.getAttachmentDownloadUrl(att.id)"
+                        :href="att.download_url || defectApi.getAttachmentDownloadUrl(att.id)"
                         :download="att.filename"
                       >{{ att.filename }}</a>
                       <span class="attachment-meta">({{ Math.round(att.file_size / 1024) }} KB)</span>
@@ -798,7 +798,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(4px);
 }
 
@@ -807,9 +807,10 @@ onUnmounted(() => {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
   background-color: var(--bg-card);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   overflow: hidden;
 }
 
@@ -843,7 +844,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  font-family: var(--font);
+  font-family: var(--font-heading);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -855,18 +856,21 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
   color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
 }
 
 .dialog-close-btn:hover {
   background: var(--color-primary-soft);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-edit {
@@ -874,19 +878,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
-  background-color: var(--color-primary-soft);
-  color: var(--color-primary);
-  border: none;
+  background-color: var(--bg-soft);
+  color: var(--text-primary);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .btn-edit:hover {
   background-color: var(--color-primary-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-activate {
@@ -894,19 +901,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
-  background-color: var(--color-warning);
-  color: #fff;
-  border: none;
+  background-color: var(--bg-soft);
+  color: var(--text-primary);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .btn-activate:hover {
-  opacity: 0.85;
+  background-color: var(--color-primary-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .tabs-header {
@@ -920,12 +930,12 @@ onUnmounted(() => {
 
 .tab-button {
   padding: 8px 16px;
-  border: none;
+  border: 2px solid transparent;
   background: transparent;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
@@ -939,9 +949,15 @@ onUnmounted(() => {
 }
 
 .tab-button.active {
-  background: var(--bg-card);
-  color: var(--color-primary);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  background: var(--color-primary);
+  color: var(--text-primary);
+  border-color: var(--outline);
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.tab-button.active:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .tab-badge {
@@ -1041,18 +1057,20 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 600;
   padding: 8px 12px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--bg-input, #fff);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
   color: var(--text-primary);
   font-family: var(--font);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
 }
 
 .title-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  background: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .assignee-tag {
@@ -1115,7 +1133,7 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1126,8 +1144,8 @@ onUnmounted(() => {
   max-width: 92vw;
   max-height: 92vh;
   object-fit: contain;
-  border-radius: 6px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-dialog);
 }
 
 .severity-badge {
@@ -1148,12 +1166,13 @@ onUnmounted(() => {
 .form-select {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -1161,7 +1180,8 @@ onUnmounted(() => {
 
 .form-select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .form-select:disabled {
@@ -1172,12 +1192,13 @@ onUnmounted(() => {
 .form-textarea {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -1188,7 +1209,8 @@ onUnmounted(() => {
 
 .form-textarea:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .attachments-list {
@@ -1201,6 +1223,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -1235,19 +1258,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  border: none;
-  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-primary);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
   font-family: var(--font);
 }
 
 .upload-btn:hover:not(.disabled) {
   background: var(--color-primary-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .upload-btn.disabled {
@@ -1273,7 +1299,7 @@ onUnmounted(() => {
 }
 
 .btn-text:hover {
-  background: rgba(186, 26, 26, 0.1);
+  background: var(--danger-soft);
 }
 
 .details-sidebar {
@@ -1335,33 +1361,38 @@ onUnmounted(() => {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
-  border: none;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
   line-height: 20px;
 }
 
 .btn-cancel {
-  background-color: transparent;
-  color: var(--text-primary);
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
-.btn-cancel:hover {
+.btn-cancel:hover:not(:disabled) {
   background-color: var(--bg-muted);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save {
-  background-color: var(--color-primary);
-  color: var(--bg-card);
+  background-color: var(--cta);
+  color: #fff;
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save:disabled {
@@ -1380,12 +1411,13 @@ onUnmounted(() => {
   gap: 8px;
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   cursor: pointer;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -1393,7 +1425,8 @@ onUnmounted(() => {
 
 .case-selector-open {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .case-selected-name {
@@ -1405,7 +1438,7 @@ onUnmounted(() => {
 }
 
 .case-selected-method {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-secondary);
   overflow: hidden;
@@ -1436,9 +1469,9 @@ onUnmounted(() => {
   right: 0;
   z-index: 300;
   background-color: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-md), var(--shadow-popover);
   overflow: hidden;
 }
 
@@ -1477,7 +1510,7 @@ onUnmounted(() => {
 }
 
 .case-dropdown-item-active {
-  background: var(--color-primary-soft);
+  background: var(--selected-bg);
 }
 
 .case-dropdown-name {
@@ -1487,7 +1520,7 @@ onUnmounted(() => {
 }
 
 .case-dropdown-method {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -1529,7 +1562,7 @@ onUnmounted(() => {
 }
 
 .case-chip-method {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
 }

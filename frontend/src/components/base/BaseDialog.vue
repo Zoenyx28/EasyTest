@@ -74,9 +74,9 @@ function onBackdropClick() {
   flex-direction: column;
   overflow: hidden;
   background-color: var(--card-bg);
-  border: 1px solid var(--border);
+  border: 3px solid var(--outline);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-dialog);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
 }
 
 .base-dialog__header {
@@ -105,9 +105,9 @@ function onBackdropClick() {
 .base-dialog__light--green { background-color: rgb(39, 201, 63); }
 
 .base-dialog__title {
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;

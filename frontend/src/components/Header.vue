@@ -48,6 +48,14 @@ const newBranchName = ref('');
 const newBranchSource = ref<'empty' | 'copy'>('empty');
 const theme = ref<'light' | 'dark'>('dark');
 
+const navTabs = [
+  { key: 'projects', label: '项目管理' },
+  { key: 'cases', label: '自动化' },
+  { key: 'execution', label: '测试执行' },
+  { key: 'defects', label: '缺陷管理' },
+  { key: 'reports', label: '测试报告' },
+];
+
 const selectTab = (tab: string) => {
   const query = route.query.version ? { version: route.query.version } : {};
   router.push({ path: `/${tab}`, query });
@@ -116,91 +124,37 @@ onMounted(() => {
 </script>
 
 <template>
-  <header 
-    class="flex items-center gap-4 px-5 h-14 shrink-0 z-50 fixed top-0 left-0 right-0 border-b"
-    style="background-color: var(--toolbar-bg); border-color: var(--border);"
-  >
-    <div class="flex items-center gap-2 flex-0 shrink-0 cursor-pointer select-none" @click="selectTab('execution')" style="white-space: nowrap;">
+  <header class="header-bar glass">
+    <div class="flex items-center gap-2 shrink-0 cursor-pointer select-none" @click="selectTab('execution')" style="white-space: nowrap;">
       <svg viewBox="0 0 24 24" class="w-[22px] h-[22px]" xmlns="http://www.w3.org/2000/svg">
-        <line x1="12" y1="5" x2="6" y2="11" stroke="#0EA5A5" stroke-width="1.8"></line>
-        <line x1="6" y1="11" x2="6" y2="17" stroke="#0EA5A5" stroke-width="1.8"></line>
-        <line x1="6" y1="11" x2="15" y2="13" stroke="#0EA5A5" stroke-width="1.8"></line>
-        <line x1="6" y1="17" x2="13" y2="19" stroke="#0EA5A5" stroke-width="1.8"></line>
-        <circle cx="12" cy="5" r="2.3" fill="#22D3D3"></circle>
-        <circle cx="6" cy="11" r="2.7" fill="#14B8B8"></circle>
-        <circle cx="6" cy="17" r="2.3" fill="#0D9D9D"></circle>
-        <circle cx="15" cy="13" r="1.9" fill="#22D3D3"></circle>
-        <circle cx="13" cy="19" r="1.7" fill="#14B8B8"></circle>
+        <line x1="12" y1="5" x2="6" y2="11" stroke="#22C55E" stroke-width="1.8"></line>
+        <line x1="6" y1="11" x2="6" y2="17" stroke="#22C55E" stroke-width="1.8"></line>
+        <line x1="6" y1="11" x2="15" y2="13" stroke="#22C55E" stroke-width="1.8"></line>
+        <line x1="6" y1="17" x2="13" y2="19" stroke="#22C55E" stroke-width="1.8"></line>
+        <circle cx="12" cy="5" r="2.3" fill="#FDBCB4"></circle>
+        <circle cx="6" cy="11" r="2.7" fill="#22C55E"></circle>
+        <circle cx="6" cy="17" r="2.3" fill="#16A34A"></circle>
+        <circle cx="15" cy="13" r="1.9" fill="#FDBCB4"></circle>
+        <circle cx="13" cy="19" r="1.7" fill="#22C55E"></circle>
       </svg>
-      <span class="text-[14px] font-semibold" style="color: var(--text-primary);">EasyTest</span>
+      <span class="brand-name">EasyTest</span>
     </div>
 
-    <div class="flex items-center gap-[2px] px-[2px] rounded-[8px]" style="background-color: var(--input-bg);">
+    <nav class="nav-pill">
       <button
-        @click="selectTab('projects')"
-        class="px-4 py-[6px] rounded-[6px] text-[12.5px] font-medium transition-all"
-        :class="currentRoute === 'projects' 
-          ? 'text-[var(--text-primary)]' 
-          : 'bg-transparent text-[var(--text-secondary)]'"
-        :style="currentRoute === 'projects' ? { backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-card)' } : {}"
-        @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--card-bg)'"
-        @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = currentRoute === 'projects' ? 'var(--card-bg)' : 'transparent'"
+        v-for="tab in navTabs"
+        :key="tab.key"
+        @click="selectTab(tab.key)"
+        class="nav-tab"
+        :class="{ 'nav-tab--active': currentRoute === tab.key }"
       >
-        项目管理
+        {{ tab.label }}
       </button>
-      <button
-        @click="selectTab('cases')"
-        class="px-4 py-[6px] rounded-[6px] text-[12.5px] font-medium transition-all"
-        :class="currentRoute === 'cases' 
-          ? 'text-[var(--text-primary)]' 
-          : 'bg-transparent text-[var(--text-secondary)]'"
-        :style="currentRoute === 'cases' ? { backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-card)' } : {}"
-        @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--card-bg)'"
-        @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = currentRoute === 'cases' ? 'var(--card-bg)' : 'transparent'"
-      >
-        用例总览
-      </button>
-      <button
-        @click="selectTab('execution')"
-        class="px-4 py-[6px] rounded-[6px] text-[12.5px] font-medium transition-all"
-        :class="currentRoute === 'execution' 
-          ? 'text-[var(--text-primary)]' 
-          : 'bg-transparent text-[var(--text-secondary)]'"
-        :style="currentRoute === 'execution' ? { backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-card)' } : {}"
-        @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--card-bg)'"
-        @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = currentRoute === 'execution' ? 'var(--card-bg)' : 'transparent'"
-      >
-        测试执行
-      </button>
-      <button
-        @click="selectTab('defects')"
-        class="px-4 py-[6px] rounded-[6px] text-[12.5px] font-medium transition-all"
-        :class="currentRoute === 'defects' 
-          ? 'text-[var(--text-primary)]' 
-          : 'bg-transparent text-[var(--text-secondary)]'"
-        :style="currentRoute === 'defects' ? { backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-card)' } : {}"
-        @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--card-bg)'"
-        @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = currentRoute === 'defects' ? 'var(--card-bg)' : 'transparent'"
-      >
-        缺陷管理
-      </button>
-      <button
-          @click="selectTab('reports')"
-          class="px-4 py-[6px] rounded-[6px] text-[12.5px] font-medium transition-all"
-          :class="currentRoute === 'reports' 
-            ? 'text-[var(--text-primary)]' 
-            : 'bg-transparent text-[var(--text-secondary)]'"
-          :style="currentRoute === 'reports' ? { backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-card)' } : {}"
-          @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--card-bg)'"
-          @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = currentRoute === 'reports' ? 'var(--card-bg)' : 'transparent'"
-        >
-          测试报告
-        </button>
-      </div>
+    </nav>
 
     <div class="flex-1 min-w-0"></div>
 
-    <div class="flex items-center gap-2 flex-0 shrink-0">
+    <div class="flex items-center gap-2 shrink-0">
       <!-- Branch selector: only on cases/execution/reports, before settings button -->
       <div
         v-if="['cases', 'execution', 'reports', 'defects'].includes(currentRoute) && activeProject && branches.length > 0"
@@ -208,10 +162,7 @@ onMounted(() => {
       >
         <button
           @click.stop="showBranchMenu = !showBranchMenu"
-          class="flex items-center gap-1.5 px-3 py-[5px] rounded-[6px] text-[12px] font-medium transition-all cursor-pointer"
-          style="background-color: var(--card-bg-2); border: 1px solid var(--border-strong); color: var(--text-secondary); white-space: nowrap;"
-          @mouseenter="($event.target as HTMLElement).style.borderColor = 'var(--accent)'"
-          @mouseleave="($event.target as HTMLElement).style.borderColor = 'var(--border-strong)'"
+          class="branch-selector-btn"
         >
           <svg class="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 3v12"></path><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path>
@@ -225,10 +176,7 @@ onMounted(() => {
         </button>
 
         <!-- Dropdown menu -->
-        <div v-if="showBranchMenu"
-          class="absolute top-full right-0 mt-1 min-w-[180px] rounded-[8px] py-1 z-50 shadow-lg"
-          style="background-color: var(--card-bg); border: 1px solid var(--border);"
-        >
+        <div v-if="showBranchMenu" class="branch-dropdown">
           <div class="px-3 py-1.5 text-[11px] font-medium" style="color: var(--text-tertiary);">版本分支</div>
           <div
             v-for="b in branches"
@@ -272,22 +220,10 @@ onMounted(() => {
         <UserMenu @openChangePassword="showChangePassword = true" @openEditProfile="showEditProfile = true" />
       </template>
       <template v-else>
-        <button
-          @click="router.push('/login')"
-          class="px-3 py-1.5 rounded-[8px] text-[12px] font-medium cursor-pointer transition-colors"
-          style="background-color: var(--accent); color: #fff;"
-          @mouseenter="($event.target as HTMLElement).style.opacity = '0.9'"
-          @mouseleave="($event.target as HTMLElement).style.opacity = '1'"
-        >
-          登录
-        </button>
+        <button @click="router.push('/login')" class="login-btn">登录</button>
       </template>
 
-      <button
-        @click="toggleTheme"
-        class="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11.5px] cursor-pointer transition-colors"
-        style="background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-secondary); white-space: nowrap;"
-      >
+      <button @click="toggleTheme" class="theme-toggle">
         <span>{{ theme === 'light' ? '☀' : '☾' }}</span>
         <span>{{ theme === 'light' ? '浅色' : '深色' }}</span>
       </button>
@@ -295,9 +231,9 @@ onMounted(() => {
 
     <!-- Create branch modal -->
     <teleport to="body">
-      <div v-if="showCreateBranch" class="fixed inset-0 z-[100] flex items-center justify-center" style="background-color: rgba(0,0,0,0.4);">
-        <div class="w-[380px] rounded-[12px] p-5 shadow-xl" style="background-color: var(--card-bg); border: 1px solid var(--border);">
-          <h3 class="text-[14px] font-semibold mb-4" style="color: var(--text-primary);">新建分支</h3>
+      <div v-if="showCreateBranch" class="fixed inset-0 z-[100] flex items-center justify-center" style="background-color: var(--overlay-bg);">
+        <div class="modal-panel w-[380px] p-5">
+          <h3 class="modal-title mb-4">新建分支</h3>
           <div class="mb-3">
             <label class="block text-[12px] mb-1" style="color: var(--text-secondary);">分支名称</label>
             <BaseInput
@@ -310,19 +246,25 @@ onMounted(() => {
           <div class="mb-4">
             <label class="block text-[12px] mb-2" style="color: var(--text-secondary);">创建方式</label>
             <div class="flex gap-2">
-              <label class="flex items-center gap-1.5 px-3 py-2 rounded-[6px] text-[12px] cursor-pointer" :style="{ border: '1px solid ' + (newBranchSource === 'empty' ? 'var(--accent)' : 'var(--border)'), backgroundColor: newBranchSource === 'empty' ? 'var(--accent-bg)' : 'transparent' }">
+              <label
+                class="option-card flex items-center gap-1.5 px-3 py-2 text-[12px] cursor-pointer"
+                :class="{ 'option-card--active': newBranchSource === 'empty' }"
+              >
                 <input type="radio" v-model="newBranchSource" value="empty" class="hidden" />
                 空白分支（需重新导入）
               </label>
-              <label class="flex items-center gap-1.5 px-3 py-2 rounded-[6px] text-[12px] cursor-pointer" :style="{ border: '1px solid ' + (newBranchSource === 'copy' ? 'var(--accent)' : 'var(--border)'), backgroundColor: newBranchSource === 'copy' ? 'var(--accent-bg)' : 'transparent' }">
+              <label
+                class="option-card flex items-center gap-1.5 px-3 py-2 text-[12px] cursor-pointer"
+                :class="{ 'option-card--active': newBranchSource === 'copy' }"
+              >
                 <input type="radio" v-model="newBranchSource" value="copy" class="hidden" />
                 从当前分支复制
               </label>
             </div>
           </div>
           <div class="flex justify-end gap-2">
-            <button @click="showCreateBranch = false; newBranchName = ''" class="px-4 py-2 rounded-[8px] text-[12px]" style="background-color: var(--input-bg); color: var(--text-secondary);">取消</button>
-            <button @click="handleCreateBranch" class="px-4 py-2 rounded-[8px] text-[12px] font-medium" :disabled="!newBranchName.trim()" style="background-color: var(--accent); color: white; opacity: newBranchName.trim() ? 1 : 0.5;">创建</button>
+            <button @click="showCreateBranch = false; newBranchName = ''" class="btn-cancel">取消</button>
+            <button @click="handleCreateBranch" class="btn-primary" :disabled="!newBranchName.trim()">创建</button>
           </div>
         </div>
       </div>
@@ -330,15 +272,15 @@ onMounted(() => {
 
     <!-- Delete branch confirmation -->
     <teleport to="body">
-      <div v-if="showDeleteConfirm && branchToDelete" class="fixed inset-0 z-[100] flex items-center justify-center" style="background-color: rgba(0,0,0,0.4);">
-        <div class="w-[340px] rounded-[12px] p-5 shadow-xl" style="background-color: var(--card-bg); border: 1px solid var(--border);">
-          <h3 class="text-[14px] font-semibold mb-2" style="color: var(--text-primary);">确认删除分支</h3>
+      <div v-if="showDeleteConfirm && branchToDelete" class="fixed inset-0 z-[100] flex items-center justify-center" style="background-color: var(--overlay-bg);">
+        <div class="modal-panel w-[340px] p-5">
+          <h3 class="modal-title mb-2">确认删除分支</h3>
           <p class="text-[12.5px] mb-4" style="color: var(--text-secondary);">
             删除分支 "<strong style="color: var(--text-primary);">{{ branchToDelete.name }}</strong>" 将同时删除该分支下的所有用例、任务、执行记录和报告。此操作不可撤销。
           </p>
           <div class="flex justify-end gap-2">
-            <button @click="showDeleteConfirm = false; branchToDelete = null" class="px-4 py-2 rounded-[8px] text-[12px]" style="background-color: var(--input-bg); color: var(--text-secondary);">取消</button>
-            <button @click="confirmDeleteBranch" class="px-4 py-2 rounded-[8px] text-[12px] font-medium" style="background-color: var(--color-danger); color: white;">确认删除</button>
+            <button @click="showDeleteConfirm = false; branchToDelete = null" class="btn-cancel">取消</button>
+            <button @click="confirmDeleteBranch" class="btn-danger">确认删除</button>
           </div>
         </div>
       </div>
@@ -355,3 +297,223 @@ onMounted(() => {
     />
   </header>
 </template>
+
+<style scoped>
+.header-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  height: 56px;
+  flex-shrink: 0;
+  z-index: 50;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--toolbar-bg);
+  border-bottom: 3px solid var(--outline);
+}
+
+.brand-name {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── 导航胶囊 ── */
+.nav-pill {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background-color: var(--input-bg);
+}
+.nav-tab {
+  padding: 6px 16px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  border: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.nav-tab:hover {
+  background-color: var(--color-primary-soft);
+  color: var(--text-primary);
+}
+.nav-tab--active {
+  background-color: var(--color-primary);
+  border-color: var(--outline);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-hard-sm);
+}
+.nav-tab--active:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
+/* ── 分支选择器 ── */
+.branch-selector-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--card-bg-2);
+  border: 2px solid var(--outline);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.branch-selector-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  color: var(--text-primary);
+}
+.branch-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  border-radius: var(--radius-md);
+  padding: 4px 0;
+  z-index: 50;
+  background-color: var(--card-bg);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-popover);
+}
+
+/* ── 登录 CTA（绿色） ── */
+.login-btn {
+  display: flex;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--cta);
+  border: 2px solid var(--outline);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.login-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  filter: brightness(0.95);
+}
+
+/* ── 主题切换 ── */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  background-color: var(--input-bg);
+  border: 2px solid var(--outline);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, color 0.15s ease;
+}
+.theme-toggle:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  color: var(--text-primary);
+}
+
+/* ── 弹窗（Clay 面板） ── */
+.modal-panel {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+.modal-title {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.option-card {
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background-color: var(--card-bg);
+  box-shadow: var(--shadow-hard-sm);
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.option-card--active {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-soft);
+  color: var(--text-primary);
+}
+.btn-cancel {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--bg-soft);
+  border: 2px solid var(--outline);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.btn-cancel:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.btn-primary {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--cta);
+  border: 2px solid var(--outline);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary:not(:disabled):hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  filter: brightness(0.95);
+}
+.btn-danger {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  background-color: var(--color-danger);
+  border: 2px solid var(--outline);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.btn-danger:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  filter: brightness(0.92);
+}
+</style>

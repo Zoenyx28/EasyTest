@@ -457,14 +457,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex-1 flex flex-col min-h-0 w-full overflow-hidden" style="background-color: var(--content-bg); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+  <div class="test-projects-view flex-1 flex flex-col min-h-0 w-full overflow-hidden" style="background-color: var(--content-bg);">
     <!-- Panel header -->
-    <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0" style="border-bottom: 1px solid var(--border);">
-      <h2 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">项目管理</h2>
+    <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0" style="border-bottom: 2px solid var(--outline);">
+      <h2 class="projects-title">项目管理</h2>
       <button
         @click="showCreateModal = true"
-        class="flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-        style="background-color: var(--accent); color: #fff;"
+        class="clay-btn clay-btn-primary flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold cursor-pointer"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         新建项目
@@ -490,14 +489,12 @@ onMounted(() => {
             class="group relative rounded-[10px] p-[12px] transition-all duration-200 cursor-pointer"
             :class="project.is_active ? 'active-card' : 'card'"
             :style="{
-              backgroundColor: 'var(--card-bg)',
-              borderLeft: project.is_active ? '3px solid var(--accent)' : '3px solid transparent',
-              border: project.is_active
-                ? '1px solid var(--border)'
-                : '1px solid var(--border)',
+              backgroundColor: project.is_active ? 'var(--selected-bg)' : 'var(--card-bg)',
+              borderLeft: project.is_active ? '3px solid var(--color-primary)' : '3px solid transparent',
+              border: '1px solid var(--border)',
               boxShadow: project.is_active
-                ? '0 2px 8px var(--shadow-sm)'
-                : '0 1px 3px rgba(0,0,0,0.03)',
+                ? 'var(--shadow-card)'
+                : 'var(--shadow-sm)',
             }"
           >
             <!-- Header row: signal dot + name + toggle -->
@@ -511,7 +508,7 @@ onMounted(() => {
                       ? 'var(--color-danger)'
                       : (project.is_active ? 'var(--color-success)' : 'var(--text-tertiary)'),
                     boxShadow: project.is_active && !getSyncState(project.id).error
-                      ? '0 0 4px rgba(40,167,69,0.5)'
+                      ? '0 0 4px var(--color-success)'
                       : 'none',
                   }"
                   :title="getSyncState(project.id).error || ''"
@@ -539,14 +536,14 @@ onMounted(() => {
                   class="absolute block w-[16px] h-[16px] rounded-full bg-white border-2 z-10 transition-transform duration-200 ease-in-out cursor-pointer"
                   :class="project.is_active ? 'toggle-dot-on' : 'toggle-dot-off'"
                   :style="{
-                    borderColor: project.is_active ? 'var(--accent)' : 'var(--border-strong)',
+                    borderColor: project.is_active ? 'var(--color-primary)' : 'var(--border-strong)',
                     transform: project.is_active ? 'translateX(16px)' : 'translateX(0)',
                   }"
                 />
                 <span
                   class="block h-[16px] rounded-full transition-colors duration-200 ease-in-out"
                   :style="{
-                    backgroundColor: project.is_active ? 'var(--accent)' : 'var(--text-muted)',
+                    backgroundColor: project.is_active ? 'var(--color-primary)' : 'var(--text-muted)',
                   }"
                 />
               </button>
@@ -664,11 +661,11 @@ onMounted(() => {
             <!-- Left column: Project Info + Project Notes -->
             <div class="flex-1 flex flex-col gap-[16px] min-h-0">
               <!-- Project Information -->
-              <div class="rounded-[10px] p-[16px] relative overflow-hidden shrink-0" style="background-color: var(--content-bg); border: 1px solid var(--border);">
-                <div class="absolute top-0 right-0 w-[96px] h-[96px] rounded-bl-full opacity-[0.08]" style="background: linear-gradient(135deg, var(--accent), transparent);"></div>
+              <div class="detail-card p-[16px] relative overflow-hidden shrink-0">
+                <div class="absolute top-0 right-0 w-[96px] h-[96px] rounded-bl-full opacity-[0.08]" style="background: linear-gradient(135deg, var(--color-primary), transparent);"></div>
                 <div class="flex justify-between items-start mb-[12px]">
                   <div class="min-w-0">
-                    <h1 class="text-[18px] font-bold tracking-[-0.02em] mb-[6px]" style="color: var(--text-primary);">{{ detailData?.project.name }}</h1>
+                    <h1 class="project-name mb-[6px]">{{ detailData?.project.name }}</h1>
                     <div class="flex flex-wrap items-center gap-x-[16px] gap-y-[4px] text-[11.5px]" style="color: var(--text-secondary);">
                       <div class="flex items-center gap-[4px]">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -720,10 +717,7 @@ onMounted(() => {
                   </div>
                   <button
                     @click="showMemberModal = true"
-                    class="px-[10px] py-[5px] text-[11px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-                    style="background-color: var(--card-bg); color: var(--text-secondary); border: 1px solid var(--border);"
-                    @mouseenter="($event.currentTarget as HTMLElement).style.borderColor = 'var(--accent)'; ($event.currentTarget as HTMLElement).style.color = 'var(--accent)'"
-                    @mouseleave="($event.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; ($event.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'"
+                    class="clay-btn clay-btn-secondary px-[10px] py-[5px] text-[11px] font-semibold cursor-pointer"
                   >
                     管理成员
                   </button>
@@ -731,10 +725,10 @@ onMounted(() => {
               </div>
 
               <!-- Project Notes (fills remaining height, scrollable) -->
-              <div class="rounded-[10px] overflow-hidden flex flex-col flex-1 min-h-0" style="background-color: var(--content-bg); border: 1px solid var(--border);">
+              <div class="detail-card overflow-hidden flex flex-col flex-1 min-h-0">
                 <div class="flex items-center justify-between px-[12px] py-[10px] shrink-0" style="border-bottom: 1px solid var(--border); background-color: var(--card-bg-2);">
                   <h3 class="text-[12px] font-bold flex items-center gap-[6px]" style="color: var(--text-primary);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     项目备注
                   </h3>
                   <span v-if="noteInfo?.updated_by_name" class="text-[11px]" style="color: var(--text-tertiary);">
@@ -750,7 +744,7 @@ onMounted(() => {
             <!-- Right column: Defects + Tasks -->
             <div class="flex-1 flex flex-col gap-[16px] min-h-0">
               <!-- Recent Defects -->
-              <div class="rounded-[10px] flex flex-col flex-1 min-h-0" style="background-color: var(--content-bg); border: 1px solid var(--border);">
+              <div class="detail-card flex flex-col flex-1 min-h-0">
                 <div class="flex items-center justify-between px-[12px] py-[10px] shrink-0" style="border-bottom: 1px solid var(--border); background-color: var(--card-bg-2);">
                   <h3 class="text-[12px] font-bold flex items-center gap-[6px]" style="color: var(--text-primary);">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -808,10 +802,10 @@ onMounted(() => {
               </div>
 
               <!-- Recent Test Tasks -->
-              <div class="rounded-[10px] flex flex-col flex-1 min-h-0" style="background-color: var(--content-bg); border: 1px solid var(--border);">
+              <div class="detail-card flex flex-col flex-1 min-h-0">
                 <div class="flex items-center justify-between px-[12px] py-[10px] shrink-0" style="border-bottom: 1px solid var(--border); background-color: var(--card-bg-2);">
                   <h3 class="text-[12px] font-bold flex items-center gap-[6px]" style="color: var(--text-primary);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-primary)" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                     最近测试任务
                   </h3>
                 </div>
@@ -835,7 +829,7 @@ onMounted(() => {
                         <span v-else>{{ task.status === 'failed' ? '失败' : task.status === 'stopped' ? '已停止' : '等待中' }}</span>
                       </div>
                       <div v-if="task.status === 'running'" class="w-full h-[4px] rounded-full" style="background-color: var(--card-bg-2);">
-                        <div class="h-[4px] rounded-full" :style="{ width: (task.passed_count && task.total_count ? Math.round(task.passed_count / task.total_count * 100) : 0) + '%', backgroundColor: 'var(--accent)' }"></div>
+                        <div class="h-[4px] rounded-full" :style="{ width: (task.passed_count && task.total_count ? Math.round(task.passed_count / task.total_count * 100) : 0) + '%', backgroundColor: 'var(--color-primary)' }"></div>
                       </div>
                     </div>
                     <div class="flex items-center justify-between pt-[4px]" style="border-top: 1px dashed var(--border);">
@@ -864,7 +858,7 @@ onMounted(() => {
 
     <!-- macOS-style upload progress panel -->
     <div v-if="uploading" class="fixed inset-0 flex items-center justify-center z-50" style="background-color: var(--overlay-bg); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);">
-      <div class="w-[300px] p-[24px] rounded-[14px] text-center" style="background-color: var(--card-bg); box-shadow: 0 8px 40px rgba(0,0,0,0.15);">
+      <div class="upload-panel w-[300px] p-[24px] text-center">
         <div class="mb-[12px]">
           <svg class="animate-spin mx-auto" width="28" height="28" viewBox="0 0 24 24" fill="none" style="color: var(--accent);"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         </div>
@@ -875,13 +869,13 @@ onMounted(() => {
 
     <!-- macOS-style modal -->
     <div v-if="showCreateModal || showEditModal" class="fixed inset-0 flex items-center justify-center z-50" style="background-color: var(--overlay-bg); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
-      <div class="w-[440px] rounded-[14px] overflow-hidden" style="background-color: var(--card-bg); box-shadow: 0 12px 60px rgba(0,0,0,0.2);">
+      <div class="modal-panel w-[440px] overflow-hidden">
         <!-- macOS traffic-light style header -->
-        <div class="flex items-center gap-[8px] px-[16px] py-[12px] select-none" style="border-bottom: 0.5px solid var(--border);">
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: rgb(255,95,87);"></div>
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: rgb(255,189,46);"></div>
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: rgb(39,201,63);"></div>
-          <span class="ml-[8px] text-[12px] font-medium" style="color: var(--text-primary);">
+        <div class="flex items-center gap-[8px] px-[16px] py-[12px] select-none" style="border-bottom: 2px solid var(--outline);">
+          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-danger);"></div>
+          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-warning);"></div>
+          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-success);"></div>
+          <span class="modal-title ml-[8px]" style="color: var(--text-primary);">
             {{ editingProject ? '编辑项目' : '新建项目' }}
           </span>
         </div>
@@ -900,13 +894,13 @@ onMounted(() => {
           <!-- Source type - macOS segmented control style -->
           <div>
             <label class="text-[11px] font-medium block mb-[5px] tracking-[-0.01em]" style="color: var(--text-secondary);">来源类型</label>
-            <div class="flex rounded-[8px] overflow-hidden" :style="{ border: '0.5px solid var(--border)' }">
+            <div class="flex overflow-hidden" :style="{ border: '2px solid var(--outline)', borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-hard-sm)' }">
               <button
                 @click="form.source_type = 'upload'"
                 class="flex-1 px-3 py-[7px] text-[11.5px] font-medium cursor-pointer transition-all duration-100"
                 :style="{
-                  backgroundColor: form.source_type === 'upload' ? 'var(--accent)' : 'var(--input-bg)',
-                  color: form.source_type === 'upload' ? '#fff' : 'var(--text-secondary)',
+                  backgroundColor: form.source_type === 'upload' ? 'var(--color-primary)' : 'var(--input-bg)',
+                  color: form.source_type === 'upload' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 }"
               >
                 本地上传
@@ -915,9 +909,9 @@ onMounted(() => {
                 @click="form.source_type = 'server'"
                 class="flex-1 px-3 py-[7px] text-[11.5px] font-medium cursor-pointer transition-all duration-100"
                 :style="{
-                  backgroundColor: form.source_type === 'server' ? 'var(--accent)' : 'var(--input-bg)',
-                  color: form.source_type === 'server' ? '#fff' : 'var(--text-secondary)',
-                  borderLeft: '0.5px solid var(--border)',
+                  backgroundColor: form.source_type === 'server' ? 'var(--color-primary)' : 'var(--input-bg)',
+                  color: form.source_type === 'server' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  borderLeft: '2px solid var(--outline)',
                 }"
               >
                 服务器同步
@@ -934,10 +928,11 @@ onMounted(() => {
               @dragleave.prevent="dragState = 'idle'"
               @drop.prevent="handleZipDrop"
               @click="openZipPicker"
-              class="px-3 py-[28px] rounded-[10px] text-center cursor-pointer transition-all duration-150"
+              class="px-3 py-[28px] text-center cursor-pointer transition-all duration-150"
               :style="{
                 backgroundColor: dragState === 'over' ? 'var(--color-primary-soft)' : 'var(--input-bg)',
-                border: dragState === 'over' ? '1.5px solid var(--accent)' : '1.5px dashed var(--border)',
+                border: dragState === 'over' ? '2px solid var(--color-primary)' : '2px dashed var(--outline)',
+                borderRadius: 'var(--radius-sm)',
                 color: 'var(--text-secondary)',
               }"
             >
@@ -954,7 +949,7 @@ onMounted(() => {
                 <div class="text-[10px] mt-[4px]" style="opacity: 0.5;">或点击选择 zip 文件</div>
               </div>
               <div v-else>
-                <svg class="mx-auto mb-[6px]" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgb(52,199,89)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <svg class="mx-auto mb-[6px]" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                 <div class="text-[11.5px] font-medium" style="color: var(--text-primary);">{{ selectedFolderName }}</div>
               </div>
             </div>
@@ -965,12 +960,13 @@ onMounted(() => {
             <label class="text-[11px] font-medium block mb-[5px] tracking-[-0.01em]" style="color: var(--text-secondary);">服务器项目目录</label>
             <select
               v-model="form.server_path"
-              class="w-full px-[10px] py-[7px] text-[12.5px] rounded-[8px] outline-none transition-all duration-150 cursor-pointer"
+              class="server-select w-full px-[10px] py-[7px] text-[12.5px] rounded-[8px] outline-none transition-all duration-150 cursor-pointer"
               :style="{
                 backgroundColor: 'var(--input-bg)',
-                border: '0.5px solid var(--border)',
+                border: '2px solid var(--outline)',
                 color: 'var(--text-primary)',
-                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.04)',
+                borderRadius: 'var(--radius-sm)',
+                boxShadow: 'var(--shadow-hard-sm-pressed)',
               }"
             >
               <option value="" disabled>
@@ -982,7 +978,7 @@ onMounted(() => {
         </div>
 
         <!-- macOS-style modal footer -->
-        <div class="flex justify-end gap-[8px] px-[20px] py-[14px]" style="border-top: 0.5px solid var(--border);">
+        <div class="flex justify-end gap-[8px] px-[20px] py-[14px]" style="border-top: 2px solid var(--outline);">
           <BaseButton
             variant="secondary"
             size="md"
@@ -1033,6 +1029,98 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.test-projects-view {
+  font-family: var(--font);
+}
+
+/* ── 标题（Claymorphism：Fredoka） ── */
+.projects-title {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.project-name {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+.modal-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* ── Clay 按钮 ── */
+.clay-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow-hard-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.clay-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.clay-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+.clay-btn-primary {
+  background-color: var(--cta);
+  color: #fff;
+}
+.clay-btn-primary:hover {
+  background-color: var(--cta-dark);
+}
+.clay-btn-secondary {
+  background-color: var(--color-secondary);
+  color: var(--text-primary);
+}
+.clay-btn-secondary:hover {
+  background-color: var(--color-secondary-dark);
+}
+
+/* ── Clay 面板 / 弹窗 ── */
+.detail-card {
+  background-color: var(--card-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-sm);
+}
+.upload-panel {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+.modal-panel {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+
+/* ── 下拉框焦点 ── */
+.server-select:focus {
+  border-color: var(--color-primary) !important;
+  background-color: var(--card-bg) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed) !important;
+}
+
 .card {
   transition: box-shadow 0.2s ease, transform 0.15s ease;
 }

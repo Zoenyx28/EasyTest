@@ -100,16 +100,15 @@ async function handleSave() {
 <template>
   <div
     class="fixed inset-0 z-50 flex items-center justify-center p-4"
-    style="background-color: rgba(0,0,0,0.4); backdrop-filter: blur(4px);"
+    style="background-color: var(--overlay-bg); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);"
     @click.self="emit('close')"
   >
     <div
-      class="w-[400px] max-w-full rounded-[14px] border overflow-hidden"
-      style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.15);"
+      class="profile-panel w-[400px] max-w-full overflow-hidden"
     >
       <!-- Header -->
       <div class="flex items-center justify-between px-5 py-3.5 border-b" style="border-color: var(--border);">
-        <h2 class="text-[14px] font-semibold" style="color: var(--text-primary);">修改个人资料</h2>
+        <h2 class="profile-title">修改个人资料</h2>
         <button
           @click="emit('close')"
           class="w-[24px] h-[24px] rounded-full flex items-center justify-center text-[14px] cursor-pointer transition-colors"
@@ -147,7 +146,7 @@ async function handleSave() {
               class="avatar-preview-svg"
               v-html="previewDefaultSvg"
             ></span>
-            <span v-else style="color: #fff;">{{ auth.currentUser?.nickname?.charAt(0) || '?' }}</span>
+            <span v-else style="color: #fff;">{{ auth.currentUser?.value?.nickname?.charAt(0) || '?' }}</span>
           </div>
         </div>
 
@@ -228,6 +227,37 @@ async function handleSave() {
 </template>
 
 <style scoped>
+/* ── Claymorphism：弹窗面板（3px 硬描边 + 硬阴影 + 柔和投影） ── */
+.profile-panel {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+
+/* ── Claymorphism：弹窗标题 ── */
+.profile-title {
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ── Claymorphism：次级按钮 ── */
+.btn-cancel {
+  background-color: var(--card-bg-2);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.btn-cancel:hover {
+  background-color: var(--bg-card-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
 .avatar-preview-svg {
   display: flex;
   width: 100%;

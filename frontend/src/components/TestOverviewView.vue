@@ -472,7 +472,7 @@ function formatTime(iso: string): string {
     <aside class="macos-sidebar">
       <!-- Traffic light dots -->
       <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
-        <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">测试目录</h3>
+        <h3 class="sidebar-title" style="color: var(--text-primary);">测试目录</h3>
       </div>
 
       <!-- Search + header -->
@@ -571,9 +571,9 @@ function formatTime(iso: string): string {
     <!-- Main content area -->
     <main class="macos-content">
       <!-- Header bar -->
-      <div v-if="hasTests && !loading" class="flex justify-between items-end px-[24px] pt-[18px] pb-[10px] shrink-0" style="border-bottom: 0.5px solid var(--border); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+      <div v-if="hasTests && !loading" class="flex justify-between items-end px-[24px] pt-[18px] pb-[10px] shrink-0" style="border-bottom: 2px solid var(--outline);">
         <div class="flex flex-col">
-          <h2 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">
+          <h2 class="page-title" style="color: var(--text-primary);">
             {{ selectedClass || selectedModule || 'All Tests' }}
             <span class="text-[13px] font-normal ml-[8px]" style="color: var(--text-tertiary);">({{ filteredTests.length }} cases)</span>
           </h2>
@@ -724,7 +724,7 @@ function formatTime(iso: string): string {
                   <span v-if="p === '...'" class="page-ellipsis">…</span>
                   <button
                     v-else
-                    @click="goToPage(p)"
+                    @click="goToPage(Number(p))"
                     class="page-btn"
                     :class="p === currentPage ? 'page-btn-active' : ''"
                   >{{ p }}</button>
@@ -760,6 +760,7 @@ function formatTime(iso: string): string {
 <style scoped>
 /* ── macOS Container ── */
 .macos-container {
+  font-family: var(--font);
   letter-spacing: 0.01em;
 }
 
@@ -774,16 +775,24 @@ function formatTime(iso: string): string {
   min-height: 0;
   overflow: hidden;
   background-color: var(--sidebar-bg);
-  border-right: 0.5px solid var(--sidebar-border);
+  border-right: 1px solid var(--sidebar-border);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   position: relative;
 }
 
 /* ── Sidebar Header ── */
+.sidebar-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
 .sidebar-header {
   padding: 10px 10px 8px;
-  border-bottom: 0.5px solid var(--sidebar-border);
+  border-bottom: 1px solid var(--sidebar-border);
   flex-shrink: 0;
 }
 
@@ -803,14 +812,15 @@ function formatTime(iso: string): string {
 
 .search-input {
   width: 100%;
-  padding: 5px 10px 5px 28px;
-  border-radius: 7px;
+  padding: 6px 10px 6px 30px;
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
   background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 0.5px solid var(--border);
+  border: 2px solid var(--outline);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
   font-family: inherit;
 }
 
@@ -819,8 +829,9 @@ function formatTime(iso: string): string {
 }
 
 .search-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2.5px var(--color-primary-soft);
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .sidebar-section-label {
@@ -935,7 +946,7 @@ function formatTime(iso: string): string {
 .tree-children {
   margin-left: 12px;
   padding-left: 4px;
-  border-left: 0.5px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 /* ── Badges ── */
@@ -969,45 +980,59 @@ function formatTime(iso: string): string {
   background-color: var(--content-bg);
 }
 
-/* ── Buttons ── */
+/* ── 页面大标题 ── */
+.page-title {
+  font-family: var(--font-heading);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* ── Buttons（Clay 硬阴影 + 按压） ── */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 14px;
+  padding: 6px 16px;
   font-size: 12.5px;
-  font-weight: 500;
-  border-radius: 7px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--outline);
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease, filter 0.15s ease;
   font-family: inherit;
   line-height: 1.4;
   white-space: nowrap;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
+.btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
 }
 
 .btn-secondary {
-  background-color: var(--card-bg-2);
-  border: 0.5px solid var(--border-strong);
+  background-color: var(--color-secondary);
   color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background-color: var(--border);
+  background-color: var(--color-secondary-dark);
 }
 
 .btn-primary {
-  background-color: var(--accent);
-  border: 0.5px solid transparent;
+  background-color: var(--cta);
   color: #fff;
-  font-weight: 600;
 }
 
 .btn-primary:hover {
-  filter: brightness(1.08);
-}
-
-.btn-primary:active {
-  filter: brightness(0.95);
+  background-color: var(--cta-dark);
 }
 
 .selected-badge {
@@ -1101,7 +1126,7 @@ function formatTime(iso: string): string {
   letter-spacing: 0.03em;
   text-transform: uppercase;
   padding: 10px 10px 10px 8px;
-  border-bottom: 0.5px solid var(--border);
+  border-bottom: 1px solid var(--border);
   color: var(--text-tertiary);
   background-color: var(--content-bg);
   white-space: nowrap;
@@ -1136,18 +1161,18 @@ function formatTime(iso: string): string {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  border: 1.5px solid var(--border-strong);
-  background: transparent;
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 2px solid var(--outline);
+  background: var(--card-bg);
   transition: all 0.12s ease;
   flex-shrink: 0;
 }
 
 .macos-checkbox input:checked ~ .checkmark {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--color-primary);
+  border-color: var(--outline);
 }
 
 .macos-checkbox input:checked ~ .checkmark::after {
@@ -1155,19 +1180,19 @@ function formatTime(iso: string): string {
   display: block;
   width: 5px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--text-primary);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(45deg);
   margin-top: -1px;
 }
 
 .macos-checkbox input:focus-visible ~ .checkmark {
-  box-shadow: 0 0 0 2.5px var(--color-primary-soft);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 /* ── Table Body ── */
 .table-row {
-  border-bottom: 0.5px solid var(--border);
+  border-bottom: 1px solid var(--border);
   transition: background 0.1s ease;
 }
 
@@ -1176,7 +1201,7 @@ function formatTime(iso: string): string {
 }
 
 .empty-row {
-  border-bottom: 0.5px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .empty-cell {
@@ -1202,7 +1227,7 @@ function formatTime(iso: string): string {
 }
 
 .cell-method code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-secondary);
 }
@@ -1337,20 +1362,23 @@ function formatTime(iso: string): string {
 }
 
 .page-size-select {
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
   font-size: 12.5px;
   font-family: inherit;
   background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 0.5px solid var(--border);
+  border: 2px solid var(--outline);
   outline: none;
   cursor: pointer;
-  transition: border-color 0.12s ease;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .page-size-select:focus {
-  border-color: var(--accent);
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .pagination-controls {
@@ -1368,18 +1396,20 @@ function formatTime(iso: string): string {
   padding: 0 8px;
   font-size: 12.5px;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, color 0.15s ease;
   font-family: inherit;
-  background: transparent;
+  background: var(--card-bg-2);
   color: var(--text-primary);
-  border: 0.5px solid transparent;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .page-btn:hover:not(:disabled):not(.page-btn-active) {
-  background: var(--row-hover);
-  border-color: var(--border);
+  background: var(--bg-card-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .page-btn:disabled {
@@ -1388,10 +1418,15 @@ function formatTime(iso: string): string {
 }
 
 .page-btn-active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--text-primary);
   font-weight: 600;
-  border-color: transparent;
+  border-color: var(--outline);
+}
+
+.page-btn-active:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .page-ellipsis {

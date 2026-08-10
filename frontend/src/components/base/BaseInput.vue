@@ -42,17 +42,19 @@ const emit = defineEmits<{
   font-size: 12.5px;
   color: var(--text-primary);
   background-color: var(--input-bg);
-  border: 1px solid var(--border);
+  border: 2px solid var(--outline);
   border-radius: var(--radius-sm);
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 .base-input::placeholder {
   color: var(--text-muted);
 }
 .base-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--color-primary-soft);
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 .base-input:disabled {
   opacity: 0.6;

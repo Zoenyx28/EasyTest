@@ -90,8 +90,9 @@ function isDefaultAvatar(): boolean {
       @click.stop="toggleMenu"
       class="w-[30px] h-[30px] rounded-full flex items-center justify-center cursor-pointer overflow-hidden transition-all"
       :style="{
-        border: '1.5px solid var(--border-strong)',
+        border: '2px solid var(--outline)',
         backgroundColor: isDefaultAvatar() ? getDefaultAvatarColor() : 'var(--card-bg-2)',
+        boxShadow: 'var(--shadow-hard-sm)',
       }"
       :title="auth.currentUser.value?.nickname || '用户'"
     >
@@ -113,8 +114,8 @@ function isDefaultAvatar(): boolean {
     <!-- Dropdown menu -->
     <div
       v-if="showMenu"
-      class="absolute top-full right-0 mt-1.5 min-w-[160px] rounded-[10px] py-1 z-50 shadow-lg"
-      style="background-color: var(--card-bg); border: 1px solid var(--border);"
+      class="absolute top-full right-0 mt-1.5 min-w-[160px] py-1 z-50"
+      style="background-color: var(--card-bg); border: 2px solid var(--outline); border-radius: var(--radius-md); box-shadow: var(--shadow-hard-lg), var(--shadow-popover);"
     >
       <div
         class="px-3 py-2 text-[12.5px] font-medium border-b truncate"

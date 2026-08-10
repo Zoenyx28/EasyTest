@@ -68,7 +68,7 @@ defineExpose({ confirm });
       </BaseButton>
       <button
         @click="handleConfirm"
-        class="px-[14px] py-[6px] text-[12px] font-medium rounded-[7px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
+        class="confirm-btn px-[14px] py-[6px] text-[12px] font-medium cursor-pointer"
         :style="{
           backgroundColor: opts.confirmColor,
           color: '#fff',

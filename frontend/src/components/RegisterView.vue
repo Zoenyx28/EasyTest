@@ -82,17 +82,11 @@ async function handleRegister() {
 </script>
 
 <template>
-  <div
-    class="min-h-screen flex items-center justify-center p-4"
-    style="background-color: var(--bg-window);"
-  >
-    <div
-      class="w-[420px] max-w-full rounded-[14px] border overflow-hidden"
-      style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.15);"
-    >
+  <div class="auth-page min-h-screen flex items-center justify-center p-4">
+    <div class="auth-card w-[420px] max-w-full overflow-hidden">
       <!-- Branding -->
       <div class="flex flex-col items-center pt-8 pb-4">
-        <svg viewBox="0 0 24 24" class="w-[30px] h-[30px] mb-2" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 24 24" class="auth-logo w-[30px] h-[30px] mb-2" xmlns="http://www.w3.org/2000/svg">
           <line x1="12" y1="5" x2="6" y2="11" stroke="#0EA5A5" stroke-width="1.8"></line>
           <line x1="6" y1="11" x2="6" y2="17" stroke="#0EA5A5" stroke-width="1.8"></line>
           <line x1="6" y1="11" x2="15" y2="13" stroke="#0EA5A5" stroke-width="1.8"></line>
@@ -103,18 +97,18 @@ async function handleRegister() {
           <circle cx="15" cy="13" r="1.9" fill="#22D3D3"></circle>
           <circle cx="13" cy="19" r="1.7" fill="#14B8B8"></circle>
         </svg>
-        <h1 class="text-[18px] font-semibold" style="color: var(--text-primary);">创建账号</h1>
-        <p class="text-[12px] mt-0.5" style="color: var(--text-secondary);">注册 EasyTest 账号</p>
+        <h1 class="auth-title">创建账号</h1>
+        <p class="auth-subtitle mt-0.5">注册 EasyTest 账号</p>
       </div>
 
       <!-- Form -->
       <div class="px-6 pb-6">
-        <div v-if="error" class="mb-4 px-3 py-2 rounded-[8px] text-[12.5px]" style="background-color: rgba(255, 69, 58, 0.1); color: var(--danger);">
+        <div v-if="error" class="error-box mb-4 px-3 py-2 rounded-[8px] text-[12.5px]">
           {{ error }}
         </div>
 
         <div class="mb-3">
-          <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">用户名</label>
+          <label class="auth-label block text-[12px] font-medium mb-1">用户名</label>
           <BaseInput
             v-model="username"
             type="text"
@@ -123,7 +117,7 @@ async function handleRegister() {
         </div>
 
         <div class="mb-3">
-          <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">昵称</label>
+          <label class="auth-label block text-[12px] font-medium mb-1">昵称</label>
           <BaseInput
             v-model="nickname"
             type="text"
@@ -132,7 +126,7 @@ async function handleRegister() {
         </div>
 
         <div class="mb-3">
-          <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">密码</label>
+          <label class="auth-label block text-[12px] font-medium mb-1">密码</label>
           <BaseInput
             v-model="password"
             type="password"
@@ -141,7 +135,7 @@ async function handleRegister() {
         </div>
 
         <div class="mb-4">
-          <label class="block text-[12px] font-medium mb-1" style="color: var(--text-secondary);">确认密码</label>
+          <label class="auth-label block text-[12px] font-medium mb-1">确认密码</label>
           <BaseInput
             v-model="confirmPassword"
             type="password"
@@ -151,7 +145,7 @@ async function handleRegister() {
 
         <!-- Avatar Selection -->
         <div class="mb-4">
-          <label class="block text-[12px] font-medium mb-2" style="color: var(--text-secondary);">选择头像</label>
+          <label class="auth-label block text-[12px] font-medium mb-2">选择头像</label>
           <div class="flex items-center gap-2.5 flex-wrap">
             <div
               v-for="av in defaultAvatars"
@@ -159,7 +153,9 @@ async function handleRegister() {
               @click="selectAvatar(av.id)"
               class="w-[38px] h-[38px] rounded-full cursor-pointer transition-all"
               :style="{
-                border: selectedAvatar === av.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
+                border: selectedAvatar === av.id ? '3px solid var(--outline)' : '3px solid transparent',
+                backgroundColor: selectedAvatar === av.id ? 'var(--color-primary-soft)' : 'transparent',
+                boxShadow: selectedAvatar === av.id ? 'var(--shadow-hard-sm)' : 'none',
                 transform: selectedAvatar === av.id ? 'scale(1.1)' : 'scale(1)',
               }"
               v-html="av.svg"
@@ -170,9 +166,10 @@ async function handleRegister() {
               @click="fileInput?.click()"
               class="w-[38px] h-[38px] rounded-full flex items-center justify-center cursor-pointer text-[16px] transition-all"
               :style="{
-                border: customAvatarUrl ? '2.5px solid var(--accent)' : '2.5px dashed var(--border-strong)',
+                border: customAvatarUrl ? '3px solid var(--outline)' : '3px dashed var(--border-strong)',
                 backgroundColor: 'var(--card-bg-2)',
                 color: 'var(--text-tertiary)',
+                boxShadow: customAvatarUrl ? 'var(--shadow-hard-sm)' : 'none',
                 transform: customAvatarUrl ? 'scale(1.1)' : 'scale(1)',
               }"
               title="上传自定义头像"
@@ -202,9 +199,55 @@ async function handleRegister() {
 
         <div class="mt-4 text-center">
           <span class="text-[12.5px]" style="color: var(--text-secondary);">已有账号？</span>
-          <router-link to="/login" class="text-[12.5px] font-medium ml-1" style="color: var(--accent);">登录</router-link>
+          <router-link to="/login" class="auth-link text-[12.5px] font-medium ml-1">登录</router-link>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.auth-page {
+  background-color: var(--bg-window);
+  font-family: var(--font);
+  background-image:
+    radial-gradient(circle at 15% 20%, var(--color-primary-soft) 0%, transparent 45%),
+    radial-gradient(circle at 85% 85%, var(--color-primary-soft) 0%, transparent 45%);
+}
+.auth-card {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+.auth-logo line {
+  stroke: var(--cta);
+}
+.auth-logo circle {
+  fill: var(--color-primary);
+}
+.auth-logo circle:nth-of-type(even) {
+  fill: var(--cta);
+}
+.auth-title {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.auth-subtitle {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+.error-box {
+  background-color: var(--danger-soft);
+  color: var(--danger);
+}
+.auth-label {
+  color: var(--text-secondary);
+}
+.auth-link {
+  color: var(--cta);
+  font-weight: 600;
+}
+</style>

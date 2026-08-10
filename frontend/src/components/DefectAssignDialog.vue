@@ -114,7 +114,7 @@ watch(() => props.isOpen, async (newVal) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0,0,0,0.5);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(4px);
 }
 
@@ -123,9 +123,10 @@ watch(() => props.isOpen, async (newVal) => {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
   background-color: var(--bg-card);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   overflow: hidden;
 }
 
@@ -139,11 +140,11 @@ watch(() => props.isOpen, async (newVal) => {
 }
 
 .dialog-title {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  font-family: var(--font);
+  font-family: var(--font-heading);
 }
 
 .dialog-close-btn {
@@ -152,18 +153,21 @@ watch(() => props.isOpen, async (newVal) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
   color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
 }
 
 .dialog-close-btn:hover {
   background: var(--color-primary-soft);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .dialog-body {
@@ -182,24 +186,23 @@ watch(() => props.isOpen, async (newVal) => {
 
 .form-label {
   display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
   margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   font-family: var(--font);
 }
 
 .form-select {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -207,18 +210,20 @@ watch(() => props.isOpen, async (newVal) => {
 
 .form-select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .form-textarea {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -229,7 +234,8 @@ watch(() => props.isOpen, async (newVal) => {
 
 .form-textarea:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .dialog-footer {
@@ -243,33 +249,38 @@ watch(() => props.isOpen, async (newVal) => {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
-  border: none;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
   line-height: 20px;
 }
 
 .btn-cancel {
-  background-color: transparent;
-  color: var(--text-primary);
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
-.btn-cancel:hover {
+.btn-cancel:hover:not(:disabled) {
   background-color: var(--bg-muted);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save {
-  background-color: var(--color-primary);
+  background-color: var(--cta);
   color: #fff;
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save:disabled {

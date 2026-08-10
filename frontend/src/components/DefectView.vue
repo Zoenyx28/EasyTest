@@ -391,15 +391,15 @@ onMounted(() => {
       <!-- Left Sidebar: Module Tree -->
       <aside
         class="w-[240px] min-w-[240px] flex flex-col shrink-0 min-h-0"
-        style="background-color: var(--sidebar-bg); border-right: 0.5px solid var(--sidebar-border);"
+        style="background-color: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border);"
       >
         <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
-          <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷模块</h3>
+          <h3 class="sidebar-title" style="color: var(--text-primary);">缺陷模块</h3>
         </div>
 
         <!-- Search -->
         <div class="px-[12px] pb-[8px] shrink-0">
-          <div class="flex items-center gap-[6px] px-[10px] py-[6px] rounded-[8px]" style="background-color: var(--input-bg); border: 1px solid var(--border);">
+          <div class="module-search flex items-center gap-[6px] px-[10px] py-[6px]">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-tertiary);">
               <circle cx="11" cy="11" r="8"/>
               <line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -420,7 +420,7 @@ onMounted(() => {
           <div
             @click="selectModule(null)"
             class="group flex items-center gap-[8px] px-[10px] py-[7px] rounded-[8px] cursor-pointer text-[13px] transition-colors"
-            :style="!selectedModuleId ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
+            :style="!selectedModuleId ? { backgroundColor: 'var(--selected-bg)', color: 'var(--color-primary)', fontWeight: 600 } : { color: 'var(--text-secondary)' }"
             @mouseenter="(e: MouseEvent) => { if (selectedModuleId) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
             @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
           >
@@ -432,7 +432,7 @@ onMounted(() => {
               @click.stop="startAddRoot()"
               class="w-[20px] h-[20px] rounded-[4px] flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
               style="color: var(--text-tertiary);"
-              @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
+              @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-primary)' }"
               @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
               title="添加根模块"
             >
@@ -451,11 +451,11 @@ onMounted(() => {
               type="text"
               placeholder="输入模块名称..."
               class="flex-1 bg-transparent text-[12px] outline-none px-[6px] py-[3px] rounded-[4px]"
-              style="color: var(--text-primary); border: 1px solid var(--accent);"
+              style="color: var(--text-primary); border: 2px solid var(--color-primary);"
               @keyup.enter="addChildModule(0)"
               @keyup.escape="cancelAddChild()"
             />
-            <button @click="addChildModule(0)" class="w-[20px] h-[20px] flex items-center justify-center cursor-pointer" style="color: var(--accent);">
+            <button @click="addChildModule(0)" class="w-[20px] h-[20px] flex items-center justify-center cursor-pointer" style="color: var(--color-primary);">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </button>
             <button @click="cancelAddChild()" class="w-[20px] h-[20px] flex items-center justify-center cursor-pointer" style="color: var(--text-tertiary);">
@@ -499,14 +499,13 @@ onMounted(() => {
       <!-- Right Content: Defect List -->
       <main class="flex-1 flex flex-col min-h-0 min-w-0" style="background-color: var(--content-bg);">
         <!-- Panel header -->
-        <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0" style="border-bottom: 1px solid var(--border);">
-          <h2 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">缺陷管理</h2>
+        <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0" style="border-bottom: 2px solid var(--outline);">
+          <h2 class="page-title" style="color: var(--text-primary);">缺陷管理</h2>
           <div class="flex gap-[8px]">
             <button
               v-if="listSelectedCount > 0"
               @click="handleDeleteSelected"
-              class="flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.97]"
-              style="background-color: transparent; color: var(--color-danger); border: 1px solid var(--color-danger);"
+              class="danger-btn flex items-center gap-[4px] px-[12px] py-[6px] text-[12px] font-semibold cursor-pointer"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6" />
@@ -632,3 +631,59 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+/* ── Claymorphism ── */
+
+/* 页面主标题 */
+.page-title {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 侧栏标题 */
+.sidebar-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 模块搜索框（Clay 输入框） */
+.module-search {
+  background-color: var(--input-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.module-search:focus-within {
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
+}
+
+/* 危险操作按钮（删除，保留红色语义） */
+.danger-btn {
+  background-color: transparent;
+  color: var(--color-danger);
+  border: 2px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.danger-btn:hover {
+  background-color: var(--danger-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+
+.danger-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+</style>

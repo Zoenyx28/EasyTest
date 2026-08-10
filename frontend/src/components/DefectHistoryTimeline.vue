@@ -382,7 +382,7 @@ const operations = computed<Operation[]>(() => {
   padding: 10px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 
 .comment-header {

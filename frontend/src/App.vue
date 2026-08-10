@@ -48,7 +48,7 @@ watch(() => route.path, () => {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col overflow-hidden select-none" style="background-color: var(--bg-window); color: var(--text-primary); font-family: var(--font);">
+  <div class="app-shell h-screen flex flex-col overflow-hidden select-none">
     <template v-if="!isAuthPage">
       <Header 
         :currentRoute="route.name as string"
@@ -59,7 +59,7 @@ watch(() => route.path, () => {
       />
     </template>
 
-    <main class="flex-1 min-h-0" :class="isAuthPage ? '' : 'pt-[56px]'" style="display: flex; flex-direction: column; overflow: hidden; position: relative;">
+    <main class="app-main flex-1 min-h-0" :class="isAuthPage ? '' : 'pt-[56px]'">
       <router-view :selectedUids="selectedUids" :globalSearch="globalSearch" @showToast="showToast" @runSelected="handleRunSelected" @runAll="handleRunAll" @rerun="handleRunSelected" />
     </main>
 
@@ -79,3 +79,17 @@ watch(() => route.path, () => {
     <ToastNotification :message="toastMessage" @dismiss="dismissToast" />
   </div>
 </template>
+
+<style scoped>
+.app-shell {
+  background-color: var(--bg-window);
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+.app-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+</style>

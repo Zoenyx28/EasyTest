@@ -234,7 +234,7 @@ async function createTask(uids: string[]) {
     created_at: now.toISOString(),
   };
   tasks.value.push(task);
-  selectedTaskId.value = task.id;
+  selectedTaskId.value = String(task.id);
   
   const { get } = getApi();
   const states: TestCaseState[] = [];
@@ -769,7 +769,7 @@ function buildDefinitionSteps(rawSteps: string, logs: string): ParsedStep[] {
 }
 
 const parsedSteps = computed<ParsedStep[]>(() => {
-  // 1) Case-defined steps from the case detail (用例总览里的步骤), linked to the log
+  // 1) Case-defined steps from the case detail (自动化里的步骤), linked to the log
   if (activeCase.value?.steps) {
     const defSteps = buildDefinitionSteps(activeCase.value.steps, detailLog.value?.logs || '');
     if (defSteps.length > 0) return defSteps;
@@ -1077,7 +1077,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
       class="execution-sidebar w-[260px] flex flex-col shrink-0 min-h-0 glass"
     >
       <div class="flex items-center justify-between px-[16px] py-[12px] shrink-0">
-        <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">测试任务</h3>
+        <h3 class="sidebar-title">测试任务</h3>
       </div>
 
       <!-- Task List -->
@@ -1089,7 +1089,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
           v-for="task in filteredTasks"
           :key="task.id"
           @click="selectedTaskId = String(task.id); closeMenu()"
-          class="task-card p-[12px] rounded-[12px] cursor-pointer transition-all border relative group"
+          class="task-card p-[12px] rounded-[12px] cursor-pointer transition-all relative group"
           :class="[
             String(selectedTaskId) === String(task.id)
               ? 'task-card-selected'
@@ -1106,8 +1106,8 @@ const TASK_STATUS_LABELS: Record<string, string> = {
           </button>
           <div
             v-if="openMenuTaskId === String(task.id)"
-            class="task-menu fixed w-[130px] rounded-[10px] border shadow-lg z-[100] py-[4px]"
-            :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px', backgroundColor: 'var(--card-bg)', borderColor: 'var(--border)' }"
+            class="task-menu fixed w-[130px] z-[100] py-[4px]"
+            :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px', backgroundColor: 'var(--card-bg)', borderColor: 'var(--outline)' }"
           >
             <button
               @click.stop="startRename(String(task.id)); closeMenu()"
@@ -1221,7 +1221,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
         <!-- macOS Metric Card -->
         <div class="px-[24px] mb-[16px] shrink-0">
-          <div class="metric-card p-[20px_24px] rounded-[14px] border grid grid-cols-[auto_1fr] gap-[28px]">
+          <div class="metric-card p-[20px_24px] grid grid-cols-[auto_1fr] gap-[28px]">
             <!-- Progress Ring -->
             <div class="w-[80px] h-[80px] relative">
               <svg width="80" height="80" class="transform -rotate-90">
@@ -1434,11 +1434,15 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 <style scoped>
 /* macOS Font */
 .execution-container {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  font-family: var(--font);
 }
 
 .sidebar-title {
-  color: var(--text-tertiary);
+  font-family: var(--font-heading);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 
 /* macOS Sidebar */
@@ -1455,23 +1459,26 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
 /* Task Cards */
 .task-card {
-  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: all 0.15s ease;
 }
 .task-card-default {
   background-color: var(--card-bg-2);
-  border-color: var(--border);
-  box-shadow: 0 0.5px 1px rgba(0,0,0,0.04);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 .task-card-default:hover {
-  background-color: var(--row-hover);
-  border-color: var(--border-strong);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  transform: translateY(-0.5px);
+  background-color: var(--bg-card-hover);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .task-card-selected {
   background-color: var(--selected-bg);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 1px 3px var(--color-primary-soft);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
+}
+.task-card-selected:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .task-card-title {
   letter-spacing: -0.01em;
@@ -1487,8 +1494,9 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 .task-menu {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-  border-radius: 10px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-popover);
 }
 
 /* Task Status Badges */
@@ -1521,17 +1529,27 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
 /* macOS Header */
 .exec-header {
-  border-bottom: 0.5px solid var(--border);
+  border-bottom: 2px solid var(--outline);
+}
+.page-title {
+  font-family: var(--font-heading);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
 .icon-btn {
   background-color: var(--input-bg);
-  border: 0.5px solid var(--border);
+  border: 2px solid var(--outline);
   color: var(--text-tertiary);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 .icon-btn:hover {
   background-color: var(--border);
   color: var(--text-secondary);
-  border-color: var(--border-strong);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .rename-input {
   font-family: inherit;
@@ -1541,54 +1559,54 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
 /* macOS Action Buttons */
 .action-btn {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
-  border: none;
+  transition: all 0.15s ease;
+  border: 2px solid var(--outline);
   color: #fff;
   position: relative;
 }
 .action-btn:active {
-  transform: scale(0.92);
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
 }
 .action-btn-play {
   background-color: var(--green);
-  box-shadow: 0 4px 14px rgba(48, 209, 88, 0.35);
+  box-shadow: var(--shadow-hard-sm);
 }
 .action-btn-play:hover {
-  box-shadow: 0 6px 20px rgba(48, 209, 88, 0.45);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transform: translate(2px, 2px);
 }
 .action-btn-stop {
   background-color: var(--red);
-  box-shadow: 0 4px 14px rgba(255, 69, 58, 0.35);
+  box-shadow: var(--shadow-hard-sm);
 }
 .action-btn-stop:hover {
-  box-shadow: 0 6px 20px rgba(255, 69, 58, 0.45);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transform: translate(2px, 2px);
 }
 .action-btn-replay {
   background-color: var(--accent);
-  box-shadow: 0 4px 14px var(--color-primary-soft);
+  box-shadow: var(--shadow-hard-sm);
 }
 .action-btn-replay:hover {
-  box-shadow: 0 6px 20px var(--color-primary-soft);
-  transform: translateY(-1px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transform: translate(2px, 2px);
 }
 
 /* macOS Metric Card */
 .metric-card {
   background-color: var(--card-bg);
-  border-color: var(--border);
-  box-shadow: 0 0.5px 1px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg);
 }
 
 /* macOS Bar Chart */
@@ -1623,16 +1641,21 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 /* macOS Filter Pills */
 .filter-pill {
   letter-spacing: 0.01em;
-  border: 0.5px solid transparent;
+  border: 2px solid transparent;
 }
 .filter-pill-active {
   color: #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  border-color: var(--outline);
+  box-shadow: var(--shadow-hard-sm);
+}
+.filter-pill-active:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 .filter-pill-inactive {
   color: var(--text-secondary);
   background-color: var(--input-bg);
-  border-color: var(--border);
+  border-color: var(--outline);
 }
 .filter-pill-inactive:hover {
   background-color: var(--border);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 withDefaults(defineProps<{
-  /** primary=主色蓝 / secondary=中性描边 / ghost=文字 / danger=危险红 / warning=橙（高风险专用，ADR-0008） */
+  /** primary=绿色 CTA / secondary=浅蓝辅助 / ghost=文字 / danger=危险红 / warning=橙（高风险专用，ADR-0008） */
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'warning';
   size?: 'sm' | 'md';
   type?: 'button' | 'submit';
@@ -33,18 +33,24 @@ withDefaults(defineProps<{
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-md);
   font-family: var(--font);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  box-shadow: var(--shadow-hard-md);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.base-btn:hover:not(.base-btn--disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-md-pressed);
 }
 .base-btn:active:not(.base-btn--disabled) {
-  transform: scale(0.97);
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
 }
 
 /* sizes */
@@ -63,26 +69,27 @@ withDefaults(defineProps<{
   color: #fff;
 }
 .base-btn--primary:hover:not(.base-btn--disabled) {
-  background-color: var(--color-primary-dark);
+  background-color: var(--cta-dark);
 }
 
 .base-btn--secondary {
-  background-color: var(--input-bg);
-  border-color: var(--border);
-  color: var(--text-secondary);
+  background-color: var(--color-secondary);
+  color: var(--text-primary);
 }
 .base-btn--secondary:hover:not(.base-btn--disabled) {
-  border-color: var(--border-hover);
-  color: var(--text-primary);
+  background-color: var(--color-secondary-dark);
 }
 
 .base-btn--ghost {
   background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
   color: var(--text-secondary);
 }
 .base-btn--ghost:hover:not(.base-btn--disabled) {
   background-color: var(--hover-bg);
   color: var(--text-primary);
+  box-shadow: none;
 }
 
 .base-btn--danger {
@@ -90,6 +97,7 @@ withDefaults(defineProps<{
   color: #fff;
 }
 .base-btn--danger:hover:not(.base-btn--disabled) {
+  background-color: var(--color-danger);
   filter: brightness(0.92);
 }
 

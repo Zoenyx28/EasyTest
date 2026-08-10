@@ -15,6 +15,8 @@ export interface TempAttachmentInfo {
   filepath: string;
   file_size: number;
   mime_type: string;
+  /** 短时效签名 URL（临时图预览；仅上传者有效） */
+  url?: string;
 }
 
 /**

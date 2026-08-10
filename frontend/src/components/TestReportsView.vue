@@ -157,7 +157,7 @@ const STATUS_LABELS: Record<string, string> = {
     >
       <div class="p-[14px] px-[10px] border-b" style="border-color: var(--sidebar-border);">
         <div class="flex justify-between items-center">
-          <h3 class="text-[15px] font-semibold tracking-[-0.01em]" style="color: var(--text-primary);">历史报告</h3>
+          <h3 class="sidebar-title">历史报告</h3>
           <button
             @click="loadReportList()"
             class="text-[12px] cursor-pointer transition-colors"
@@ -180,7 +180,7 @@ const STATUS_LABELS: Record<string, string> = {
           class="group p-[9px_11px] rounded-[10px] cursor-pointer transition-all border relative"
           :class="[
             selectedIndex === rep.index
-              ? 'border-[var(--accent)]'
+              ? 'border-[var(--color-primary)]'
               : 'border-transparent hover:bg-[var(--row-hover)]'
           ]"
           :style="selectedIndex === rep.index ? { backgroundColor: 'var(--selected-bg)' } : {}"
@@ -233,8 +233,7 @@ const STATUS_LABELS: Record<string, string> = {
         <template v-if="report">
           <div class="space-y-[16px]">
             <div 
-              class="flex items-center gap-[30px] p-[18px_24px] rounded-[12px] border"
-              style="background-color: var(--card-bg-2); border-color: var(--border);"
+              class="report-summary flex items-center gap-[30px] p-[18px_24px]"
             >
               <div class="w-[80px] h-[80px] relative shrink-0">
                 <svg width="80" height="80" class="transform -rotate-90">
@@ -322,7 +321,7 @@ const STATUS_LABELS: Record<string, string> = {
                 class="px-[14px] py-[10px] border-b flex justify-between items-center"
                 style="background-color: var(--card-bg-2); border-color: var(--border);"
               >
-                <h3 class="text-[13.5px] font-semibold" style="color: var(--text-primary);">Test Results Details</h3>
+                <h3 class="details-title">Test Results Details</h3>
                 <span class="text-[11.5px]" style="color: var(--text-tertiary);">Expand all · Collapse all</span>
               </div>
 
@@ -395,3 +394,69 @@ const STATUS_LABELS: Record<string, string> = {
     </main>
   </div>
 </template>
+
+<style scoped>
+/* ── Claymorphism：侧栏标题 ── */
+.sidebar-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* ── Claymorphism：报告概览大卡片 ── */
+.report-summary {
+  background-color: var(--card-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg);
+}
+
+/* ── Claymorphism：统计卡片（按压交互） ── */
+.stat-card {
+  background-color: var(--card-bg);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.stat-card:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  background-color: var(--bg-card-hover);
+}
+
+/* ── Claymorphism：重新执行（主 CTA 绿） ── */
+.btn-rerun {
+  background-color: var(--cta);
+  color: #fff;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, filter 0.15s ease;
+}
+.btn-rerun:hover {
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.btn-rerun:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+
+/* ── 数据密集明细容器：保持扁平克制（1px 细边框 + 柔和阴影） ── */
+.details-panel {
+  border-color: var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Claymorphism：明细次级标题 ── */
+.details-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+</style>

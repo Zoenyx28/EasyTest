@@ -43,7 +43,7 @@ const canAddChild = computed(() => props.depth < 4);
     :style="{ 
       paddingLeft: `${(depth - 1) * 16 + 10}px`,
       paddingRight: '10px',
-      ...(isSelected ? { backgroundColor: 'var(--selected-bg)', color: 'var(--accent)', fontWeight: '600' } : { color: 'var(--text-secondary)' })
+      ...(isSelected ? { backgroundColor: 'var(--selected-bg)', color: 'var(--color-primary)', fontWeight: '600' } : { color: 'var(--text-secondary)' })
     }"
     @mouseenter="(e: MouseEvent) => { if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)' }"
     @mouseleave="(e: MouseEvent) => { if (!isRenaming) (e.currentTarget as HTMLElement).style.backgroundColor = '' }"
@@ -72,7 +72,7 @@ const canAddChild = computed(() => props.depth < 4);
       @input="emit('updateRenameValue', ($event.target as HTMLInputElement).value)"
       type="text"
       class="flex-1 bg-transparent text-[13px] outline-none min-w-0 px-[4px] py-[1px] rounded-[3px]"
-      style="color: var(--text-primary); border: 1px solid var(--accent);"
+      style="color: var(--text-primary); border: 1px solid var(--color-primary);"
       @click.stop
       @keyup.enter="emit('saveRename')"
       @keyup.escape="emit('cancelRename')"
@@ -91,7 +91,7 @@ const canAddChild = computed(() => props.depth < 4);
         @click.stop="emit('addChild', module.id)"
         class="w-[20px] h-[20px] rounded-[4px] flex items-center justify-center cursor-pointer"
         style="color: var(--text-tertiary);"
-        @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
+        @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-primary)' }"
         @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
         title="添加子模块"
       >
@@ -104,7 +104,7 @@ const canAddChild = computed(() => props.depth < 4);
         @click.stop="emit('startRename', module)"
         class="w-[20px] h-[20px] rounded-[4px] flex items-center justify-center cursor-pointer"
         style="color: var(--text-tertiary);"
-        @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--accent)' }"
+        @mouseenter="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--hover-bg)'; (e.currentTarget as HTMLElement).style.color = 'var(--color-primary)' }"
         @mouseleave="(e: MouseEvent) => { (e.currentTarget as HTMLElement).style.backgroundColor = ''; (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)' }"
         title="重命名"
       >
@@ -137,7 +137,7 @@ const canAddChild = computed(() => props.depth < 4);
       type="text"
       placeholder="输入子模块名称..."
       class="flex-1 bg-transparent text-[12px] outline-none px-[6px] py-[3px] rounded-[4px]"
-      style="color: var(--text-primary); border: 1px solid var(--accent);"
+      style="color: var(--text-primary); border: 1px solid var(--color-primary);"
       @keyup.enter="emit('addChildSave', module.id)"
       @keyup.escape="emit('cancelAddChild')"
     />

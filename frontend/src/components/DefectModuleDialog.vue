@@ -310,7 +310,7 @@ watch(() => props.isOpen, (open) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--overlay-bg);
 }
 
 .dialog-container {
@@ -318,10 +318,10 @@ watch(() => props.isOpen, (open) => {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
   background-color: var(--bg-card);
-  border: 1px solid var(--border-hover);
-  box-shadow: var(--shadow-dialog);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   overflow: hidden;
   position: relative;
 }
@@ -365,21 +365,23 @@ watch(() => props.isOpen, (open) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
   color: var(--text-secondary);
   font-size: 20px;
   font-weight: 500;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
   line-height: 1;
 }
 
 .dialog-close-btn:hover {
-  background: var(--bg-soft);
-  border-color: var(--border-hover);
+  background: var(--color-primary-soft);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .dialog-body {
@@ -401,9 +403,17 @@ watch(() => props.isOpen, (open) => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background-color: var(--bg-soft);
-  border-radius: 8px;
-  border: 1px solid var(--border-hover);
+  background-color: var(--input-bg);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
+  transition: all 0.15s ease;
+}
+
+.search-input-wrapper:focus-within {
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .search-input-wrapper svg {
@@ -431,31 +441,35 @@ watch(() => props.isOpen, (open) => {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background-color: var(--color-primary-soft);
-  border: 1px solid var(--color-primary);
-  color: var(--color-primary);
+  background-color: var(--cta);
+  border: 2px solid var(--outline);
+  color: #fff;
   font-family: var(--font);
   font-size: 13px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .btn-add-root:hover {
-  background-color: var(--color-primary-soft);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn {
   padding: 6px 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: var(--font);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: none;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
   line-height: 18px;
 }
 
@@ -465,22 +479,25 @@ watch(() => props.isOpen, (open) => {
 }
 
 .btn-confirm {
-  background-color: var(--color-primary);
+  background-color: var(--cta);
   color: #fff;
 }
 
 .btn-confirm:hover {
-  filter: brightness(1.1);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-cancel {
-  background-color: var(--bg-card);
+  background-color: var(--bg-soft);
   color: var(--text-secondary);
-  border: 1px solid var(--border-hover);
 }
 
 .btn-cancel:hover {
-  background-color: var(--bg-soft);
+  background-color: var(--bg-muted);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-danger {
@@ -489,7 +506,9 @@ watch(() => props.isOpen, (open) => {
 }
 
 .btn-danger:hover {
-  filter: brightness(1.1);
+  filter: brightness(0.92);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .add-input-row {
@@ -506,19 +525,23 @@ watch(() => props.isOpen, (open) => {
 .add-input {
   flex: 1;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: var(--font);
   font-size: 13px;
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   line-height: 18px;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
 }
 
 .add-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .loading-state {
@@ -667,33 +690,42 @@ watch(() => props.isOpen, (open) => {
 .edit-input {
   flex: 1;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-family: var(--font);
   font-size: 13px;
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--color-primary);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   line-height: 18px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.edit-input:focus {
+  border-color: var(--color-primary);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .confirm-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
 }
 
 .confirm-box {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-hover);
-  border-radius: 12px;
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
   padding: 24px;
-  box-shadow: var(--shadow-dialog);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   text-align: center;
 }
 
@@ -722,18 +754,21 @@ watch(() => props.isOpen, (open) => {
 
 .btn-close {
   padding: 6px 16px;
-  background-color: var(--bg-card);
-  border: 1px solid var(--text-muted);
-  color: var(--text-primary);
+  background-color: var(--bg-soft);
+  border: 2px solid var(--outline);
+  color: var(--text-secondary);
   font-family: var(--font);
   font-size: 13px;
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
 }
 
 .btn-close:hover {
-  background-color: var(--bg-soft);
+  background-color: var(--bg-muted);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 </style>

@@ -2,62 +2,41 @@
 
 /* ── Self-hosted Fonts ── */
 @font-face {
-  font-family: 'Space Grotesk';
+  font-family: 'Fredoka';
   font-style: normal;
-  font-weight: 400;
+  font-weight: 300 700;
   font-display: swap;
-  src: url('/fonts/SpaceGrotesk-400.ttf') format('truetype');
+  src: url('/fonts/Fredoka.ttf') format('truetype');
 }
 @font-face {
-  font-family: 'Space Grotesk';
+  font-family: 'Nunito';
   font-style: normal;
-  font-weight: 500;
+  font-weight: 200 1000;
   font-display: swap;
-  src: url('/fonts/SpaceGrotesk-500.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/SpaceGrotesk-600.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'Space Grotesk';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/SpaceGrotesk-700.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/DMSans-400.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/DMSans-500.ttf') format('truetype');
-}
-@font-face {
-  font-family: 'DM Sans';
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url('/fonts/DMSans-700.ttf') format('truetype');
+  src: url('/fonts/Nunito.ttf') format('truetype');
 }
 
 @layer base {
   /* ═══ Light Theme ═══ */
   :root {
-    /* Primary */
-    --color-primary: #2563EB;
-    --color-primary-dark: #1D4ED8;
-    --color-primary-soft: rgba(37, 99, 235, 0.10);
+    /* ── Primary（桃粉，Claymorphism 主色）：装饰色块 / 图标底 / 选中态 / 焦点光环 ── */
+    --color-primary: #FDBCB4;
+    --color-primary-dark: #F5A69D;
+    --color-primary-soft: rgba(253, 188, 180, 0.20);
+
+    /* ── CTA 绿：主按钮 / 链接 / 行动号召 ── */
+    --cta: #22C55E;
+    --cta-dark: #16A34A;
+    --cta-soft: rgba(34, 197, 94, 0.15);
+
+    /* ── Secondary 浅蓝：次级按钮 / 辅助块 ── */
+    --color-secondary: #ADD8E6;
+    --color-secondary-dark: #8BC4D6;
+    --color-secondary-soft: rgba(173, 216, 230, 0.25);
+
+    /* ── 装饰糖果色 ── */
+    --lavender: #E6E6FA;
+    --mint: #98FF98;
 
     /* 强调色（橙）：仅用于高风险操作 / 警告 / P0-P1 优先级，禁止用于常规 CTA —— ADR-0008 */
     --color-accent: #EA580C;
@@ -70,34 +49,46 @@
     --color-broken: #7C3AED;
 
     /* Background */
-    --bg-window: #F8FAFC;
-    --bg-sidebar: rgba(248, 250, 252, 0.85);
+    --bg-window: #FFF9F5;
+    --bg-sidebar: rgba(255, 249, 245, 0.85);
     --bg-content: #FFFFFF;
     --bg-card: #FFFFFF;
-    --bg-card-hover: #F1F5F9;
-    --bg-soft: #F1F5F9;
-    --bg-muted: #F8FAFC;
-    --bg-input: #F1F5F9;
+    --bg-card-hover: #FFF0E9;
+    --bg-soft: #FFF0E9;
+    --bg-muted: #FFF9F5;
+    --bg-input: #FFF0E9;
 
     /* Border */
     --border: #E2E8F0;
     --border-hover: #CBD5E1;
+    /* Clay 硬描边（跟随文字色：亮色深灰） */
+    --outline: #2D3748;
 
     /* Text */
-    --text-primary: #0F172A;
+    --text-primary: #2D3748;
     --text-secondary: #475569;
-    --text-muted: #94A3B8;
+    --text-muted: #64748B;
 
     /* Interaction */
     --hover-bg: rgba(0, 0, 0, 0.04);
-    --selected-bg: rgba(37, 99, 235, 0.10);
-    /* Shadows（分级，ADR-0008 吸收方案 B 的投影分层） */
+    --selected-bg: rgba(253, 188, 180, 0.25);
+
+    /* Soft shadows（扁平元素） */
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
     --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.10);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.15);
     --overlay-bg: rgba(0, 0, 0, 0.4);
+
+    /* Clay 硬偏移阴影（黏土拟态） */
+    --shadow-hard-sm: 3px 3px 0 var(--outline);
+    --shadow-hard-md: 4px 4px 0 var(--outline);
+    --shadow-hard-lg: 6px 6px 0 var(--outline);
+    /* 按下态：阴影收缩 */
+    --shadow-hard-sm-pressed: 1px 1px 0 var(--outline);
+    --shadow-hard-md-pressed: 2px 2px 0 var(--outline);
+    --shadow-hard-lg-pressed: 3px 3px 0 var(--outline);
 
     /* Status soft backgrounds */
     --success-soft: rgba(22, 163, 74, 0.15);
@@ -115,27 +106,27 @@
     --priority-p3-text: #166534;
 
     /* Status tag colors */
-    --status-confirmed-bg: rgba(37, 99, 235, 0.12);
-    --status-confirmed-text: #1D4ED8;
+    --status-confirmed-bg: rgba(34, 197, 94, 0.12);
+    --status-confirmed-text: #15803D;
     --status-in-progress-bg: rgba(245, 158, 11, 0.15);
     --status-in-progress-text: #92400E;
     --status-resolved-bg: rgba(22, 163, 74, 0.12);
     --status-resolved-text: #166534;
 
     /* Compat aliases（兼容别名） */
-    --accent: var(--color-primary);
-    --accent-soft: var(--color-primary-soft);
+    --accent: var(--cta);
+    --accent-soft: var(--cta-soft);
     --green: var(--color-success);
     --red: var(--color-danger);
     --amber: var(--color-warning);
     --purple: var(--color-broken);
-    /* 圆角（ADR-0008：7/10/14 → 8/12/16 微调） */
-    --radius-lg: 16px;
-    --radius-md: 12px;
-    --radius-sm: 8px;
-    /* 字体（ADR-0008：保留西文字体 + 中文系统栈） */
-    --font: "DM Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
-    --font-heading: "Space Grotesk", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    /* 圆角（Claymorphism：12 / 16 / 24） */
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+    /* 字体（Claymorphism：Fredoka 标题 + Nunito 正文 + 中文系统栈） */
+    --font: "Nunito", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    --font-heading: "Fredoka", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --sidebar-bg: var(--bg-sidebar);
     --sidebar-border: var(--border);
@@ -157,9 +148,20 @@
 
   /* ═══ Dark Theme ═══ */
   html[data-theme="dark"] {
-    --color-primary: #3B82F6;
-    --color-primary-dark: #2563EB;
-    --color-primary-soft: rgba(59, 130, 246, 0.15);
+    --color-primary: #FDBCB4;
+    --color-primary-dark: #F5A69D;
+    --color-primary-soft: rgba(253, 188, 180, 0.18);
+
+    --cta: #4ADE80;
+    --cta-dark: #22C55E;
+    --cta-soft: rgba(74, 222, 128, 0.15);
+
+    --color-secondary: #8BC4D6;
+    --color-secondary-dark: #ADD8E6;
+    --color-secondary-soft: rgba(139, 196, 214, 0.20);
+
+    --lavender: #A78BFA;
+    --mint: #4ADE80;
 
     --color-accent: #F97316;
     --color-accent-dark: #EA580C;
@@ -180,19 +182,29 @@
 
     --border: #1E293B;
     --border-hover: #334155;
+    /* 暗色下 Clay 描边用浅色，保持卡片边界清晰 */
+    --outline: #E2E8F0;
 
     --text-primary: #F8FAFC;
     --text-secondary: #94A3B8;
     --text-muted: #64748B;
 
     --hover-bg: rgba(255, 255, 255, 0.04);
-    --selected-bg: rgba(59, 130, 246, 0.18);
+    --selected-bg: rgba(253, 188, 180, 0.18);
     --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.15);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
     --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.5);
     --shadow-dialog: 0 20px 50px rgba(0, 0, 0, 0.4);
     --overlay-bg: rgba(0, 0, 0, 0.5);
+
+    /* Clay 硬偏移阴影（暗色下透明度提升） */
+    --shadow-hard-sm: 3px 3px 0 rgba(226, 232, 240, 0.55);
+    --shadow-hard-md: 4px 4px 0 rgba(226, 232, 240, 0.55);
+    --shadow-hard-lg: 6px 6px 0 rgba(226, 232, 240, 0.55);
+    --shadow-hard-sm-pressed: 1px 1px 0 rgba(226, 232, 240, 0.55);
+    --shadow-hard-md-pressed: 2px 2px 0 rgba(226, 232, 240, 0.55);
+    --shadow-hard-lg-pressed: 3px 3px 0 rgba(226, 232, 240, 0.55);
 
     /* Status soft backgrounds */
     --success-soft: rgba(34, 197, 94, 0.15);
@@ -210,16 +222,16 @@
     --priority-p3-text: #86EFAC;
 
     /* Status tag colors */
-    --status-confirmed-bg: rgba(59, 130, 246, 0.18);
-    --status-confirmed-text: #93C5FD;
+    --status-confirmed-bg: rgba(74, 222, 128, 0.15);
+    --status-confirmed-text: #86EFAC;
     --status-in-progress-bg: rgba(245, 158, 11, 0.15);
     --status-in-progress-text: #FCD34D;
     --status-resolved-bg: rgba(34, 197, 94, 0.15);
     --status-resolved-text: #86EFAC;
 
     /* Compat aliases */
-    --accent: var(--color-primary);
-    --accent-soft: var(--color-primary-soft);
+    --accent: var(--cta);
+    --accent-soft: var(--cta-soft);
     --green: var(--color-success);
     --red: var(--color-danger);
     --amber: var(--color-warning);

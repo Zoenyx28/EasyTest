@@ -107,19 +107,17 @@ watch(searchQuery, () => {
   <div
     v-if="isOpen"
     class="fixed inset-0 flex items-center justify-center z-50 p-4"
-    style="background: rgba(0,0,0,.32);"
+    style="background: var(--overlay-bg);"
     @click.self="handleClose"
   >
     <div
-      class="w-[440px] max-w-[90vw] rounded-[14px] border overflow-hidden"
-      style="background-color: var(--card-bg); border-color: var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.3);"
+      class="member-modal w-[440px] max-w-[90vw] overflow-hidden"
     >
-      <!-- macOS-style header -->
+      <!-- Modal header -->
       <div
-        class="flex items-center justify-between px-[18px] py-[14px] border-b"
-        style="border-color: var(--border);"
+        class="modal-header flex items-center justify-between px-[18px] py-[14px]"
       >
-        <h3 class="text-[15px] font-semibold" style="color: var(--text-primary);">项目成员</h3>
+        <h3 class="modal-title">项目成员</h3>
         <button
           @click="handleClose"
           class="cursor-pointer text-[15px]"
@@ -156,7 +154,7 @@ watch(searchQuery, () => {
               <div class="flex-1 min-w-0">
                 <div class="text-[12.5px] font-medium truncate" style="color: var(--text-primary);">
                   {{ member.nickname || member.username }}
-                  <span v-if="member.user_id === creatorId" class="ml-1 text-[10px] px-[5px] py-[1px] rounded-[4px]" style="background-color: rgba(255,189,46,0.15); color: rgb(255,189,46);">创建人</span>
+                  <span v-if="member.user_id === creatorId" class="ml-1 text-[10px] px-[5px] py-[1px] rounded-[4px]" style="background-color: var(--warning-soft); color: var(--color-warning);">创建人</span>
                 </div>
                 <div class="text-[10.5px] truncate" style="color: var(--text-tertiary);">@{{ member.username }}</div>
               </div>
@@ -165,7 +163,7 @@ watch(searchQuery, () => {
                 v-if="member.user_id !== creatorId"
                 @click="handleRemoveMember(member.user_id)"
                 class="px-[10px] py-[3px] text-[11px] font-medium rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.95]"
-                style="color: rgb(255,69,58); background-color: rgba(255,69,58,0.08);"
+                style="color: var(--color-danger); background-color: var(--danger-soft);"
               >
                 移除
               </button>
@@ -177,8 +175,8 @@ watch(searchQuery, () => {
           </div>
         </div>
 
-        <!-- macOS-style separator -->
-        <div class="mb-4" style="height: 0.5px; background-color: var(--border);"></div>
+        <!-- Separator -->
+        <div class="mb-4" style="height: 1px; background-color: var(--border);"></div>
 
         <!-- Add member section -->
         <div>
@@ -215,8 +213,7 @@ watch(searchQuery, () => {
               </div>
               <button
                 :disabled="addingUserId === user.id"
-                class="px-[10px] py-[3px] text-[11px] font-medium rounded-[6px] cursor-pointer transition-all duration-150 active:scale-[0.95]"
-                style="background-color: var(--accent); color: #fff;"
+                class="clay-btn clay-btn-primary px-[10px] py-[3px] text-[11px] font-medium"
               >
                 {{ addingUserId === user.id ? '添加中...' : '添加' }}
               </button>
@@ -228,15 +225,13 @@ watch(searchQuery, () => {
         </div>
       </div>
 
-      <!-- macOS-style footer -->
+      <!-- Modal footer -->
       <div
-        class="flex justify-end px-[18px] py-[12px] border-t"
-        style="border-color: var(--border);"
+        class="modal-footer flex justify-end px-[18px] py-[12px]"
       >
         <button
           @click="handleClose"
-          class="px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition-colors"
-          style="background-color: var(--card-bg-2); border: 1px solid var(--border-strong); color: var(--text-primary);"
+          class="clay-btn clay-btn-secondary px-4 py-1.5 text-sm font-medium"
         >
           关闭
         </button>
@@ -246,6 +241,72 @@ watch(searchQuery, () => {
 </template>
 
 <style scoped>
+.member-modal {
+  background-color: var(--card-bg);
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
+}
+
+.modal-header {
+  border-bottom: 2px solid var(--outline);
+}
+
+.modal-title {
+  font-family: var(--font-heading);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-footer {
+  border-top: 2px solid var(--outline);
+}
+
+/* ── Clay 按钮 ── */
+.clay-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  box-shadow: var(--shadow-hard-sm);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.clay-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
+}
+.clay-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--outline);
+}
+.clay-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.clay-btn-primary {
+  background-color: var(--cta);
+  color: #fff;
+}
+.clay-btn-primary:hover {
+  background-color: var(--cta-dark);
+}
+.clay-btn-secondary {
+  background-color: var(--color-secondary);
+  color: var(--text-primary);
+}
+.clay-btn-secondary:hover {
+  background-color: var(--color-secondary-dark);
+}
+
 .animate-spin {
   animation: spin 1s linear infinite;
 }

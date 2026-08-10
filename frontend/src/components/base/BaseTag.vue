@@ -32,10 +32,13 @@ withDefaults(defineProps<{
 .base-tag--sm {
   padding: 2px 8px;
   font-size: 10.5px;
+  border: 1.5px solid var(--outline);
 }
 .base-tag--md {
   padding: 3px 10px;
   font-size: 11.5px;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
 }
 
 .base-tag__dot {

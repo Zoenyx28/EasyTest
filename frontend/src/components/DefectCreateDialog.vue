@@ -174,10 +174,10 @@ function handleAddFile(event: Event) {
   target.value = '';
 }
 
-/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL */
+/** 编辑器内（粘贴/插入）图片上传：临时附件，返回可预览的临时 URL（短时效签名） */
 async function uploadEditorImage(file: File): Promise<string> {
   const info = await defectApi.uploadTempAttachment(file);
-  return `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
+  return info.url || `/api/defects/attachments/temp/${encodeURIComponent(info.filename)}`;
 }
 
 function handleRemoveFile(id: number) {
@@ -412,7 +412,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(0,0,0,0.5);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(4px);
 }
 
@@ -421,9 +421,10 @@ onUnmounted(() => {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  border-radius: 16px;
+  border: 3px solid var(--outline);
+  border-radius: var(--radius-lg);
   background-color: var(--bg-card);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow-hard-lg), var(--shadow-dialog);
   overflow: hidden;
 }
 
@@ -441,7 +442,7 @@ onUnmounted(() => {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  font-family: var(--font);
+  font-family: var(--font-heading);
 }
 
 .dialog-close-btn {
@@ -450,18 +451,21 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
   color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
 }
 
 .dialog-close-btn:hover {
   background: var(--color-primary-soft);
   color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .dialog-body {
@@ -492,12 +496,13 @@ onUnmounted(() => {
 .form-select {
   width: 100%;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   outline: none;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -507,7 +512,8 @@ onUnmounted(() => {
 .form-textarea:focus,
 .form-select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .input-error {
@@ -548,33 +554,38 @@ onUnmounted(() => {
 
 .btn {
   padding: 8px 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font);
-  border: none;
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm);
   line-height: 20px;
 }
 
 .btn-cancel {
-  background-color: transparent;
-  color: var(--text-primary);
+  background-color: var(--bg-soft);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
-.btn-cancel:hover {
+.btn-cancel:hover:not(:disabled) {
   background-color: var(--bg-muted);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save {
-  background-color: var(--color-primary);
-  color: var(--bg-card);
+  background-color: var(--cta);
+  color: #fff;
 }
 
 .btn-save:hover:not(:disabled) {
-  background-color: var(--color-primary-dark);
+  background-color: var(--cta-dark);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .btn-save:disabled {
@@ -592,6 +603,7 @@ onUnmounted(() => {
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg-muted);
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -612,19 +624,22 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-  border: none;
-  border-radius: 8px;
+  background: var(--bg-soft);
+  color: var(--text-primary);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
   transition: all 0.15s ease;
   font-family: var(--font);
 }
 
 .upload-btn:hover:not(.disabled) {
   background: var(--color-primary-soft);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .upload-btn.disabled {
@@ -650,7 +665,7 @@ onUnmounted(() => {
 }
 
 .btn-text:hover {
-  background: rgba(186, 26, 26, 0.1);
+  background: var(--danger-soft);
 }
 
 /* ── 关联用例选择器 ── */
@@ -664,12 +679,13 @@ onUnmounted(() => {
   gap: 8px;
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-family: var(--font);
-  background-color: var(--bg-card);
+  background-color: var(--input-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 2px solid var(--outline);
+  box-shadow: var(--shadow-hard-sm-pressed);
   cursor: pointer;
   transition: all 0.15s ease;
   box-sizing: border-box;
@@ -677,7 +693,8 @@ onUnmounted(() => {
 
 .case-selector-open {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-soft);
+  background-color: var(--card-bg);
+  box-shadow: 0 0 0 3px var(--color-primary-soft), var(--shadow-hard-sm-pressed);
 }
 
 .case-selected-name {
@@ -689,7 +706,7 @@ onUnmounted(() => {
 }
 
 .case-selected-method {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-secondary);
   overflow: hidden;
@@ -720,9 +737,9 @@ onUnmounted(() => {
   right: 0;
   z-index: 300;
   background-color: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard-md), var(--shadow-popover);
   overflow: hidden;
 }
 
@@ -761,7 +778,7 @@ onUnmounted(() => {
 }
 
 .case-dropdown-item-active {
-  background: var(--color-primary-soft);
+  background: var(--selected-bg);
 }
 
 .case-dropdown-name {
@@ -771,7 +788,7 @@ onUnmounted(() => {
 }
 
 .case-dropdown-method {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-secondary);
 }
