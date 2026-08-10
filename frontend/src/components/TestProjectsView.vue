@@ -9,6 +9,8 @@ import ProjectNoteEditor from './ProjectNoteEditor.vue';
 import ProjectMemberModal from './ProjectMemberModal.vue';
 import DefectDetailDialog from './DefectDetailDialog.vue';
 import UserAvatar from './UserAvatar.vue';
+import BaseButton from './base/BaseButton.vue';
+import BaseInput from './base/BaseInput.vue';
 import type { DefectInfo, ProjectMemberInfo } from '../types';
 
 defineProps<{
@@ -870,12 +872,9 @@ onMounted(() => {
     <!-- macOS-style modal -->
     <div v-if="showCreateModal || showEditModal" class="fixed inset-0 flex items-center justify-center z-50" style="background-color: var(--overlay-bg); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
       <div class="modal-panel w-[440px] overflow-hidden">
-        <!-- macOS traffic-light style header -->
-        <div class="flex items-center gap-[8px] px-[16px] py-[12px] select-none" style="border-bottom: 2px solid var(--outline);">
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-danger);"></div>
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-warning);"></div>
-          <div class="w-[12px] h-[12px] rounded-full" style="background-color: var(--color-success);"></div>
-          <span class="modal-title ml-[8px]" style="color: var(--text-primary);">
+        <!-- macOS-style modal header -->
+        <div class="flex items-center px-[16px] py-[12px] select-none" style="border-bottom: 2px solid var(--outline);">
+          <span class="modal-title" style="color: var(--text-primary);">
             {{ editingProject ? '编辑项目' : '新建项目' }}
           </span>
         </div>

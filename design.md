@@ -262,7 +262,7 @@
 
 - 面板：宽默认 `520px`，圆角 `--radius-lg`，**3px 硬描边 `var(--outline)`**，阴影 `--shadow-hard-lg, var(--shadow-dialog)` 叠加
 - 遮罩：`--overlay-bg` + `backdrop-filter: blur(6px)`
-- 标题栏：macOS 风格红黄绿交通灯（12px 圆点）+ `--font-heading` 13px/600 标题，底部 `2px solid var(--outline)` 描边
+- **标题栏（全站统一）**：左对齐标题（`--font-heading` 13~15px/600）+ 右侧 × 关闭按钮。关闭按钮规格固定：`32×32`、`2px solid var(--outline)` 描边、圆角 `--radius-sm`、底 `--bg-soft`、`--shadow-hard-sm`，hover 时桃粉软底 + 下沉（`translate(2px,2px)` + pressed 阴影）。不再使用 macOS 红黄绿交通灯
 - 底部操作区：右对齐、`gap-8px`、顶部 `2px solid var(--outline)` 描边
 - 进出场动画：透明度 0.18s + 面板 `scale(0.96)`
 - 小弹窗（如确认框）：宽 `340~380px`，圆角 `--radius-md`，内边距 `20px`

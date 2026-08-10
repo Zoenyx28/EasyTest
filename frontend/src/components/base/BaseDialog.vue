@@ -5,13 +5,11 @@ withDefaults(defineProps<{
   /** 面板宽度（px），可传任意数值 */
   width?: number;
   closeOnBackdrop?: boolean;
-  showTrafficLights?: boolean;
 }>(), {
   open: false,
   title: '',
   width: 520,
   closeOnBackdrop: true,
-  showTrafficLights: true,
 });
 
 const emit = defineEmits<{
@@ -33,15 +31,11 @@ function onBackdropClick() {
         @click.self="onBackdropClick"
       >
         <div class="base-dialog__panel" :style="{ width: width + 'px' }" @click.stop>
-          <!-- macOS 风格标题栏 -->
-          <div v-if="showTrafficLights || title || $slots.header" class="base-dialog__header">
-            <div v-if="showTrafficLights" class="base-dialog__lights">
-              <span class="base-dialog__light base-dialog__light--red"></span>
-              <span class="base-dialog__light base-dialog__light--yellow"></span>
-              <span class="base-dialog__light base-dialog__light--green"></span>
-            </div>
+          <!-- 标题栏：标题 + × 关闭按钮 -->
+          <div v-if="title || $slots.header" class="base-dialog__header">
             <span v-if="title" class="base-dialog__title">{{ title }}</span>
             <slot name="header" />
+            <button class="base-dialog__close" aria-label="关闭" @click="emit('close')">×</button>
           </div>
 
           <div class="base-dialog__body">
@@ -82,27 +76,13 @@ function onBackdropClick() {
 .base-dialog__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 12px 16px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
-
-.base-dialog__lights {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.base-dialog__light {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-}
-.base-dialog__light--red { background-color: rgb(255, 95, 87); }
-.base-dialog__light--yellow { background-color: rgb(255, 189, 46); }
-.base-dialog__light--green { background-color: rgb(39, 201, 63); }
 
 .base-dialog__title {
   font-family: var(--font-heading);
@@ -112,6 +92,31 @@ function onBackdropClick() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.base-dialog__close {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: all 0.15s ease;
+}
+
+.base-dialog__close:hover {
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 .base-dialog__body {

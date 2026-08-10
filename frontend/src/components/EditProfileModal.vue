@@ -111,12 +111,9 @@ async function handleSave() {
         <h2 class="profile-title">修改个人资料</h2>
         <button
           @click="emit('close')"
-          class="w-[24px] h-[24px] rounded-full flex items-center justify-center text-[14px] cursor-pointer transition-colors"
-          style="color: var(--text-secondary);"
-          @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--row-hover)'"
-          @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = 'transparent'"
+          class="dialog-close-btn"
         >
-          &times;
+          ×
         </button>
       </div>
 
@@ -241,6 +238,31 @@ async function handleSave() {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* ── Claymorphism：统一 × 关闭按钮 ── */
+.dialog-close-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: all 0.15s ease;
+}
+.dialog-close-btn:hover {
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 /* ── Claymorphism：次级按钮 ── */

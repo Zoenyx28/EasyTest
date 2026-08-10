@@ -66,12 +66,11 @@ const handleSave = () => {
         style="border-color: var(--border);"
       >
         <h3 class="settings-title">执行设置</h3>
-        <button 
-          @click="emit('close')" 
-          class="cursor-pointer text-[15px]"
-          style="color: var(--text-tertiary);"
+        <button
+          @click="emit('close')"
+          class="dialog-close-btn"
         >
-          ✕
+          ×
         </button>
       </div>
 
@@ -153,6 +152,31 @@ const handleSave = () => {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+/* ── Claymorphism：统一 × 关闭按钮 ── */
+.dialog-close-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--outline);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: all 0.15s ease;
+}
+.dialog-close-btn:hover {
+  background: var(--color-primary-soft);
+  color: var(--text-primary);
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-hard-sm-pressed);
 }
 
 /* ── Claymorphism：步进按钮 ── */
