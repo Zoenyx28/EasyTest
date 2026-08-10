@@ -1,6 +1,7 @@
 """缺陷管理 API 路由 — 缺陷模块、缺陷记录、附件、日志、状态转换。"""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from app.models.schemas import (
     DefectTransition,
     DefectCommentCreate,
 )
+from app.services.file_signer import build_signed_url
 
 router = APIRouter(prefix='/api/defects', tags=['缺陷管理'])
 
@@ -67,8 +69,12 @@ def _bug_type_name(bug_type: str) -> str:
 # ── Helper: get defect detail with user/module names ──
 
 
-async def _enrich_defect(defect: dict) -> dict:
-    """Enrich a defect dict with user names, module name, and branch name."""
+async def _enrich_defect(defect: dict, user_id: int = 0) -> dict:
+    """Enrich a defect dict with user names, module name, and branch name.
+
+    当传入 user_id 时，同时把 steps HTML 中的内嵌图片 URL 替换为
+    绑定该用户的短时效签名 URL。
+    """
     module_name = ''
     if defect.get('module_id'):
         try:
@@ -131,7 +137,7 @@ async def _enrich_defect(defect: dict) -> dict:
         except Exception:
             pass
 
-    return {
+    result = {
         **defect,
         'module_name': module_name,
         'assignee_name': assignee_name,
@@ -142,6 +148,9 @@ async def _enrich_defect(defect: dict) -> dict:
         'resolved_version_name': resolved_version_name,
         'duplicate_defect_title': duplicate_defect_title,
     }
+    if user_id and defect.get('id') and defect.get('steps'):
+        result['steps'] = _inject_steps_image_signatures(defect['id'], defect['steps'], user_id)
+    return result
 
 
 # ══════════════════════════════════════════════
@@ -188,18 +197,101 @@ async def delete_module(module_id: int):
 # ══════════════════════════════════════════════
 
 
+# ── Helper: 文件访问签名 URL ──
+
+
+def _signed_image_url(defect_id: int, filename: str, user_id: int) -> str:
+    """生成缺陷内嵌图片的短时效签名 URL。"""
+    from urllib.parse import quote
+    return build_signed_url(
+        f'/api/defects/{defect_id}/images/{quote(filename)}',
+        f'img:{defect_id}:{filename}',
+        user_id,
+    )
+
+
+def _attachment_download_url(attachment_id: int, user_id: int) -> str:
+    """生成附件下载的短时效签名 URL。"""
+    return build_signed_url(
+        f'/api/defects/attachments/{attachment_id}/download',
+        f'att:{attachment_id}',
+        user_id,
+    )
+
+
+def _signed_temp_url(filename: str, user_id: int) -> str:
+    """生成临时目录图片的短时效签名 URL。"""
+    from urllib.parse import quote
+    return build_signed_url(
+        f'/api/defects/attachments/temp/{quote(filename)}',
+        f'tmp:{filename}',
+        user_id,
+    )
+
+
+def _inject_steps_image_signatures(defect_id: int, steps_html: str, user_id: int) -> str:
+    """把复现步骤 HTML 中的内嵌图片 URL 替换为短时效签名 URL。"""
+    if not steps_html:
+        return steps_html
+    import re
+    from urllib.parse import unquote
+
+    pattern = re.compile(rf'/api/defects/{defect_id}/images/([^"\'<>\s?]+)')
+
+    def _repl(m: re.Match) -> str:
+        filename = unquote(m.group(1))
+        if not filename or '/' in filename or '\\' in filename:
+            return m.group(0)
+        return _signed_image_url(defect_id, filename, user_id)
+
+    return pattern.sub(_repl, steps_html)
+
+
+def _strip_steps_signatures(defect_id: int, steps_html: str) -> str:
+    """去掉复现步骤 HTML 中内嵌图片 URL 的签名查询参数，恢复为纯路径。
+
+    前端保存时可能回传详情接口注入的签名 URL；入库前剥离签名，
+    保证数据库只存原始路径，下次返回时再重新注入。
+    """
+    if not steps_html or f'/api/defects/{defect_id}/images/' not in steps_html:
+        return steps_html
+    import re
+
+    pattern = re.compile(rf'(/api/defects/{defect_id}/images/[^"\'<>\s?]+)\?[^"\'<>\s]*')
+    return pattern.sub(r'\1', steps_html)
+
+
+def _resolve_signed_user(request: Request, resource: str) -> int | None:
+    """从请求 query 中解析签名 URL，返回签名绑定的 user_id；无效返回 None。"""
+    from app.services.file_signer import verify_signature
+
+    params = request.query_params
+    uid = params.get('uid')
+    if not uid:
+        return None
+    try:
+        uid_int = int(uid)
+    except (TypeError, ValueError):
+        return None
+    if not verify_signature(resource, uid_int, params.get('expires'), params.get('sig')):
+        return None
+    return uid_int
+
+
 @router.get('/by-case')
-async def list_defects_by_case(project_id: int, case_uid: str):
+async def list_defects_by_case(request: Request, project_id: int, case_uid: str):
     """Get defects referencing a given test case."""
+    user = await get_current_user(request)
     defects = await crud.get_defects_by_case_uid(project_id, case_uid)
     enriched = []
     for d in defects:
-        enriched.append(await _enrich_defect(d))
+        enriched.append(await _enrich_defect(d, user['id']))
     return ok(enriched)
 
 
 @router.get('')
 async def list_defects(
+    request: Request,
     project_id: int,
     branch_id: int,
     status: str = None,
@@ -213,6 +305,7 @@ async def list_defects(
     page_size: int = 20,
 ):
     """Defect list."""
+    user = await get_current_user(request)
     result = await crud.get_defects(
         project_id=project_id,
         branch_id=branch_id,
@@ -229,7 +322,7 @@ async def list_defects(
     # Enrich items with user/module names
     items = []
     for d in result['items']:
-        enriched = await _enrich_defect(d)
+        enriched = await _enrich_defect(d, user['id'])
         items.append(enriched)
 
     return ok({
@@ -267,6 +360,7 @@ async def create_defect(request: Request, data: DefectCreate):
             if src and os.path.exists(src):
                 dst = str(defect_dir / filename)
                 shutil.move(src, dst)
+                _drop_temp_owners([filename])
                 await crud.create_defect_attachment(
                     defect_id=defect_id,
                     filename=filename,
@@ -286,10 +380,11 @@ async def create_defect(request: Request, data: DefectCreate):
 
 
 @router.get('/recent')
-async def recent_defects(project_id: int, branch_id: int, limit: int = 2):
+async def recent_defects(request: Request, project_id: int, branch_id: int, limit: int = 2):
     """最近缺陷"""
+    user = await get_current_user(request)
     defects = await crud.get_recent_defects(project_id, branch_id, limit)
-    items = [await _enrich_defect(d) for d in defects]
+    items = [await _enrich_defect(d, user['id']) for d in defects]
     return ok(items)
 
 
@@ -298,25 +393,27 @@ async def my_defects(request: Request, project_id: int, branch_id: int):
     """我的缺陷"""
     user = await get_current_user(request)
     defects = await crud.get_my_defects(user['id'], project_id, branch_id)
-    items = [await _enrich_defect(d) for d in defects]
+    items = [await _enrich_defect(d, user['id']) for d in defects]
     return ok(items)
 
 
 @router.get('/{defect_id}')
-async def get_defect(defect_id: int):
+async def get_defect(request: Request, defect_id: int):
     """缺陷详情"""
+    user = await get_current_user(request)
     defect = await crud.get_defect(defect_id)
     if defect is None:
         return fail(404, '缺陷不存在')
-    enriched = await _enrich_defect(defect)
+    enriched = await _enrich_defect(defect, user['id'])
     return ok(enriched)
 
 
 @router.get('/{defect_id}/detail')
-async def get_defect_detail(defect_id: int):
+async def get_defect_detail(request: Request, defect_id: int):
     """缺陷完整详情 — 合并 defect + logs + attachments + comments 一次返回"""
     import asyncio
 
+    user = await get_current_user(request)
     defect = await crud.get_defect(defect_id)
     if defect is None:
         return fail(404, '缺陷不存在')
@@ -337,11 +434,13 @@ async def get_defect_detail(defect_id: int):
         return enriched_logs
 
     enriched_defect, logs, attachments, comments = await asyncio.gather(
-        _enrich_defect(defect),
+        _enrich_defect(defect, user['id']),
         _enrich_logs(),
         crud.get_defect_attachments(defect_id),
         crud.get_defect_comments(defect_id),
     )
+    for att in attachments:
+        att['download_url'] = _attachment_download_url(att['id'], user['id'])
     return ok({
         'defect': enriched_defect,
         'logs': logs,
@@ -359,6 +458,10 @@ async def update_defect(request: Request, defect_id: int, data: DefectUpdate):
     old_defect = await crud.get_defect(defect_id)
     if old_defect is None:
         return fail(404, '缺陷不存在')
+
+    # 入库前剥离 steps 中内嵌图片 URL 的签名参数，避免数据库存过期签名
+    if data.steps:
+        data.steps = _strip_steps_signatures(defect_id, data.steps)
 
     success = await crud.update_defect(defect_id, data)
     if not success:
@@ -399,6 +502,7 @@ async def update_defect(request: Request, defect_id: int, data: DefectUpdate):
             if src and os.path.exists(src):
                 dst = str(defect_dir / filename)
                 shutil.move(src, dst)
+                _drop_temp_owners([filename])
                 await crud.create_defect_attachment(
                     defect_id=defect_id,
                     filename=filename,
@@ -535,13 +639,16 @@ async def get_logs(defect_id: int):
 
 
 @router.get('/{defect_id}/attachments')
-async def get_attachments(defect_id: int):
+async def get_attachments(request: Request, defect_id: int):
     """附件列表"""
+    user = await get_current_user(request)
     defect = await crud.get_defect(defect_id)
     if defect is None:
         return fail(404, '缺陷不存在')
 
     attachments = await crud.get_defect_attachments(defect_id)
+    for att in attachments:
+        att['download_url'] = _attachment_download_url(att['id'], user['id'])
     return ok(attachments)
 
 
@@ -568,6 +675,9 @@ async def upload_temp_attachment(request: Request, file: UploadFile = File(...))
     with open(filepath, 'wb') as f:
         f.write(content)
 
+    # 记录临时图上传者归属（仅上传者可通过签名 URL 访问）
+    _set_temp_owner(filename, user['id'])
+
     file_size = len(content)
     mime_type = file.content_type or 'application/octet-stream'
 
@@ -576,7 +686,55 @@ async def upload_temp_attachment(request: Request, file: UploadFile = File(...))
         'filepath': filepath,
         'file_size': file_size,
         'mime_type': mime_type,
+        'url': _signed_temp_url(filename, user['id']),
     })
+
+
+# ── Helper: 临时图上传者归属映射 ──
+
+
+def _temp_owners_path() -> Path:
+    return PROJECTS_DATA_DIR / 'defects' / 'temp' / '.owners.json'
+
+
+def _load_temp_owners() -> dict[str, int]:
+    """读取临时图上传者映射 {filename: user_id}。"""
+    try:
+        with open(_temp_owners_path(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_temp_owners(owners: dict[str, int]) -> None:
+    _temp_owners_path().parent.mkdir(parents=True, exist_ok=True)
+    with open(_temp_owners_path(), 'w', encoding='utf-8') as f:
+        json.dump(owners, f, ensure_ascii=False)
+
+
+def _set_temp_owner(filename: str, user_id: int) -> None:
+    owners = _load_temp_owners()
+    owners[filename] = user_id
+    _save_temp_owners(owners)
+
+
+def _get_temp_owner(filename: str) -> int | None:
+    return _load_temp_owners().get(filename)
+
+
+def _drop_temp_owners(filenames: list[str]) -> None:
+    """文件被正式保存/移动后，清理其临时归属记录。"""
+    if not filenames:
+        return
+    owners = _load_temp_owners()
+    changed = False
+    for name in filenames:
+        if name in owners:
+            del owners[name]
+            changed = True
+    if changed:
+        _save_temp_owners(owners)
 
 
 # ── Helper: finalize pasted images inside steps HTML ──
@@ -597,9 +755,11 @@ async def _finalize_steps_images(defect_id: int, steps_html: str, user_id: int) 
     defect_dir = PROJECTS_DATA_DIR / 'defects' / str(defect_id)
     defect_dir.mkdir(parents=True, exist_ok=True)
 
-    pattern = re.compile(r'/api/defects/attachments/temp/([^"\'\s<>]+)')
+    pattern = re.compile(r'/api/defects/attachments/temp/([^"\'\s<>?]+)')
     # encoded filename -> 转正后的目标文件名（同一图片被多次引用时复用）
     finalized: dict[str, str] = {}
+    # 已移入缺陷目录的临时文件原名（用于清理 owners 映射）
+    moved: list[str] = []
 
     def _repl(m: re.Match) -> str:
         encoded = m.group(1)
@@ -619,6 +779,7 @@ async def _finalize_steps_images(defect_id: int, steps_html: str, user_id: int) 
             dst = defect_dir / f'{base}_{counter}{ext}'
             counter += 1
         shutil.move(str(src), str(dst))
+        moved.append(filename)
         final_name = dst.name
         finalized[encoded] = final_name
         return f'/api/defects/{defect_id}/images/{quote(final_name)}'
@@ -630,18 +791,26 @@ async def _finalize_steps_images(defect_id: int, steps_html: str, user_id: int) 
         result.append(_repl(m))
         last = m.end()
     result.append(steps_html[last:])
+    if moved:
+        _drop_temp_owners(moved)
     return ''.join(result)
 
 
 @router.get('/attachments/temp/{filename}')
-async def download_temp_image(filename: str):
-    """临时目录图片访问（富文本编辑器粘贴图片的预览/编辑阶段使用）"""
+async def download_temp_image(request: Request, filename: str):
+    """临时目录图片访问（富文本编辑器粘贴图片的预览/编辑阶段使用）。
+
+    需携带短时效签名 URL；仅上传者可访问。
+    """
     from fastapi.responses import FileResponse
     from urllib.parse import unquote
 
     name = unquote(filename)
     if not name or '/' in name or '\\' in name:
         return fail(400, '非法文件名')
+    uid = _resolve_signed_user(request, f'tmp:{name}')
+    if uid is None or _get_temp_owner(name) != uid:
+        return fail(403, '无权访问或签名已过期')
     filepath = PROJECTS_DATA_DIR / 'defects' / 'temp' / name
     if not os.path.exists(filepath):
         return fail(404, '文件不存在')
@@ -649,14 +818,25 @@ async def download_temp_image(filename: str):
 
 
 @router.get('/{defect_id}/images/{filename}')
-async def download_defect_image(defect_id: int, filename: str):
-    """缺陷内嵌图片访问（复现步骤中粘贴的图片，不属于附件列表）"""
+async def download_defect_image(request: Request, defect_id: int, filename: str):
+    """缺陷内嵌图片访问（复现步骤中粘贴的图片，不属于附件列表）。
+
+    需携带短时效签名 URL；缺陷所属项目成员可访问。
+    """
     from fastapi.responses import FileResponse
     from urllib.parse import unquote
 
     name = unquote(filename)
     if not name or '/' in name or '\\' in name:
         return fail(400, '非法文件名')
+    uid = _resolve_signed_user(request, f'img:{defect_id}:{name}')
+    if uid is None:
+        return fail(403, '无权访问或签名已过期')
+    defect = await crud.get_defect(defect_id)
+    if defect is None:
+        return fail(404, '缺陷不存在')
+    if not await crud.is_project_member(defect.get('project_id', 0), uid):
+        return fail(403, '无权访问')
     filepath = PROJECTS_DATA_DIR / 'defects' / str(defect_id) / name
     if not os.path.exists(filepath):
         return fail(404, '文件不存在')
@@ -699,12 +879,18 @@ async def upload_attachment(request: Request, defect_id: int, file: UploadFile =
 
 
 @router.get('/attachments/{attachment_id}/download')
-async def download_attachment(attachment_id: int):
-    """下载附件"""
+async def download_attachment(request: Request, attachment_id: int):
+    """下载附件（需携带短时效签名 URL；缺陷所属项目成员可访问）"""
     from fastapi.responses import FileResponse
+    uid = _resolve_signed_user(request, f'att:{attachment_id}')
+    if uid is None:
+        return fail(403, '无权访问或签名已过期')
     attachment = await crud.get_defect_attachment(attachment_id)
     if attachment is None:
         return fail(404, '附件不存在')
+    defect = await crud.get_defect(attachment.get('defect_id', 0))
+    if defect is None or not await crud.is_project_member(defect.get('project_id', 0), uid):
+        return fail(403, '无权访问')
     filepath = attachment.get('filepath', '')
     if not filepath or not os.path.exists(filepath):
         return fail(404, '文件不存在')

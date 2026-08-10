@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
-from sqlalchemy import select, desc, delete, case, update
+from sqlalchemy import select, desc, delete, case, update, or_
 
 from .database import session_ctx
 from .models import Branch, TestCaseDefinition, User
@@ -2035,26 +2035,20 @@ async def create_defect_module(project_id: int, data, branch_id: int = 0) -> int
 async def get_defect_modules(project_id: int, branch_id: int = 0) -> list[dict]:
     """Get defect modules for a project, optionally scoped to a branch.
 
-    When branch_id > 0, only modules of that branch are returned. If that
-    branch has no modules yet, fall back to the project-level modules
-    (branch_id = 0) for backward compatibility with pre-branch data.
+    Project-level modules (branch_id = 0) are always included, so the legacy
+    module tree stays visible in every branch. When branch_id > 0, modules
+    created in that branch are merged on top of the project-level tree.
     """
     async with session_ctx() as session:
         query = select(DefectModule).where(DefectModule.project_id == project_id)
         if branch_id > 0:
-            query = query.where(DefectModule.branch_id == branch_id)
+            query = query.where(
+                or_(DefectModule.branch_id == branch_id, DefectModule.branch_id == 0)
+            )
         result = await session.execute(
             query.order_by(DefectModule.sort_order, DefectModule.id)
         )
         modules = result.scalars().all()
-        if not modules and branch_id > 0:
-            # Fall back to project-level (legacy) modules
-            legacy = await session.execute(
-                select(DefectModule)
-                .where(DefectModule.project_id == project_id, DefectModule.branch_id == 0)
-                .order_by(DefectModule.sort_order, DefectModule.id)
-            )
-            modules = legacy.scalars().all()
         return [
             {
                 'id': m.id,
