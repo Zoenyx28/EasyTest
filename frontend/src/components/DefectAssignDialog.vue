@@ -90,7 +90,7 @@ watch(() => props.isOpen, async (newVal) => {
               class="form-textarea"
               v-model="comment"
               rows="3"
-              placeholder="添加备注（可选）..."
+              placeholder="添加备注"
             ></textarea>
           </div>
         </div>

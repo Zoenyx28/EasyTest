@@ -6,6 +6,8 @@ const props = defineProps<{
   logs: DefectLogInfo[];
   comments: DefectCommentInfo[];
   defectId: number;
+  /** 缺陷当前指派人名称（解决操作未改指派时，用于"交给xxx确认"） */
+  assigneeName?: string;
 }>();
 
 const expandedGroups = ref<Set<number>>(new Set());
@@ -88,6 +90,17 @@ function fmtVal(field: string, val: string): string {
   return val;
 }
 
+/** 格式化单条日志某一侧的取值（指派给显示用户名称） */
+function fmtLogVal(log: DefectLogInfo, which: 'old' | 'new'): string {
+  const raw = which === 'old' ? log.old_value : log.new_value;
+  if (log.field === 'assignee_id') {
+    const name = which === 'old' ? log.old_value_name : log.new_value_name;
+    if (name) return name;
+    return raw && raw !== '0' ? raw : '（空）';
+  }
+  return fmtVal(log.field, raw);
+}
+
 function formatDatetime(iso: string): string {
   if (!iso) return '--';
   try {
@@ -113,7 +126,70 @@ interface Operation {
   time: string;       // ISO timestamp
   logs: DefectLogInfo[];
   comments: DefectCommentInfo[];
-  actionLabel: string; // e.g. "创建", "编辑", "确认 Bug", "指派", "解决", "关闭"
+  summary: string;    // 自然语言活动描述，如 "张三创建了bug，指派给李四"
+}
+
+/** 根据一组日志生成主动作与自然语言描述 */
+function buildSummary(operatorName: string, groupLogs: DefectLogInfo[]): string {
+  const statusLog = groupLogs.find(l => l.field === 'status');
+  const assigneeLog = groupLogs.find(l => l.field === 'assignee_id');
+  const resolutionLog = groupLogs.find(l => l.field === 'resolution');
+
+  if (statusLog) {
+    const oldS = statusLog.old_value;
+    const newS = statusLog.new_value;
+    const assigneeName = assigneeLog ? (assigneeLog.new_value_name || '') : '';
+
+    if (!oldS) {
+      // 创建
+      return assigneeName
+        ? `${operatorName}创建了bug，指派给${assigneeName}`
+        : `${operatorName}创建了bug`;
+    }
+    if ((oldS === 'resolved' || oldS === 'closed') && newS === 'unconfirmed') {
+      // 激活 bug（激活后回到未确认，重新走确认流程）
+      return assigneeName
+        ? `${operatorName}激活了bug，指派给${assigneeName}`
+        : `${operatorName}激活了bug`;
+    }
+    if (oldS === 'unconfirmed' && newS === 'confirmed') {
+      // 确认 bug
+      return assigneeName
+        ? `${operatorName}确认了bug，指派给${assigneeName}`
+        : `${operatorName}确认了bug`;
+    }
+    if (newS === 'in_progress') {
+      // 指派（confirmed -> in_progress）
+      return assigneeName
+        ? `${operatorName}将bug指派给${assigneeName}`
+        : `${operatorName}指派了bug`;
+    }
+    if (newS === 'resolved') {
+      // 解决 bug
+      let s = `${operatorName}解决了bug`;
+      const resLabel = resolutionLog
+        ? (resolutionLabels[resolutionLog.new_value] || resolutionLog.new_value)
+        : '';
+      if (resLabel) s += `，解决方案为${resLabel}`;
+      const confirmName = assigneeName || props.assigneeName || '';
+      if (confirmName) s += `，交给${confirmName}确认`;
+      return s;
+    }
+    if (newS === 'closed') {
+      return `${operatorName}关闭了bug`;
+    }
+  }
+
+  // 无状态变更
+  if (assigneeLog && groupLogs.length === 1) {
+    // 仅修改指派人
+    return assigneeLog.new_value_name
+      ? `${operatorName}将bug指派给${assigneeLog.new_value_name}`
+      : `${operatorName}取消了bug的指派`;
+  }
+
+  // 其余字段编辑
+  return `${operatorName}编辑了bug`;
 }
 
 const operations = computed<Operation[]>(() => {
@@ -156,18 +232,8 @@ const operations = computed<Operation[]>(() => {
       return ct >= opTime && ct < nextOpTime;
     });
 
-    // Determine action label from the group's logs
-    let actionLabel = '编辑';
-    for (const l of groupLogs) {
-      if (l.field === 'status') {
-        const newLabel = statusLabels[l.new_value] || l.new_value;
-        if (!l.old_value) { actionLabel = '创建'; break; }
-        if (newLabel === '已确认') { actionLabel = '确认 Bug'; break; }
-        if (newLabel === '处理中') { actionLabel = '指派'; break; }
-        if (newLabel === '已解决') { actionLabel = '解决'; break; }
-        if (newLabel === '已关闭') { actionLabel = '关闭'; break; }
-      }
-    }
+    // Determine natural-language summary from the group's logs
+    const summary = buildSummary(mainLog.operator_name || '系统', groupLogs);
 
     return {
       operatorId: mainLog.operator_id,
@@ -175,7 +241,7 @@ const operations = computed<Operation[]>(() => {
       time: mainLog.created_at,
       logs: groupLogs,
       comments: opComments,
-      actionLabel,
+      summary,
     };
   });
 });
@@ -197,7 +263,7 @@ const operations = computed<Operation[]>(() => {
         <div class="op-summary">
           <span class="op-time">{{ formatDatetime(op.time) }}</span>
           <span class="op-operator">{{ op.operatorName }}</span>
-          <span class="op-action">{{ op.actionLabel }}</span>
+          <span class="op-action">{{ op.summary }}</span>
           <span v-if="op.logs.length > 1 && !expandedGroups.has(idx)" class="op-extra-hint">
             {{ op.logs.length - 1 }} 项变更
           </span>
@@ -223,8 +289,8 @@ const operations = computed<Operation[]>(() => {
           class="op-change"
         >
           <span class="change-label">修改了【{{ fieldLabels[log.field] || log.field }}】</span>
-          <span class="change-old">，旧值为 {{ fmtVal(log.field, log.old_value) }}</span>
-          <span class="change-new">，新值为 {{ fmtVal(log.field, log.new_value) }}</span>
+          <span class="change-old">，旧值为 {{ fmtLogVal(log, 'old') }}</span>
+          <span class="change-new">，新值为 {{ fmtLogVal(log, 'new') }}</span>
         </div>
 
         <!-- Comments -->

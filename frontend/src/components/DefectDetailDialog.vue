@@ -750,6 +750,7 @@ onUnmounted(() => {
             :logs="logs"
             :comments="comments"
             :defect-id="props.defectId || 0"
+            :assignee-name="defect?.assignee_name || ''"
           />
         </div>
 

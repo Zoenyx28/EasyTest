@@ -39,6 +39,8 @@ const defects = ref<DefectInfo[]>([]);
 const total = ref(0);
 const loading = ref(false);
 const modules = ref<DefectModuleInfo[]>([]);
+// 模块树是否已完成首次展开初始化；之后保留用户手动展开/收起状态
+const modulesInitialized = ref(false);
 const currentPage = ref(1);
 const pageSize = ref(10);
 const initialized = ref(false);
@@ -202,12 +204,16 @@ async function loadDefects() {
     defects.value = defectResult.items;
     total.value = defectResult.total;
     modules.value = moduleResult;
-    // Auto-expand root modules that have children
-    const expanded = new Set<number>();
-    for (const m of moduleResult) {
-      if (m.children && m.children.length > 0) expanded.add(m.id);
+    // 仅在首次加载时自动展开有子模块的一级目录；
+    // 之后（如筛选、选中模块）保留用户手动展开/收起的状态
+    if (!modulesInitialized.value) {
+      const expanded = new Set<number>();
+      for (const m of moduleResult) {
+        if (m.children && m.children.length > 0) expanded.add(m.id);
+      }
+      expandedModules.value = expanded;
+      modulesInitialized.value = true;
     }
-    expandedModules.value = expanded;
   } catch (e: any) {
     emit('showToast', e.message || '加载缺陷列表失败');
     defects.value = [];
@@ -356,6 +362,8 @@ watch(projectId, async () => {
   if (projectId.value && initialized.value) {
     await loadBranches(projectId.value);
     currentPage.value = 1;
+    // 切换项目后重新按默认展开状态初始化模块树
+    modulesInitialized.value = false;
     await loadDefects();
   }
 });
@@ -463,10 +471,9 @@ onMounted(() => {
             </button>
           </div>
 
-          <!-- Empty state -->
+          <!-- 空状态 -->
           <div v-if="modules.length === 0 && addingChildParentId !== 0" class="text-center py-8 text-[var(--text-tertiary)] text-[12px]">
-            暂无模块<br/>
-            <button @click="startAddRoot()" class="mt-2 underline cursor-pointer" style="color: var(--accent);">创建根模块</button>
+            暂无模块
           </div>
 
           <!-- Module tree nodes -->

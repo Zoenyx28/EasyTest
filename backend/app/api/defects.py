@@ -348,6 +348,15 @@ async def create_defect(request: Request, data: DefectCreate):
         new_value='unconfirmed',
         operator_id=user['id'],
     )
+    # 创建时若已指派，记录指派人，便于活动记录展示"创建了bug，指派给xxx"
+    if getattr(data, 'assignee_id', 0):
+        await crud.create_defect_log(
+            defect_id=defect_id,
+            field='assignee_id',
+            old_value='',
+            new_value=str(data.assignee_id),
+            operator_id=user['id'],
+        )
 
     # Process attachments — move from temp to defect dir and create records
     if data.attachments:
@@ -425,12 +434,35 @@ async def get_defect_detail(request: Request, defect_id: int):
             op_name = ''
             if log['operator_id']:
                 try:
-                    user = await crud.get_user_by_id(log['operator_id'])
-                    if user:
-                        op_name = user.get('nickname', '')
+                    log_user = await crud.get_user_by_id(log['operator_id'])
+                    if log_user:
+                        op_name = log_user.get('nickname', '')
                 except Exception:
                     pass
-            enriched_logs.append({**log, 'operator_name': op_name})
+            # 指派给变更日志补充用户名称，便于前端展示"指派给xxx"
+            old_value_name = ''
+            new_value_name = ''
+            if log['field'] == 'assignee_id':
+                try:
+                    if log['old_value'] and int(log['old_value']):
+                        old_user = await crud.get_user_by_id(int(log['old_value']))
+                        if old_user:
+                            old_value_name = old_user.get('nickname', '') or old_user.get('username', '')
+                except Exception:
+                    pass
+                try:
+                    if log['new_value'] and int(log['new_value']):
+                        new_user = await crud.get_user_by_id(int(log['new_value']))
+                        if new_user:
+                            new_value_name = new_user.get('nickname', '') or new_user.get('username', '')
+                except Exception:
+                    pass
+            enriched_logs.append({
+                **log,
+                'operator_name': op_name,
+                'old_value_name': old_value_name,
+                'new_value_name': new_value_name,
+            })
         return enriched_logs
 
     enriched_defect, logs, attachments, comments = await asyncio.gather(

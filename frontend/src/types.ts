@@ -372,6 +372,9 @@ export interface DefectLogInfo {
   operator_id: number;
   operator_name: string;
   created_at: string;
+  /** 指派给变更时，后端补充的用户名称 */
+  old_value_name?: string;
+  new_value_name?: string;
 }
 
 export interface DefectAttachmentInfo {

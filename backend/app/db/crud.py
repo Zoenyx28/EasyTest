@@ -2358,6 +2358,14 @@ async def transition_defect(defect_id: int, action: str, operator_id: int,
                     await _create_defect_log(session, defect_id, 'deadline',
                                               old_deadline or '', defect.deadline, operator_id)
 
+        # If activate action, update assignee (bug re-opened and re-assigned)
+        if action == 'activate' and kwargs.get('assignee_id'):
+            old_assignee = defect.assignee_id
+            defect.assignee_id = kwargs['assignee_id']
+            if old_assignee != defect.assignee_id:
+                await _create_defect_log(session, defect_id, 'assignee_id',
+                                          str(old_assignee), str(defect.assignee_id), operator_id)
+
         # If resolve action, set resolved_version, resolved_date and assignee
         if action == 'resolve':
             resolved_version = kwargs.get('resolved_version', 0)

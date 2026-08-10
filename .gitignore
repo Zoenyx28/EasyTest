@@ -12,3 +12,6 @@ data/projects/venvs/
 # 日志
 *.log
 logs/
+
+# 开发进程 PID 文件
+*.pid

@@ -6,8 +6,8 @@ States and transitions:
     confirmed   -> resolve -> resolved
     in_progress -> resolve -> resolved
     resolved    -> close   -> closed
-    resolved    -> activate -> in_progress
-    closed      -> activate -> in_progress
+    resolved    -> activate -> unconfirmed
+    closed      -> activate -> unconfirmed
     confirmed   -> close   -> closed
     unconfirmed -> close   -> closed
 """
@@ -86,7 +86,8 @@ def _next_status(current_status: str, action: str) -> str:
         (STATUS_CONFIRMED, ACTION_CLOSE): STATUS_CLOSED,
         (STATUS_IN_PROGRESS, ACTION_RESOLVE): STATUS_RESOLVED,
         (STATUS_RESOLVED, ACTION_CLOSE): STATUS_CLOSED,
-        (STATUS_RESOLVED, ACTION_ACTIVATE): STATUS_IN_PROGRESS,
-        (STATUS_CLOSED, ACTION_ACTIVATE): STATUS_IN_PROGRESS,
+        # 激活后回到未确认，需要重新走确认流程
+        (STATUS_RESOLVED, ACTION_ACTIVATE): STATUS_UNCONFIRMED,
+        (STATUS_CLOSED, ACTION_ACTIVATE): STATUS_UNCONFIRMED,
     }
     return mapping.get((current_status, action), current_status)
