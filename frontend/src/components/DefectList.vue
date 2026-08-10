@@ -307,7 +307,7 @@ watch(() => props.externalModuleId, (newVal) => {
     <!-- Filter bar -->
     <div class="filter-bar">
       <div class="filter-section">
-        <div class="filter-label">状态:</div>
+        <div class="filter-label" style="margin-left: 20px;">状态:</div>
         <select
           class="filter-select"
           :value="filterStatus"
@@ -575,12 +575,13 @@ watch(() => props.externalModuleId, (newVal) => {
   gap: 24px;
   padding: 16px 0;
   background-color: var(--bg-card);
-  margin-left: 16px;
+  /* margin-left: 20px; */
   flex-shrink: 0;
 }
 
 .search-input-wrapper {
   display: flex;
+  margin-left: 20px;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -671,6 +672,7 @@ watch(() => props.externalModuleId, (newVal) => {
   padding: 16px 0;
   background-color: var(--bg-card);
   border-bottom: 2px solid var(--outline);
+  /* margin-left: 20px; */
   flex-shrink: 0;
 }
 
@@ -845,6 +847,7 @@ watch(() => props.externalModuleId, (newVal) => {
   background-color: var(--bg-card);
   border-radius: 12px;
   border: 1px solid var(--border);
+  margin-left: 20px;
 }
 
 .defect-table {

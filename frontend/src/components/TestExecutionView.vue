@@ -1105,26 +1105,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
             ⋮
           </button>
           <div
-            v-if="openMenuTaskId === String(task.id)"
-            class="task-menu fixed w-[130px] z-[100] py-[4px]"
-            :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px', backgroundColor: 'var(--card-bg)', borderColor: 'var(--outline)' }"
-          >
-            <button
-              @click.stop="startRename(String(task.id)); closeMenu()"
-              class="w-full px-[14px] py-[8px] text-left text-[12.5px] cursor-pointer hover:bg-[var(--row-hover)]"
-              style="color: var(--text-primary);"
-            >
-              重命名
-            </button>
-            <button
-              @click.stop="deleteTask(String(task.id)); closeMenu()"
-              class="w-full px-[14px] py-[8px] text-left text-[12.5px] cursor-pointer hover:bg-[var(--row-hover)]"
-              style="color: var(--red);"
-            >
-              删除任务
-            </button>
-          </div>
-          <div class="text-[13px] font-medium truncate mb-[8px] task-card-title" style="color: var(--text-primary);">
+            class="text-[13px] font-medium truncate mb-[8px] task-card-title" style="color: var(--text-primary);">
             {{ task.name.substring(0, 20) }}{{ task.name.length > 20 ? '...' : '' }}
           </div>
           <div class="flex justify-between items-center">
@@ -1144,6 +1125,32 @@ const TASK_STATUS_LABELS: Record<string, string> = {
         </div>
       </div>
     </aside>
+
+    <!-- Task menu popup: teleported to body so position:fixed keeps the viewport
+         as its containing block (a transform on .task-card would otherwise hijack
+         the containing block and offset the menu by the card's own position). -->
+    <Teleport to="body">
+      <div
+        v-if="openMenuTaskId"
+        class="task-menu fixed w-[130px] z-[100] py-[4px]"
+        :style="{ top: menuPosition.top + 'px', left: menuPosition.left + 'px', backgroundColor: 'var(--card-bg)', borderColor: 'var(--outline)' }"
+      >
+        <button
+          @click.stop="startRename(openMenuTaskId); closeMenu()"
+          class="w-full px-[14px] py-[8px] text-left text-[12.5px] cursor-pointer hover:bg-[var(--row-hover)]"
+          style="color: var(--text-primary);"
+        >
+          重命名
+        </button>
+        <button
+          @click.stop="deleteTask(openMenuTaskId); closeMenu()"
+          class="w-full px-[14px] py-[8px] text-left text-[12.5px] cursor-pointer hover:bg-[var(--row-hover)]"
+          style="color: var(--red);"
+        >
+          删除任务
+        </button>
+      </div>
+    </Teleport>
 
     <!-- Main Content -->
     <main class="flex-1 flex flex-col min-h-0 overflow-hidden" style="background-color: var(--content-bg);">
