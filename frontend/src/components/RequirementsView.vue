@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { useProject } from '../composables/useProject';
 import { useBranch } from '../composables/useBranch';
 import { useApi } from '../composables/useApi';
@@ -8,7 +9,6 @@ import BaseButton from './base/BaseButton.vue';
 import BaseInput from './base/BaseInput.vue';
 import BaseTag from './base/BaseTag.vue';
 import ConfirmDialog from './ConfirmDialog.vue';
-import RequirementDetailPanel from './RequirementDetailPanel.vue';
 import type { RequirementInfo } from '../types';
 
 const emit = defineEmits<{
@@ -18,6 +18,7 @@ const emit = defineEmits<{
 const { activeProject, getActiveProject } = useProject();
 const { activeBranch, loadBranches } = useBranch(activeProject.value?.id);
 const { get, post, del, postFormData } = useApi();
+const router = useRouter();
 
 // ── 状态元信息 ──
 const STATUS_META: Record<string, { label: string; tone: 'yellow' | 'blue' | 'purple' | 'green' }> = {
@@ -193,15 +194,9 @@ async function createRequirement() {
   }
 }
 
-// ── 详情弹窗（三步流程面板，RequirementDetailPanel） ──
-const detailReqId = ref<number | null>(null);
-
+// ── 详情：跳转测试设计工作台（#22） ──
 function openDetail(r: RequirementInfo) {
-  detailReqId.value = r.id;
-}
-
-function closeDetail() {
-  detailReqId.value = null;
+  router.push(`/requirements/${r.id}`);
 }
 
 // ── 删除需求 ──
@@ -218,7 +213,6 @@ async function confirmDelete(r: RequirementInfo) {
   try {
     await del(`/requirements/${r.id}`);
     emit('showToast', '需求已删除');
-    if (detailReqId.value === r.id) closeDetail();
     loadRequirements();
   } catch (e) {
     emit('showToast', (e as Error).message || '需求删除失败');
@@ -329,15 +323,6 @@ async function confirmDelete(r: RequirementInfo) {
         </BaseButton>
       </template>
     </BaseDialog>
-
-    <!-- 详情弹窗：三步流程面板 -->
-    <RequirementDetailPanel
-      :open="!!detailReqId"
-      :req-id="detailReqId"
-      @close="closeDetail"
-      @saved="loadRequirements"
-      @show-toast="(msg: string) => emit('showToast', msg)"
-    />
 
     <ConfirmDialog ref="confirmDialog" />
   </div>

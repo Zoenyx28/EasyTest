@@ -494,6 +494,12 @@ export interface RequirementStoryInfo {
   sort_order: number;
   score: number;
   score_reason: string;
+  /** 7 维评分（JSON 字符串，分层评审写入） */
+  dimension_scores?: string;
+  /** 单条 Story gate（PASS/WARNING/BLOCKED） */
+  gate_status?: string;
+  /** 依赖（JSON 字符串） */
+  dependencies?: string;
   created_at: string;
 }
 
@@ -540,3 +546,137 @@ export interface AutomationCasePage {
   size: number;
   items: AutomationCaseOption[];
 }
+
+// ── 测试设计工作台（#22 分层测试设计）Types ──
+
+/** 需求分析（elements 为 JSON 字符串：business_goal/roles/rules/risks 等） */
+export interface LayeredAnalysisInfo {
+  id: number;
+  requirement_id: number;
+  elements: string;
+  score: number;
+  score_reason: string;
+  created_by: number;
+  created_at: string;
+}
+
+/** 信息缺口（需求信息不足时创建，需产品确认） */
+export interface InformationGapInfo {
+  id: number;
+  requirement_id: number;
+  story_id: number;
+  gap_type: string;
+  severity: string; // CRITICAL/HIGH/MEDIUM/LOW
+  description: string;
+  question: string;
+  status: string; // pending/confirmed/ignored
+  created_at: string;
+}
+
+/** 测试点（Story 确认后生成，parent_id 组织树形） */
+export interface TestPointInfo {
+  id: number;
+  requirement_id: number;
+  story_id: number;
+  parent_id: number;
+  category: string;
+  title: string;
+  description: string;
+  sort_order: number;
+  status: string;
+  created_at: string;
+}
+
+/** 各层 AI 评审记录（dimension_scores/coverage/issues/suggestions 为 JSON 字符串） */
+export interface LayeredReviewInfo {
+  id: number;
+  requirement_id: number;
+  score: number;
+  dimension_scores?: string;
+  coverage?: string;
+  checks?: string;
+  issues: string;
+  suggestions: string;
+  gate_status: string; // PASS/WARNING/BLOCKED
+  review_comment: string;
+  created_by: number;
+  created_at: string;
+}
+
+/** 测试场景（TestPoint 确认后生成） */
+export interface TestScenarioInfo {
+  id: number;
+  requirement_id: number;
+  test_point_id: number;
+  title: string;
+  description: string;
+  coverage_dim: string;
+  sort_order: number;
+  created_at: string;
+}
+
+/** 测试策略（自动化占比推荐） */
+export interface TestStrategyInfo {
+  id: number;
+  requirement_id: number;
+  automation_ratio: number;
+  result: string; // JSON
+  created_at: string;
+}
+
+/** 覆盖率快照（按层 0-100） */
+export interface CoverageSnapshotInfo {
+  id: number;
+  requirement_id: number;
+  requirement_coverage: number;
+  story_coverage: number;
+  test_point_coverage: number;
+  scenario_coverage: number;
+  case_coverage: number;
+  automation_coverage: number;
+  risk_coverage: number;
+  details: string; // JSON
+  created_at: string;
+}
+
+/** 测试缺口（覆盖率/风险推导，驱动 AI 补测） */
+export interface TestGapInfo {
+  id: number;
+  requirement_id: number;
+  layer: string;
+  description: string;
+  severity: string; // P0/P1
+  status: string; // open/closed
+  source_ref: string;
+  created_at: string;
+}
+
+/** AI 任务（状态机：PENDING→RUNNING→REVIEW→WAITING_HUMAN→CONFIRMED→NEXT_STAGE；异常 FAILED→RETRY） */
+export interface AITaskInfo {
+  id: number;
+  requirement_id: number;
+  stage: string;
+  status: string;
+  error: string;
+  model: string;
+  prompt_version: string;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 工作台一屏数据（GET /requirements/{req_id}/layers） */
+export interface RequirementLayersBundle {
+  requirement: RequirementInfo;
+  analysis: LayeredAnalysisInfo | null;
+  information_gaps: InformationGapInfo[];
+  test_points: TestPointInfo[];
+  test_point_review: LayeredReviewInfo | null;
+  test_scenarios: TestScenarioInfo[];
+  scenario_review: LayeredReviewInfo | null;
+  case_review: LayeredReviewInfo | null;
+  strategy: TestStrategyInfo | null;
+  coverage: CoverageSnapshotInfo | null;
+  test_gaps: TestGapInfo[];
+}
+

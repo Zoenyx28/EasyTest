@@ -6,6 +6,7 @@ without starting the middleware stack.
 """
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -61,9 +62,7 @@ async def init_db():
         "ALTER TABLE defects ADD COLUMN case_name VARCHAR(512) DEFAULT ''",
         "ALTER TABLE requirement_sources ADD COLUMN extract_error TEXT",
         "ALTER TABLE requirement_reviews ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
-        "ALTER TABLE stories ADD COLUMN dimension_scores TEXT DEFAULT ''",
         "ALTER TABLE stories ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
-        "ALTER TABLE stories ADD COLUMN dependencies TEXT DEFAULT ''",
         "ALTER TABLE generated_cases ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS project_members (id INTEGER PRIMARY KEY AUTO_INCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
     ]
@@ -77,6 +76,26 @@ async def init_db():
                 await conn.exec_driver_sql(sql)
         except Exception:
             pass
+
+    # ── stories 新列（PRD V2.0）──
+    # MySQL 5.7 的 TEXT 列不允许 DEFAULT 值，需先查 information_schema 判断列是否
+    # 已存在，存在则跳过（幂等），否则 ALTER 失败会被上面的 pass 静默吞掉导致缺列。
+    try:
+        async with engine.begin() as conn:
+            for col, ddl in [
+                ('dimension_scores', 'dimension_scores TEXT'),
+                ('dependencies', 'dependencies TEXT'),
+            ]:
+                # aiomysql 的 exec_driver_sql 不支持命名参数，改用 conn.execute(text(...))
+                res = await conn.execute(
+                    text("SELECT COUNT(*) FROM information_schema.columns "
+                         "WHERE table_schema = DATABASE() AND table_name = 'stories' "
+                         "AND column_name = :c"),
+                    {'c': col})
+                if res.scalar() == 0:
+                    await conn.exec_driver_sql(f'ALTER TABLE stories ADD COLUMN {ddl}')
+    except Exception:
+        pass
 
     # ── 长文档正文升级：TEXT(64KB) → MEDIUMTEXT(16MB)（MySQL 专属语法，幂等）──
     # 飞书文档正文（如产品需求设计文档）常超过 64KB，超限 INSERT 会失败（DataError 1366/1406）。
