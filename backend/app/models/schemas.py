@@ -377,3 +377,120 @@ class DefectCommentInfo(BaseModel):
     author_name: str = ''
     created_at: str
     updated_at: str
+
+
+# ── Requirement Management ──
+
+
+class RequirementCreate(BaseModel):
+    project_id: int
+    branch_id: int
+    title: str
+    summary: str = ''
+    priority: str = 'P2'
+
+
+class RequirementUpdate(BaseModel):
+    title: str = ''
+    summary: str = ''
+    priority: str = ''
+    status: str = ''
+
+
+class RequirementSourceAdd(BaseModel):
+    type: str = 'lark_link'  # lark_link | file
+    link: str = ''
+    text_content: str = ''
+
+
+class RequirementInfo(BaseModel):
+    id: int
+    project_id: int
+    branch_id: int
+    title: str
+    summary: str = ''
+    priority: str = 'P2'
+    status: str = 'pending_review'
+    creator_id: int = 0
+    creator_name: str = ''
+    branch_name: str = ''
+    project_name: str = ''
+    source_count: int = 0
+    review_count: int = 0
+    story_count: int = 0
+    case_count: int = 0
+    latest_review: dict | None = None
+    created_at: str
+    updated_at: str
+
+
+class RequirementSourceInfo(BaseModel):
+    id: int
+    requirement_id: int
+    type: str = 'lark_link'
+    link: str = ''
+    text_content: str = ''
+    filename: str = ''
+    file_size: int = 0
+    mime_type: str = ''
+    extracted: bool = False
+    extract_error: str = ''
+    created_by: int = 0
+    created_by_name: str = ''
+    download_url: str = ''
+    created_at: str
+
+
+class RequirementReviewInfo(BaseModel):
+    id: int
+    requirement_id: int
+    conclusion: str = ''
+    risks: str = ''          # JSON 数组字符串
+    issues: str = ''         # JSON 数组字符串
+    score: int = 0
+    score_reason: str = ''
+    review_comment: str = ''
+    created_by: int = 0
+    created_by_name: str = ''
+    created_at: str
+
+
+class StoryInfo(BaseModel):
+    id: int
+    requirement_id: int
+    title: str
+    description: str = ''
+    acceptance_criteria: str = ''  # JSON 数组字符串
+    sort_order: int = 0
+    score: int = 0
+    score_reason: str = ''
+    created_at: str
+
+
+class GeneratedCaseInfo(BaseModel):
+    id: int
+    requirement_id: int
+    story_id: int = 0
+    title: str
+    preconditions: str = ''
+    steps: str = ''          # JSON 数组字符串
+    expected: str = ''
+    score: int = 0
+    score_reason: str = ''
+    bound_count: int = 0
+    bindings: list[dict] = []
+    created_at: str
+
+
+class CaseBindingCreate(BaseModel):
+    uid: str
+    project_id: int
+    branch_id: int
+
+
+class LLMSettingsUpdate(BaseModel):
+    provider: str = ''
+    api_base: str = ''
+    text_model: str = ''
+    vision_model: str = ''
+    api_key: str = ''

@@ -6,6 +6,7 @@ import TestProjectsView from '../components/TestProjectsView.vue'
 import LoginView from '../components/LoginView.vue'
 import RegisterView from '../components/RegisterView.vue'
 import DefectView from '../components/DefectView.vue'
+import RequirementsView from '../components/RequirementsView.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -40,6 +41,11 @@ const routes: RouteRecordRaw[] = [
     path: '/projects',
     name: 'projects',
     component: TestProjectsView,
+  },
+  {
+    path: '/requirements',
+    name: 'requirements',
+    component: RequirementsView,
   },
   {
     path: '/login',

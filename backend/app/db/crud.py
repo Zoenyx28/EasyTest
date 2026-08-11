@@ -1,6 +1,7 @@
 """CRUD operations for test execution records and discovery cache."""
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
+import json
 
 from sqlalchemy import select, desc, delete, case, update, or_
 
@@ -10,6 +11,15 @@ from .models import Task, TaskCase, Execution, ExecutionCase
 from .models import Project, ProjectCase, Report, ProjectMember
 from .models import DefectModule, Defect, DefectAttachment, DefectLog, DefectComment, ProjectNote
 from .models import UserActiveProject
+from .models import (
+    Requirement, RequirementSource, RequirementReview, Story,
+    GeneratedCase, CaseBinding, LLMSettings, UserLarkBinding,
+)
+from .models import (
+    RequirementAnalysis, InformationGap, TestPoint, TestPointReview,
+    TestScenario, ScenarioReview, CaseReview, TestStrategy,
+    ReviewAudit, CoverageSnapshot, TestGap, AITask,
+)
 
 
 # ── Time / duration helpers ──
@@ -2760,3 +2770,1383 @@ async def delete_defect_comment(comment_id: int) -> bool:
         )
         await session.commit()
         return result.rowcount > 0
+
+
+# ══════════════════════════════════════════════
+# Requirement Management
+# ══════════════════════════════════════════════
+
+
+async def list_requirements(project_id: int, branch_id: int) -> list[dict]:
+    """List requirements within a (project_id, branch_id) scope, newest first."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Requirement)
+            .where(
+                Requirement.project_id == project_id,
+                Requirement.branch_id == branch_id,
+            )
+            .order_by(desc(Requirement.created_at))
+        )
+        return [
+            {
+                'id': r.id,
+                'project_id': r.project_id,
+                'branch_id': r.branch_id,
+                'title': r.title,
+                'summary': r.summary,
+                'priority': r.priority,
+                'status': r.status,
+                'created_by': r.created_by,
+                'created_at': dt_iso(r.created_at),
+                'updated_at': dt_iso(r.updated_at),
+            }
+            for r in result.scalars().all()
+        ]
+
+
+async def get_requirement(req_id: int) -> dict | None:
+    """Get a requirement detail dict, or None."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Requirement).where(Requirement.id == req_id)
+        )
+        r = result.scalar_one_or_none()
+        if r is None:
+            return None
+        return {
+            'id': r.id,
+            'project_id': r.project_id,
+            'branch_id': r.branch_id,
+            'title': r.title,
+            'summary': r.summary,
+            'priority': r.priority,
+            'status': r.status,
+            'created_by': r.created_by,
+            'created_at': dt_iso(r.created_at),
+            'updated_at': dt_iso(r.updated_at),
+        }
+
+
+async def create_requirement(data, user_id: int) -> int:
+    """Create a requirement. Returns the new id."""
+    async with session_ctx() as session:
+        r = Requirement(
+            project_id=data.project_id,
+            branch_id=data.branch_id,
+            title=data.title.strip(),
+            summary=data.summary,
+            priority=data.priority or 'P2',
+            status='pending_review',
+            created_by=user_id,
+        )
+        session.add(r)
+        await session.commit()
+        await session.refresh(r)
+        return r.id
+
+
+async def update_requirement(req_id: int, fields: dict) -> bool:
+    """Update a requirement with a whitelist of fields. Returns True if updated."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Requirement).where(Requirement.id == req_id)
+        )
+        r = result.scalar_one_or_none()
+        if r is None:
+            return False
+        for key in ('title', 'summary', 'priority', 'status'):
+            if key in fields and fields[key] not in (None, ''):
+                setattr(r, key, fields[key].strip() if isinstance(fields[key], str) else fields[key])
+        await session.commit()
+        return True
+
+
+async def delete_requirement(req_id: int) -> bool:
+    """Delete a requirement and all its children (reviews/stories/cases/bindings/sources).
+
+    Returns True if the requirement existed.  File cleanup on disk is the
+    caller's responsibility (the API layer removes the directory).
+    """
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Requirement).where(Requirement.id == req_id)
+        )
+        r = result.scalar_one_or_none()
+        if r is None:
+            return False
+        await session.execute(
+            delete(RequirementReview).where(RequirementReview.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(Story).where(Story.requirement_id == req_id)
+        )
+        case_ids = [
+            row[0] for row in (
+                await session.execute(
+                    select(GeneratedCase.id).where(GeneratedCase.requirement_id == req_id)
+                )
+            ).fetchall()
+        ]
+        if case_ids:
+            await session.execute(
+                delete(CaseBinding).where(CaseBinding.generated_case_id.in_(case_ids))
+            )
+        await session.execute(
+            delete(GeneratedCase).where(GeneratedCase.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(RequirementSource).where(RequirementSource.requirement_id == req_id)
+        )
+        # ── PRD V2.0 分层资产级联（review_audits 保留审计记录，不级联）──
+        await session.execute(
+            delete(RequirementAnalysis).where(RequirementAnalysis.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(InformationGap).where(InformationGap.requirement_id == req_id)
+        )
+        tp_ids = [
+            row[0] for row in (
+                await session.execute(
+                    select(TestPoint.id).where(TestPoint.requirement_id == req_id)
+                )
+            ).fetchall()
+        ]
+        if tp_ids:
+            await session.execute(
+                delete(TestScenario).where(TestScenario.test_point_id.in_(tp_ids))
+            )
+        await session.execute(
+            delete(TestPointReview).where(TestPointReview.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(ScenarioReview).where(ScenarioReview.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(CaseReview).where(CaseReview.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(TestPoint).where(TestPoint.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(TestScenario).where(TestScenario.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(TestStrategy).where(TestStrategy.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(CoverageSnapshot).where(CoverageSnapshot.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(TestGap).where(TestGap.requirement_id == req_id)
+        )
+        await session.delete(r)
+        await session.commit()
+        return True
+
+
+async def count_requirement_sources(req_id: int) -> int:
+    from sqlalchemy import func
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(func.count(RequirementSource.id)).where(
+                RequirementSource.requirement_id == req_id
+            )
+        )
+        return result.scalar() or 0
+
+
+async def count_requirement_reviews(req_id: int) -> int:
+    from sqlalchemy import func
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(func.count(RequirementReview.id)).where(
+                RequirementReview.requirement_id == req_id
+            )
+        )
+        return result.scalar() or 0
+
+
+async def count_requirement_stories(req_id: int) -> int:
+    from sqlalchemy import func
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(func.count(Story.id)).where(Story.requirement_id == req_id)
+        )
+        return result.scalar() or 0
+
+
+async def count_requirement_cases(req_id: int) -> int:
+    from sqlalchemy import func
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(func.count(GeneratedCase.id)).where(
+                GeneratedCase.requirement_id == req_id
+            )
+        )
+        return result.scalar() or 0
+
+
+async def get_latest_review(req_id: int) -> dict | None:
+    """Get the newest review for a requirement, or None."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementReview)
+            .where(RequirementReview.requirement_id == req_id)
+            .order_by(desc(RequirementReview.created_at))
+            .limit(1)
+        )
+        rev = result.scalar_one_or_none()
+        if rev is None:
+            return None
+        return {
+            'id': rev.id,
+            'requirement_id': rev.requirement_id,
+            'conclusion': rev.conclusion,
+            'risks': rev.risks,
+            'issues': rev.issues,
+            'score': rev.score,
+            'score_reason': rev.score_reason,
+            'review_comment': rev.review_comment,
+            'created_by': rev.created_by,
+            'created_at': dt_iso(rev.created_at),
+        }
+
+
+async def list_requirement_reviews(req_id: int) -> list[dict]:
+    """List all reviews for a requirement, newest first."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementReview)
+            .where(RequirementReview.requirement_id == req_id)
+            .order_by(desc(RequirementReview.created_at))
+        )
+        return [
+            {
+                'id': rev.id,
+                'requirement_id': rev.requirement_id,
+                'conclusion': rev.conclusion,
+                'risks': rev.risks,
+                'issues': rev.issues,
+                'score': rev.score,
+                'score_reason': rev.score_reason,
+                'review_comment': rev.review_comment,
+                'created_by': rev.created_by,
+                'created_at': dt_iso(rev.created_at),
+            }
+            for rev in result.scalars().all()
+        ]
+
+
+async def list_requirement_stories(req_id: int) -> list[dict]:
+    """List all stories for a requirement, by sort order."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(Story)
+            .where(Story.requirement_id == req_id)
+            .order_by(Story.sort_order, Story.id)
+        )
+        return [
+            {
+                'id': s.id,
+                'requirement_id': s.requirement_id,
+                'title': s.title,
+                'description': s.description,
+                'acceptance_criteria': s.acceptance_criteria,
+                'sort_order': s.sort_order,
+                'score': s.score,
+                'score_reason': s.score_reason,
+                'dimension_scores': s.dimension_scores,
+                'gate_status': s.gate_status,
+                'dependencies': s.dependencies,
+                'created_at': dt_iso(s.created_at),
+            }
+            for s in result.scalars().all()
+        ]
+
+
+async def list_requirement_cases(req_id: int) -> list[dict]:
+    """List all generated cases for a requirement, newest first."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(GeneratedCase)
+            .where(GeneratedCase.requirement_id == req_id)
+            .order_by(desc(GeneratedCase.created_at))
+        )
+        items = []
+        for c in result.scalars().all():
+            binding_count = (
+                await session.execute(
+                    select(CaseBinding.id).where(CaseBinding.generated_case_id == c.id)
+                )
+            ).scalars().all()
+            items.append({
+                'id': c.id,
+                'requirement_id': c.requirement_id,
+                'story_id': c.story_id,
+                'title': c.title,
+                'preconditions': c.preconditions,
+                'steps': c.steps,
+                'expected': c.expected,
+                'score': c.score,
+                'score_reason': c.score_reason,
+                'bound_count': len(binding_count),
+                'created_at': dt_iso(c.created_at),
+            })
+        return items
+
+
+# ── Requirement sources ──
+
+
+async def list_requirement_sources(req_id: int) -> list[dict]:
+    """List all sources of a requirement, newest first."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementSource)
+            .where(RequirementSource.requirement_id == req_id)
+            .order_by(desc(RequirementSource.created_at))
+        )
+        return [
+            {
+                'id': s.id,
+                'requirement_id': s.requirement_id,
+                'type': s.type,
+                'link': s.link,
+                'text_content': s.text_content,
+                'filename': s.filename,
+                'filepath': s.filepath,
+                'file_size': s.file_size,
+                'mime_type': s.mime_type,
+                'extracted': bool(s.extracted),
+                'extract_error': s.extract_error or '',
+                'created_by': s.created_by,
+                'created_at': dt_iso(s.created_at),
+            }
+            for s in result.scalars().all()
+        ]
+
+
+async def get_requirement_source(source_id: int) -> dict | None:
+    """Get a requirement source dict, or None."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementSource).where(RequirementSource.id == source_id)
+        )
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        return {
+            'id': s.id,
+            'requirement_id': s.requirement_id,
+            'type': s.type,
+            'link': s.link,
+            'text_content': s.text_content,
+            'filename': s.filename,
+            'filepath': s.filepath,
+            'file_size': s.file_size,
+            'mime_type': s.mime_type,
+            'extracted': bool(s.extracted),
+            'extract_error': s.extract_error or '',
+            'created_by': s.created_by,
+            'created_at': dt_iso(s.created_at),
+        }
+
+
+async def update_requirement_source(source_id: int, fields: dict) -> bool:
+    """更新需求来源字段（如飞书正文提取结果回写）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementSource).where(RequirementSource.id == source_id)
+        )
+        s = result.scalar_one_or_none()
+        if s is None:
+            return False
+        for key, value in fields.items():
+            if hasattr(s, key):
+                setattr(s, key, value)
+        await session.commit()
+        return True
+
+
+async def create_requirement_source(
+    req_id: int,
+    *,
+    type: str = 'lark_link',
+    link: str = '',
+    text_content: str = '',
+    filename: str = '',
+    filepath: str = '',
+    file_size: int = 0,
+    mime_type: str = '',
+    extracted: bool = False,
+    extract_error: str = '',
+    user_id: int = 0,
+) -> int:
+    """Create a requirement source. Returns the new id."""
+    async with session_ctx() as session:
+        s = RequirementSource(
+            requirement_id=req_id,
+            type=type,
+            link=link,
+            text_content=text_content,
+            filename=filename,
+            filepath=filepath,
+            file_size=file_size,
+            mime_type=mime_type,
+            extracted=extracted,
+            extract_error=extract_error,
+            created_by=user_id,
+        )
+        session.add(s)
+        await session.commit()
+        await session.refresh(s)
+        return s.id
+
+
+async def delete_requirement_source(source_id: int) -> dict | None:
+    """Delete a requirement source. Returns the deleted source dict (for disk cleanup) or None."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementSource).where(RequirementSource.id == source_id)
+        )
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        deleted = {
+            'id': s.id,
+            'requirement_id': s.requirement_id,
+            'filepath': s.filepath,
+            'filename': s.filename,
+        }
+        await session.delete(s)
+        await session.commit()
+        return deleted
+
+
+# ── LLM settings & Lark bindings (used by later agent tickets) ──
+
+
+async def get_llm_settings() -> dict | None:
+    """Get the single global LLM settings row, or None."""
+    async with session_ctx() as session:
+        result = await session.execute(select(LLMSettings).limit(1))
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        return {
+            'id': s.id,
+            'provider': s.provider,
+            'api_base': s.api_base,
+            'text_model': s.text_model,
+            'vision_model': s.vision_model,
+            'api_key': s.api_key,
+            'updated_by': s.updated_by,
+            'updated_at': dt_iso(s.updated_at),
+        }
+
+
+async def save_llm_settings(fields: dict, user_id: int) -> None:
+    """Create-or-update the single global LLM settings row."""
+    async with session_ctx() as session:
+        result = await session.execute(select(LLMSettings).limit(1))
+        s = result.scalar_one_or_none()
+        if s is None:
+            s = LLMSettings()
+            session.add(s)
+        for key in ('provider', 'api_base', 'text_model', 'vision_model', 'api_key'):
+            if key in fields:
+                setattr(s, key, fields[key])
+        s.updated_by = user_id
+        await session.commit()
+
+
+async def get_user_lark_binding(user_id: int) -> dict | None:
+    """Get the lark binding row for a user, or None."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(UserLarkBinding).where(UserLarkBinding.user_id == user_id)
+        )
+        b = result.scalar_one_or_none()
+        if b is None:
+            return None
+        return {
+            'id': b.id,
+            'user_id': b.user_id,
+            'app_id': b.app_id,
+            'lark_open_id': b.lark_open_id,
+            'created_at': dt_iso(b.created_at),
+            'updated_at': dt_iso(b.updated_at),
+        }
+
+
+async def upsert_user_lark_binding(user_id: int, app_id: str, lark_open_id: str) -> None:
+    """Create-or-update the lark binding row for a user."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(UserLarkBinding).where(UserLarkBinding.user_id == user_id)
+        )
+        b = result.scalar_one_or_none()
+        if b is None:
+            b = UserLarkBinding(user_id=user_id, app_id=app_id, lark_open_id=lark_open_id)
+            session.add(b)
+        else:
+            b.app_id = app_id
+            b.lark_open_id = lark_open_id
+        await session.commit()
+
+
+# ── Requirement agent (ticket #15) ──
+
+
+async def create_requirement_review(req_id: int, conclusion: str, risks: list,
+                                    issues: list, score: int, score_reason: str,
+                                    review_comment: str, user_id: int) -> int:
+    """覆盖写入评审：删除该需求旧评审行后新增（保存人工评论）。"""
+    async with session_ctx() as session:
+        old = await session.execute(
+            select(RequirementReview).where(RequirementReview.requirement_id == req_id)
+        )
+        for row in old.scalars().all():
+            await session.delete(row)
+        rev = RequirementReview(
+            requirement_id=req_id,
+            conclusion=conclusion,
+            risks=json.dumps(risks, ensure_ascii=False),
+            issues=json.dumps(issues, ensure_ascii=False),
+            score=score,
+            score_reason=score_reason,
+            review_comment=review_comment,
+            created_by=user_id,
+        )
+        session.add(rev)
+        await session.commit()
+        return rev.id
+
+
+async def replace_requirement_stories(req_id: int, items: list[dict]) -> int:
+    """覆盖写入 Story 清单：删除旧 Story 后按 sort_order 新增。"""
+    async with session_ctx() as session:
+        old = await session.execute(
+            select(Story).where(Story.requirement_id == req_id)
+        )
+        for row in old.scalars().all():
+            await session.delete(row)
+        for i, item in enumerate(items):
+            session.add(Story(
+                requirement_id=req_id,
+                title=(item.get('title') or ''),
+                description=(item.get('description') or ''),
+                acceptance_criteria=json.dumps(item.get('acceptance_criteria') or [], ensure_ascii=False),
+                sort_order=i,
+            ))
+        await session.commit()
+        return len(items)
+
+
+async def replace_generated_cases(req_id: int, items: list[dict]) -> int:
+    """覆盖写入生成用例：删除该需求全部旧用例（级联清绑定）后新增。"""
+    async with session_ctx() as session:
+        old = await session.execute(
+            select(GeneratedCase).where(GeneratedCase.requirement_id == req_id)
+        )
+        for row in old.scalars().all():
+            await session.execute(
+                delete(CaseBinding).where(CaseBinding.generated_case_id == row.id)
+            )
+            await session.delete(row)
+        for item in items:
+            session.add(GeneratedCase(
+                requirement_id=req_id,
+                story_id=int(item.get('story_id') or 0),
+                title=(item.get('title') or ''),
+                preconditions=(item.get('preconditions') or ''),
+                steps=json.dumps(item.get('steps') or [], ensure_ascii=False),
+                expected=(item.get('expected') or ''),
+                score=int(item.get('score') or 0),
+                score_reason=(item.get('score_reason') or ''),
+            ))
+        await session.commit()
+        return len(items)
+
+
+async def create_generated_case(req_id: int, story_id: int, item: dict) -> dict:
+    """追加一条生成用例（不覆盖既有用例，供 #21 AI 补测闭环）。"""
+    async with session_ctx() as session:
+        row = GeneratedCase(
+            requirement_id=req_id,
+            story_id=int(story_id or 0),
+            title=(item.get('title') or ''),
+            preconditions=(item.get('preconditions') or ''),
+            steps=json.dumps(item.get('steps') or [], ensure_ascii=False),
+            expected=(item.get('expected') or ''),
+            score=int(item.get('score') or 0),
+            score_reason=(item.get('score_reason') or ''),
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def get_generated_case(case_id: int) -> dict | None:
+    """获取单个生成用例（含绑定列表）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(GeneratedCase).where(GeneratedCase.id == case_id)
+        )
+        c = result.scalar_one_or_none()
+        if c is None:
+            return None
+        bindings = await _list_case_bindings_in_session(session, case_id)
+        return {
+            'id': c.id,
+            'requirement_id': c.requirement_id,
+            'story_id': c.story_id,
+            'title': c.title,
+            'preconditions': c.preconditions,
+            'steps': c.steps,
+            'expected': c.expected,
+            'score': c.score,
+            'score_reason': c.score_reason,
+            'bound_count': len(bindings),
+            'bindings': bindings,
+            'created_at': dt_iso(c.created_at),
+        }
+
+
+async def update_generated_case(case_id: int, fields: dict) -> bool:
+    """更新生成用例字段（如单个重生成后的内容）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(GeneratedCase).where(GeneratedCase.id == case_id)
+        )
+        c = result.scalar_one_or_none()
+        if c is None:
+            return False
+        for key, value in fields.items():
+            if hasattr(c, key):
+                setattr(c, key, value)
+        await session.commit()
+        return True
+
+
+async def get_test_case_definition(uid: str, project_id: int, branch_id: int) -> dict | None:
+    """按 (uid, project_id, branch_id) 查询自动化用例（绑定校验用）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestCaseDefinition).where(
+                TestCaseDefinition.uid == uid,
+                TestCaseDefinition.project_id == project_id,
+                TestCaseDefinition.branch_id == branch_id,
+            )
+        )
+        t = result.scalar_one_or_none()
+        if t is None:
+            return None
+        return {
+            'uid': t.uid,
+            'project_id': t.project_id,
+            'branch_id': t.branch_id,
+            'name': t.name,
+            'full_name': t.full_name,
+            'test_type': t.test_type,
+        }
+
+
+async def _list_case_bindings_in_session(session, case_id: int) -> list[dict]:
+    """当前 session 内查询绑定的自动化用例（带名称）。"""
+    result = await session.execute(
+        select(CaseBinding).where(CaseBinding.generated_case_id == case_id)
+    )
+    bindings = []
+    for b in result.scalars().all():
+        tcd = await session.get(
+            TestCaseDefinition, (b.uid, b.project_id, b.branch_id)
+        )
+        bindings.append({
+            'id': b.id,
+            'uid': b.uid,
+            'project_id': b.project_id,
+            'branch_id': b.branch_id,
+            'case_name': tcd.name if tcd else '',
+            'full_name': tcd.full_name if tcd else '',
+            'created_at': dt_iso(b.created_at),
+        })
+    return bindings
+
+
+async def list_case_bindings(case_id: int) -> list[dict]:
+    """列出生成用例已绑定的自动化用例。"""
+    async with session_ctx() as session:
+        return await _list_case_bindings_in_session(session, case_id)
+
+
+async def create_case_binding(case_id: int, uid: str, project_id: int, branch_id: int) -> int:
+    """绑定生成用例 ↔ 自动化用例；返回新绑定 id，重复绑定返回现有 id。"""
+    async with session_ctx() as session:
+        existing = await session.execute(
+            select(CaseBinding).where(
+                CaseBinding.generated_case_id == case_id,
+                CaseBinding.uid == uid,
+                CaseBinding.project_id == project_id,
+                CaseBinding.branch_id == branch_id,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            return -1
+        b = CaseBinding(generated_case_id=case_id, uid=uid,
+                        project_id=project_id, branch_id=branch_id)
+        session.add(b)
+        await session.commit()
+        return b.id
+
+
+async def get_case_binding(binding_id: int) -> dict | None:
+    """查询绑定行。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(CaseBinding).where(CaseBinding.id == binding_id)
+        )
+        b = result.scalar_one_or_none()
+        if b is None:
+            return None
+        return {'id': b.id, 'generated_case_id': b.generated_case_id, 'uid': b.uid,
+                'project_id': b.project_id, 'branch_id': b.branch_id}
+
+
+async def delete_case_binding(binding_id: int) -> bool:
+    """解绑。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(CaseBinding).where(CaseBinding.id == binding_id)
+        )
+        b = result.scalar_one_or_none()
+        if b is None:
+            return False
+        await session.delete(b)
+        await session.commit()
+        return True
+
+
+# ══════════════════════════════════════════════════════════
+# PRD V2.0 分层测试设计 CRUD（#20）
+# 覆盖式：重新生成前先清空旧行再插入新行（ADR-0015）
+# ══════════════════════════════════════════════════════════
+
+
+def _row_to_dict(row) -> dict:
+    """ORM 行 → 字典（datetime 用 dt_iso 序列化）。"""
+    data = {c.name: getattr(row, c.name) for c in row.__table__.columns}
+    for k in ('created_at', 'updated_at', 'confirmed_at', 'closed_at'):
+        if k in data and data[k] is not None:
+            data[k] = dt_iso(data[k])
+    return data
+
+
+# ── RequirementAnalysis ──
+
+
+async def get_latest_requirement_analysis(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementAnalysis)
+            .where(RequirementAnalysis.requirement_id == req_id)
+            .order_by(desc(RequirementAnalysis.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_requirement_analysis(req_id: int, project_id: int, branch_id: int,
+                                    elements: str, score: int, score_reason: str,
+                                    user_id: int) -> dict:
+    """覆盖式保存需求分析（删除旧行后插入新行）。"""
+    async with session_ctx() as session:
+        await session.execute(
+            delete(RequirementAnalysis).where(RequirementAnalysis.requirement_id == req_id)
+        )
+        row = RequirementAnalysis(
+            requirement_id=req_id, project_id=project_id, branch_id=branch_id,
+            elements=elements, score=score, score_reason=score_reason, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── InformationGap ──
+
+
+async def list_information_gaps(req_id: int) -> list[dict]:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(InformationGap)
+            .where(InformationGap.requirement_id == req_id)
+            .order_by(InformationGap.id)
+        )
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+async def create_information_gap(req_id: int, project_id: int, branch_id: int,
+                                 gap_type: str, severity: str, description: str,
+                                 question: str = '', story_id: int = 0) -> dict:
+    async with session_ctx() as session:
+        row = InformationGap(
+            requirement_id=req_id, project_id=project_id, branch_id=branch_id,
+            story_id=story_id, gap_type=gap_type, severity=severity,
+            description=description, question=question, status='pending',
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def update_information_gap_status(gap_id: int, status: str, user_id: int) -> dict | None:
+    """确认/忽略缺口。status: confirmed | ignored。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(InformationGap).where(InformationGap.id == gap_id)
+        )
+        g = result.scalar_one_or_none()
+        if g is None:
+            return None
+        g.status = status
+        if status == 'confirmed':
+            g.confirmed_by = user_id
+            g.confirmed_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(g)
+        return _row_to_dict(g)
+
+
+async def delete_information_gap(gap_id: int) -> bool:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(InformationGap).where(InformationGap.id == gap_id)
+        )
+        g = result.scalar_one_or_none()
+        if g is None:
+            return False
+        await session.delete(g)
+        await session.commit()
+        return True
+
+
+# ── TestPoint / TestPointReview ──
+
+
+async def list_test_points(req_id: int) -> list[dict]:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestPoint)
+            .where(TestPoint.requirement_id == req_id)
+            .order_by(TestPoint.sort_order, TestPoint.id)
+        )
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+async def create_test_point(requirement_id: int, story_id: int, parent_id: int,
+                            category: str, title: str, description: str = '',
+                            sort_order: int = 0, status: str = 'generated') -> dict:
+    async with session_ctx() as session:
+        row = TestPoint(
+            requirement_id=requirement_id, story_id=story_id, parent_id=parent_id,
+            category=category, title=title, description=description,
+            sort_order=sort_order, status=status,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def create_test_points_bulk(rows: list[dict]) -> int:
+    """批量插入测试点（重新生成时整组覆盖）。rows: 每条含 requirement_id 等。"""
+    async with session_ctx() as session:
+        session.add_all([TestPoint(**r) for r in rows])
+        await session.commit()
+        return len(rows)
+
+
+async def delete_test_points_by_requirement(req_id: int) -> None:
+    """清空某需求全部测试点（及其场景），供覆盖式重新生成。"""
+    async with session_ctx() as session:
+        tp_ids = [
+            row[0] for row in (
+                await session.execute(
+                    select(TestPoint.id).where(TestPoint.requirement_id == req_id)
+                )
+            ).fetchall()
+        ]
+        if tp_ids:
+            await session.execute(
+                delete(TestScenario).where(TestScenario.test_point_id.in_(tp_ids))
+            )
+        await session.execute(
+            delete(TestPointReview).where(TestPointReview.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(TestPoint).where(TestPoint.requirement_id == req_id)
+        )
+        await session.commit()
+
+
+async def update_test_point(tp_id: int, fields: dict) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestPoint).where(TestPoint.id == tp_id)
+        )
+        t = result.scalar_one_or_none()
+        if t is None:
+            return None
+        for k, v in fields.items():
+            if hasattr(t, k):
+                setattr(t, k, v)
+        await session.commit()
+        await session.refresh(t)
+        return _row_to_dict(t)
+
+
+async def delete_test_point(tp_id: int) -> bool:
+    async with session_ctx() as session:
+        await session.execute(delete(TestScenario).where(TestScenario.test_point_id == tp_id))
+        result = await session.execute(select(TestPoint).where(TestPoint.id == tp_id))
+        t = result.scalar_one_or_none()
+        if t is None:
+            return False
+        await session.delete(t)
+        await session.commit()
+        return True
+
+
+async def get_latest_test_point_review(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestPointReview)
+            .where(TestPointReview.requirement_id == req_id)
+            .order_by(desc(TestPointReview.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_test_point_review(req_id: int, score: int, dimension_scores: str,
+                                 coverage: str, issues: str, suggestions: str,
+                                 gate_status: str, review_comment: str, user_id: int) -> dict:
+    async with session_ctx() as session:
+        row = TestPointReview(
+            requirement_id=req_id, score=score, dimension_scores=dimension_scores,
+            coverage=coverage, issues=issues, suggestions=suggestions,
+            gate_status=gate_status, review_comment=review_comment, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── TestScenario / ScenarioReview ──
+
+
+async def list_test_scenarios(req_id: int, test_point_id: int = 0) -> list[dict]:
+    async with session_ctx() as session:
+        stmt = select(TestScenario).where(TestScenario.requirement_id == req_id)
+        if test_point_id:
+            stmt = stmt.where(TestScenario.test_point_id == test_point_id)
+        stmt = stmt.order_by(TestScenario.sort_order, TestScenario.id)
+        result = await session.execute(stmt)
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+async def create_test_scenario(requirement_id: int, test_point_id: int, title: str,
+                               description: str = '', coverage_dim: str = '',
+                               sort_order: int = 0) -> dict:
+    async with session_ctx() as session:
+        row = TestScenario(
+            requirement_id=requirement_id, test_point_id=test_point_id, title=title,
+            description=description, coverage_dim=coverage_dim, sort_order=sort_order,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def create_test_scenarios_bulk(rows: list[dict]) -> int:
+    async with session_ctx() as session:
+        session.add_all([TestScenario(**r) for r in rows])
+        await session.commit()
+        return len(rows)
+
+
+async def delete_test_scenarios_by_requirement(req_id: int) -> None:
+    async with session_ctx() as session:
+        await session.execute(
+            delete(TestScenario).where(TestScenario.requirement_id == req_id)
+        )
+        await session.execute(
+            delete(ScenarioReview).where(ScenarioReview.requirement_id == req_id)
+        )
+        await session.commit()
+
+
+async def update_test_scenario(scenario_id: int, fields: dict) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestScenario).where(TestScenario.id == scenario_id)
+        )
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        for k, v in fields.items():
+            if hasattr(s, k):
+                setattr(s, k, v)
+        await session.commit()
+        await session.refresh(s)
+        return _row_to_dict(s)
+
+
+async def delete_test_scenario(scenario_id: int) -> bool:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestScenario).where(TestScenario.id == scenario_id)
+        )
+        s = result.scalar_one_or_none()
+        if s is None:
+            return False
+        await session.delete(s)
+        await session.commit()
+        return True
+
+
+async def get_latest_scenario_review(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(ScenarioReview)
+            .where(ScenarioReview.requirement_id == req_id)
+            .order_by(desc(ScenarioReview.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_scenario_review(req_id: int, score: int, coverage: str, issues: str,
+                               suggestions: str, gate_status: str, review_comment: str,
+                               user_id: int) -> dict:
+    async with session_ctx() as session:
+        row = ScenarioReview(
+            requirement_id=req_id, score=score, coverage=coverage, issues=issues,
+            suggestions=suggestions, gate_status=gate_status,
+            review_comment=review_comment, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── CaseReview ──
+
+
+async def get_latest_case_review(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(CaseReview)
+            .where(CaseReview.requirement_id == req_id)
+            .order_by(desc(CaseReview.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_case_review(req_id: int, score: int, checks: str, issues: str,
+                           suggestions: str, gate_status: str, review_comment: str,
+                           user_id: int) -> dict:
+    async with session_ctx() as session:
+        row = CaseReview(
+            requirement_id=req_id, score=score, checks=checks, issues=issues,
+            suggestions=suggestions, gate_status=gate_status,
+            review_comment=review_comment, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── TestStrategy ──
+
+
+async def get_latest_test_strategy(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestStrategy)
+            .where(TestStrategy.requirement_id == req_id)
+            .order_by(desc(TestStrategy.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_test_strategy(req_id: int, automation_ratio: int, result: str,
+                             user_id: int) -> dict:
+    async with session_ctx() as session:
+        row = TestStrategy(
+            requirement_id=req_id, automation_ratio=automation_ratio,
+            result=result, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── ReviewAudit（审计记录，不级联删除）──
+
+
+async def create_review_audit(artifact_type: str, artifact_id: int, score: int,
+                              dimension_scores: str = '', issues: str = '',
+                              suggestions: str = '', information_gaps: str = '',
+                              gate_status: str = '', model: str = '',
+                              prompt_version: str = '', user_id: int = 0) -> dict:
+    async with session_ctx() as session:
+        row = ReviewAudit(
+            artifact_type=artifact_type, artifact_id=artifact_id, score=score,
+            dimension_scores=dimension_scores, issues=issues, suggestions=suggestions,
+            information_gaps=information_gaps, gate_status=gate_status,
+            model=model, prompt_version=prompt_version, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def list_review_audits(artifact_type: str, artifact_id: int) -> list[dict]:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(ReviewAudit)
+            .where(ReviewAudit.artifact_type == artifact_type,
+                   ReviewAudit.artifact_id == artifact_id)
+            .order_by(desc(ReviewAudit.id))
+        )
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+# ── CoverageSnapshot ──
+
+
+async def get_latest_coverage_snapshot(req_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(CoverageSnapshot)
+            .where(CoverageSnapshot.requirement_id == req_id)
+            .order_by(desc(CoverageSnapshot.id))
+            .limit(1)
+        )
+        r = result.scalar_one_or_none()
+        return _row_to_dict(r) if r else None
+
+
+async def save_coverage_snapshot(req_id: int, values: dict, details: str = '') -> dict:
+    """values: {requirement_coverage, story_coverage, test_point_coverage,
+    scenario_coverage, case_coverage, automation_coverage, risk_coverage}"""
+    async with session_ctx() as session:
+        row = CoverageSnapshot(requirement_id=req_id, details=details, **values)
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+# ── TestGap ──
+
+
+async def list_test_gaps(req_id: int) -> list[dict]:
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(TestGap)
+            .where(TestGap.requirement_id == req_id)
+            .order_by(TestGap.severity, TestGap.id)
+        )
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+async def create_test_gap(requirement_id: int, layer: str, description: str,
+                          severity: str = 'P1', source_ref: str = '') -> dict:
+    async with session_ctx() as session:
+        row = TestGap(
+            requirement_id=requirement_id, layer=layer, description=description,
+            severity=severity, status='open', source_ref=source_ref,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def create_test_gaps_bulk(rows: list[dict]) -> int:
+    async with session_ctx() as session:
+        session.add_all([TestGap(**r) for r in rows])
+        await session.commit()
+        return len(rows)
+
+
+async def update_test_gap_status(gap_id: int, status: str) -> dict | None:
+    """status: open | closed。"""
+    async with session_ctx() as session:
+        result = await session.execute(select(TestGap).where(TestGap.id == gap_id))
+        g = result.scalar_one_or_none()
+        if g is None:
+            return None
+        g.status = status
+        g.closed_at = datetime.utcnow() if status == 'closed' else None
+        await session.commit()
+        await session.refresh(g)
+        return _row_to_dict(g)
+
+
+async def delete_test_gap(gap_id: int) -> bool:
+    async with session_ctx() as session:
+        result = await session.execute(select(TestGap).where(TestGap.id == gap_id))
+        g = result.scalar_one_or_none()
+        if g is None:
+            return False
+        await session.delete(g)
+        await session.commit()
+        return True
+
+
+# ── AITask（AI 任务状态机，#21）──
+
+
+async def create_ai_task(requirement_id: int, stage: str, user_id: int) -> dict:
+    """创建 AI 任务（PENDING），返回任务记录。"""
+    async with session_ctx() as session:
+        row = AITask(
+            requirement_id=requirement_id, stage=stage,
+            status='PENDING', created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return _row_to_dict(row)
+
+
+async def update_ai_task_status(task_id: int, status: str, error: str = '',
+                                model: str = '', prompt_version: str = '') -> dict | None:
+    """推进 AI 任务状态；FAILED 时附错误信息。"""
+    async with session_ctx() as session:
+        result = await session.execute(select(AITask).where(AITask.id == task_id))
+        t = result.scalar_one_or_none()
+        if t is None:
+            return None
+        t.status = status
+        if error:
+            t.error = error[:4000]
+        if model:
+            t.model = model
+        if prompt_version:
+            t.prompt_version = prompt_version
+        t.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(t)
+        return _row_to_dict(t)
+
+
+async def get_ai_task(task_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(select(AITask).where(AITask.id == task_id))
+        t = result.scalar_one_or_none()
+        return _row_to_dict(t) if t else None
+
+
+async def list_ai_tasks_by_requirement(req_id: int) -> list[dict]:
+    """按需求列出全部 AI 任务（新→旧），供前端轮询展示。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(AITask)
+            .where(AITask.requirement_id == req_id)
+            .order_by(desc(AITask.id))
+            .limit(50)
+        )
+        return [_row_to_dict(r) for r in result.scalars().all()]
+
+
+# ── #21 补充 crud：单条资产查询 / 覆盖式清理 ──
+
+
+async def get_story(story_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(select(Story).where(Story.id == story_id))
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        return {
+            'id': s.id,
+            'requirement_id': s.requirement_id,
+            'title': s.title,
+            'description': s.description,
+            'acceptance_criteria': s.acceptance_criteria,
+            'sort_order': s.sort_order,
+            'score': s.score,
+            'score_reason': s.score_reason,
+            'dimension_scores': s.dimension_scores,
+            'gate_status': s.gate_status,
+            'dependencies': s.dependencies,
+            'created_at': dt_iso(s.created_at),
+        }
+
+
+async def update_story(story_id: int, fields: dict) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(select(Story).where(Story.id == story_id))
+        s = result.scalar_one_or_none()
+        if s is None:
+            return None
+        for k, v in fields.items():
+            if hasattr(s, k):
+                setattr(s, k, v)
+        await session.commit()
+        await session.refresh(s)
+        return _row_to_dict(s)
+
+
+async def get_test_point(tp_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(select(TestPoint).where(TestPoint.id == tp_id))
+        t = result.scalar_one_or_none()
+        return _row_to_dict(t) if t else None
+
+
+async def get_test_gap(gap_id: int) -> dict | None:
+    async with session_ctx() as session:
+        result = await session.execute(select(TestGap).where(TestGap.id == gap_id))
+        g = result.scalar_one_or_none()
+        return _row_to_dict(g) if g else None
+
+
+async def delete_information_gaps_by_requirement(req_id: int) -> None:
+    """清空某需求全部信息缺口，供覆盖式重写。"""
+    async with session_ctx() as session:
+        await session.execute(
+            delete(InformationGap).where(InformationGap.requirement_id == req_id)
+        )
+        await session.commit()
+
+
+async def delete_test_gaps_by_requirement(req_id: int) -> None:
+    """清空某需求全部测试缺口，供覆盖率分析覆盖式重写。"""
+    async with session_ctx() as session:
+        await session.execute(
+            delete(TestGap).where(TestGap.requirement_id == req_id)
+        )
+        await session.commit()

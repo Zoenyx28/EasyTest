@@ -50,6 +50,7 @@ const theme = ref<'light' | 'dark'>('dark');
 
 const navTabs = [
   { key: 'projects', label: '项目管理' },
+  { key: 'requirements', label: '需求管理' },
   { key: 'cases', label: '自动化' },
   { key: 'execution', label: '测试执行' },
   { key: 'defects', label: '缺陷管理' },
@@ -157,7 +158,7 @@ onMounted(() => {
     <div class="flex items-center gap-2 shrink-0">
       <!-- Branch selector: only on cases/execution/reports, before settings button -->
       <div
-        v-if="['cases', 'execution', 'reports', 'defects'].includes(currentRoute) && activeProject && branches.length > 0"
+        v-if="['cases', 'execution', 'reports', 'defects', 'requirements'].includes(currentRoute) && activeProject && branches.length > 0"
         class="branch-selector relative"
       >
         <button
@@ -217,7 +218,11 @@ onMounted(() => {
         </div>
       </div>
       <template v-if="auth.isLoggedIn.value">
-        <UserMenu @openChangePassword="showChangePassword = true" @openEditProfile="showEditProfile = true" />
+        <UserMenu
+          @openChangePassword="showChangePassword = true"
+          @openEditProfile="showEditProfile = true"
+          @openSettings="emit('openSettings')"
+        />
       </template>
       <template v-else>
         <button @click="router.push('/login')" class="login-btn">登录</button>

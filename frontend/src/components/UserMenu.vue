@@ -5,6 +5,7 @@ import { useAuth } from '../composables/useAuth';
 const emit = defineEmits<{
   (e: 'openChangePassword'): void;
   (e: 'openEditProfile'): void;
+  (e: 'openSettings'): void;
   (e: 'close'): void;
 }>();
 
@@ -23,6 +24,11 @@ function handleChangePassword() {
 function handleEditProfile() {
   showMenu.value = false;
   emit('openEditProfile');
+}
+
+function handleSettings() {
+  showMenu.value = false;
+  emit('openSettings');
 }
 
 function handleLogout() {
@@ -150,6 +156,20 @@ function isDefaultAvatar(): boolean {
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
         修改密码
+      </button>
+
+      <button
+        @click="handleSettings"
+        class="flex items-center gap-2 w-full px-3 py-2 text-[12.5px] text-left cursor-pointer transition-colors"
+        style="color: var(--text-primary);"
+        @mouseenter="($event.currentTarget as HTMLElement).style.backgroundColor = 'var(--row-hover)'"
+        @mouseleave="($event.currentTarget as HTMLElement).style.backgroundColor = 'transparent'"
+      >
+        <svg class="w-[14px] h-[14px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        系统设置
       </button>
 
       <div class="border-t mx-2" style="border-color: var(--border);"></div>

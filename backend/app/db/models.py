@@ -292,3 +292,394 @@ class DefectComment(Base):
     author_id: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Requirement Management ──
+
+
+class Requirement(Base):
+    """需求记录 — 按 (project_id, branch_id) 隔离。
+
+    状态机：pending_review → review_passed → story_confirmed → cases_generated → done
+    任一步可「重新评审」：携带人工评论重调当前步智能体，直接覆盖输出。
+    """
+    __tablename__ = 'requirements'
+    __table_args__ = (
+        Index('idx_req_project_branch', 'project_id', 'branch_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    branch_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default='')
+    priority: Mapped[str] = mapped_column(String(16), default='P2')
+    status: Mapped[str] = mapped_column(String(32), default='pending_review')
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RequirementSource(Base):
+    """需求来源 — 飞书链接或离线文件（txt/json/md/doc/docx/pdf/图片）。"""
+    __tablename__ = 'requirement_sources'
+    __table_args__ = (
+        Index('idx_rs_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String(16), default='lark_link')  # lark_link | file
+    link: Mapped[str] = mapped_column(String(1024), default='')
+    text_content: Mapped[str] = mapped_column(Text(length=2**24), default='')  # 提取/粘贴的正文（MySQL 映射 MEDIUMTEXT）
+    filename: Mapped[str] = mapped_column(String(256), default='')
+    filepath: Mapped[str] = mapped_column(String(512), default='')
+    file_size: Mapped[int] = mapped_column(Integer, default=0)
+    mime_type: Mapped[str] = mapped_column(String(64), default='')
+    extracted: Mapped[bool] = mapped_column(Boolean, default=False)  # 飞书正文是否提取成功
+    extract_error: Mapped[str] = mapped_column(Text, default='')  # 提取失败原因（未授权/无权限/非文档等）
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RequirementReview(Base):
+    """需求评审结果 — 每次评审/重新评审覆盖写入，携带 AI 评分。"""
+    __tablename__ = 'requirement_reviews'
+    __table_args__ = (
+        Index('idx_rr_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    conclusion: Mapped[str] = mapped_column(Text, default='')          # 评审结论
+    risks: Mapped[str] = mapped_column(Text, default='')               # JSON 数组字符串
+    issues: Mapped[str] = mapped_column(Text, default='')              # JSON 数组字符串
+    score: Mapped[int] = mapped_column(Integer, default=0)             # 100 分制
+    score_reason: Mapped[str] = mapped_column(Text, default='')        # 评分原因
+    review_comment: Mapped[str] = mapped_column(Text, default='')      # 人工补充评论
+    gate_status: Mapped[str] = mapped_column(String(16), default='')   # PASS/WARNING/BLOCKED
+    created_by: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Story(Base):
+    """Story 拆解结果 — 属于某需求，AI 评分随输出存储。"""
+    __tablename__ = 'stories'
+    __table_args__ = (
+        Index('idx_story_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default='')
+    acceptance_criteria: Mapped[str] = mapped_column(Text, default='')  # JSON 数组字符串
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    score_reason: Mapped[str] = mapped_column(Text, default='')
+    dimension_scores: Mapped[str] = mapped_column(Text, default='')     # JSON：7 维评分（PRD V2.0 StoryReview）
+    gate_status: Mapped[str] = mapped_column(String(16), default='')    # PASS/WARNING/BLOCKED
+    dependencies: Mapped[str] = mapped_column(Text, default='')         # JSON：依赖 Story ID 列表
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GeneratedCase(Base):
+    """智能体生成的测试用例 — 可绑定自动化用例。"""
+    __tablename__ = 'generated_cases'
+    __table_args__ = (
+        Index('idx_gc_requirement_id', 'requirement_id'),
+        Index('idx_gc_story_id', 'story_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    story_id: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    preconditions: Mapped[str] = mapped_column(Text, default='')
+    steps: Mapped[str] = mapped_column(Text, default='')                # JSON 数组字符串
+    expected: Mapped[str] = mapped_column(Text, default='')
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    score_reason: Mapped[str] = mapped_column(Text, default='')
+    gate_status: Mapped[str] = mapped_column(String(16), default='')    # PASS/WARNING/BLOCKED
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CaseBinding(Base):
+    """生成用例 ↔ 自动化用例（TestCaseDefinition 复合主键）0..N 绑定。"""
+    __tablename__ = 'case_bindings'
+    __table_args__ = (
+        Index('idx_cb_generated_case_id', 'generated_case_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    generated_case_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    uid: Mapped[str] = mapped_column(String(64), nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    branch_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LLMSettings(Base):
+    """LLM 全局配置（单行）— 登录用户可改，API key 仅存后端。"""
+    __tablename__ = 'llm_settings'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(32), default='deepseek')
+    api_base: Mapped[str] = mapped_column(String(512), default='')
+    text_model: Mapped[str] = mapped_column(String(128), default='')
+    vision_model: Mapped[str] = mapped_column(String(128), default='')
+    api_key: Mapped[str] = mapped_column(String(512), default='')
+    updated_by: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserLarkBinding(Base):
+    """每用户飞书授权绑定 — token 生命周期由 lark-cli 管理。"""
+    __tablename__ = 'user_lark_bindings'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    app_id: Mapped[str] = mapped_column(String(64), default='')
+    lark_open_id: Mapped[str] = mapped_column(String(128), default='')
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ══════════════════════════════════════════════════════════
+# PRD V2.0 分层测试设计模型（#20）
+# ══════════════════════════════════════════════════════════
+
+
+class RequirementAnalysis(Base):
+    """需求分析 — AI 对需求的理解输出（先理解再测试），识别业务要素与信息缺口。"""
+    __tablename__ = 'requirement_analyses'
+    __table_args__ = (
+        Index('idx_ra_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    project_id: Mapped[int] = mapped_column(Integer, default=0)
+    branch_id: Mapped[int] = mapped_column(Integer, default=0)
+    elements: Mapped[str] = mapped_column(Text, default='')  # JSON：业务目标/角色/实体/流程/规则/状态/输入输出/异常/权限/依赖/风险
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    score_reason: Mapped[str] = mapped_column(Text, default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class InformationGap(Base):
+    """信息缺口 — 需求信息不足时创建，需产品确认。"""
+    __tablename__ = 'information_gaps'
+    __table_args__ = (
+        Index('idx_ig_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    story_id: Mapped[int] = mapped_column(Integer, default=0)
+    project_id: Mapped[int] = mapped_column(Integer, default=0)
+    branch_id: Mapped[int] = mapped_column(Integer, default=0)
+    gap_type: Mapped[str] = mapped_column(String(48), default='')  # BUSINESS_RULE_MISSING 等 7 类
+    severity: Mapped[str] = mapped_column(String(16), default='HIGH')  # CRITICAL/HIGH/MEDIUM/LOW
+    description: Mapped[str] = mapped_column(Text, default='')
+    question: Mapped[str] = mapped_column(Text, default='')  # 需产品确认项
+    status: Mapped[str] = mapped_column(String(16), default='pending')  # pending/confirmed/ignored
+    confirmed_by: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TestPoint(Base):
+    """测试点 — Story 确认后生成，回答「测什么」，以树形组织。"""
+    __tablename__ = 'test_points'
+    __table_args__ = (
+        Index('idx_tp_requirement_id', 'requirement_id'),
+        Index('idx_tp_story_id', 'story_id'),
+        Index('idx_tp_parent_id', 'parent_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    story_id: Mapped[int] = mapped_column(Integer, default=0)
+    parent_id: Mapped[int] = mapped_column(Integer, default=0)  # 树形层级
+    category: Mapped[str] = mapped_column(String(32), default='Functional')  # 11 类
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default='')
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default='generated')  # generated/reviewed/confirmed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TestPointReview(Base):
+    """测试点评审 — 对某需求的测试点组整体评审（11 维 + QualityGate）。"""
+    __tablename__ = 'test_point_reviews'
+    __table_args__ = (
+        Index('idx_tpr_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    dimension_scores: Mapped[str] = mapped_column(Text, default='')  # JSON：11 维评分
+    coverage: Mapped[str] = mapped_column(Text, default='')  # JSON：覆盖情况
+    issues: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    suggestions: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    gate_status: Mapped[str] = mapped_column(String(16), default='')
+    review_comment: Mapped[str] = mapped_column(Text, default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TestScenario(Base):
+    """测试场景 — TestPoint 确认后生成，回答「在什么业务情况下测」。"""
+    __tablename__ = 'test_scenarios'
+    __table_args__ = (
+        Index('idx_ts_requirement_id', 'requirement_id'),
+        Index('idx_ts_test_point_id', 'test_point_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    test_point_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default='')  # 业务情况描述
+    coverage_dim: Mapped[str] = mapped_column(String(32), default='')  # 覆盖维度（正常/异常/边界/状态）
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ScenarioReview(Base):
+    """场景评审 — 对某需求的场景集整体评审。"""
+    __tablename__ = 'scenario_reviews'
+    __table_args__ = (
+        Index('idx_sr_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    coverage: Mapped[str] = mapped_column(Text, default='')  # JSON：场景覆盖情况
+    issues: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    suggestions: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    gate_status: Mapped[str] = mapped_column(String(16), default='')
+    review_comment: Mapped[str] = mapped_column(Text, default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CaseReview(Base):
+    """用例评审 — 对某需求的用例集整体评审（9 维检查 + QualityGate）。"""
+    __tablename__ = 'case_reviews'
+    __table_args__ = (
+        Index('idx_cr_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    checks: Mapped[str] = mapped_column(Text, default='')  # JSON：9 维检查结果
+    issues: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    suggestions: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    gate_status: Mapped[str] = mapped_column(String(16), default='')
+    review_comment: Mapped[str] = mapped_column(Text, default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TestStrategy(Base):
+    """测试策略 — 需求级自动化/半自动化/人工推荐。"""
+    __tablename__ = 'test_strategies'
+    __table_args__ = (
+        Index('idx_tstr_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    automation_ratio: Mapped[int] = mapped_column(Integer, default=0)  # 建议自动化占比 0-100
+    result: Mapped[str] = mapped_column(Text, default='')  # JSON：策略推荐明细
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ReviewAudit(Base):
+    """AI Review 审计 — 每次智能体评审落一条，保证测试设计过程可审计。"""
+    __tablename__ = 'review_audits'
+    __table_args__ = (
+        Index('idx_rva_artifact', 'artifact_type', 'artifact_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    artifact_type: Mapped[str] = mapped_column(String(32), nullable=False)  # requirement/story/test_points/scenarios/cases
+    artifact_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    dimension_scores: Mapped[str] = mapped_column(Text, default='')  # JSON
+    issues: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    suggestions: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    information_gaps: Mapped[str] = mapped_column(Text, default='')  # JSON 数组
+    gate_status: Mapped[str] = mapped_column(String(16), default='')
+    model: Mapped[str] = mapped_column(String(128), default='')
+    prompt_version: Mapped[str] = mapped_column(String(64), default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CoverageSnapshot(Base):
+    """覆盖率快照 — 按层计算（Requirement/Story/TestPoint/Scenario/Case/Automation/Risk）。"""
+    __tablename__ = 'coverage_snapshots'
+    __table_args__ = (
+        Index('idx_cov_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    requirement_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    story_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    test_point_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    scenario_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    case_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    automation_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    risk_coverage: Mapped[int] = mapped_column(Integer, default=0)
+    details: Mapped[str] = mapped_column(Text, default='')  # JSON：各层明细
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TestGap(Base):
+    """测试缺口 — 覆盖率/风险推导出的缺口（P0/P1），驱动 AI 补测。"""
+    __tablename__ = 'test_gaps'
+    __table_args__ = (
+        Index('idx_tg_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    layer: Mapped[str] = mapped_column(String(32), default='')  # story/test_point/scenario/case/automation/risk
+    description: Mapped[str] = mapped_column(Text, default='')
+    severity: Mapped[str] = mapped_column(String(4), default='P1')  # P0/P1
+    status: Mapped[str] = mapped_column(String(16), default='open')  # open/closed
+    source_ref: Mapped[str] = mapped_column(String(128), default='')  # 关联 story_id/test_point_id 等
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    closed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+
+class AITask(Base):
+    """AI 任务状态机 — 每个智能体环节一次调用的状态落库（PRD 第 8 节）。
+
+    流转：PENDING → RUNNING → REVIEW → WAITING_HUMAN → CONFIRMED → NEXT_STAGE；
+    异常：RUNNING → FAILED → RETRY。供前端轮询展示任务进度。
+    """
+    __tablename__ = 'ai_tasks'
+    __table_args__ = (
+        Index('idx_ait_requirement_id', 'requirement_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    stage: Mapped[str] = mapped_column(String(32), nullable=False)  # analyze/review_stories/test_points/scenarios/cases/strategy/coverage
+    status: Mapped[str] = mapped_column(String(16), default='PENDING')  # PENDING/RUNNING/REVIEW/WAITING_HUMAN/CONFIRMED/NEXT_STAGE/FAILED/RETRY
+    error: Mapped[str] = mapped_column(Text, default='')
+    model: Mapped[str] = mapped_column(String(128), default='')
+    prompt_version: Mapped[str] = mapped_column(String(64), default='')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

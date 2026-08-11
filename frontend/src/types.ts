@@ -419,3 +419,124 @@ export interface DefectCommentInfo {
   created_at: string;
   updated_at: string;
 }
+
+// ── Requirement (需求管理) Types ──
+
+export type RequirementStatus =
+  | 'pending_review'
+  | 'review_passed'
+  | 'story_confirmed'
+  | 'cases_generated'
+  | 'done';
+
+export interface RequirementReviewInfo {
+  id: number;
+  requirement_id: number;
+  conclusion: string;
+  risks: string[];
+  issues: Array<{ title: string; detail: string }>;
+  score: number;
+  score_reason: string;
+  review_comment: string;
+  low_score: boolean;
+  created_by: number;
+  created_by_name?: string;
+  created_at: string;
+}
+
+export interface RequirementInfo {
+  id: number;
+  project_id: number;
+  branch_id: number;
+  title: string;
+  summary: string;
+  priority: string;
+  status: RequirementStatus;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  creator_name: string;
+  branch_name: string;
+  project_name: string;
+  source_count: number;
+  review_count: number;
+  story_count: number;
+  case_count: number;
+  latest_review: RequirementReviewInfo | null;
+}
+
+export interface RequirementSourceInfo {
+  id: number;
+  requirement_id: number;
+  type: 'lark_link' | 'file';
+  link: string;
+  text_content: string;
+  filename: string;
+  filepath: string;
+  file_size: number;
+  mime_type: string;
+  extracted: boolean;
+  extract_error: string;
+  created_by: number;
+  created_by_name: string;
+  download_url: string;
+  created_at: string;
+}
+
+// ── Requirement 流程资产（三步流程面板） Types ──
+
+export interface RequirementStoryInfo {
+  id: number;
+  requirement_id: number;
+  title: string;
+  description: string;
+  acceptance_criteria: string;
+  sort_order: number;
+  score: number;
+  score_reason: string;
+  created_at: string;
+}
+
+export interface GeneratedCaseInfo {
+  id: number;
+  requirement_id: number;
+  story_id: number;
+  title: string;
+  preconditions: string;
+  steps: string;
+  expected: string;
+  score: number;
+  score_reason: string;
+  bound_count: number;
+  created_at: string;
+}
+
+export interface CaseBindingInfo {
+  id: number;
+  uid: string;
+  project_id: number;
+  branch_id: number;
+  case_name: string;
+  full_name: string;
+  created_at: string;
+}
+
+/** 自动化用例候选项（绑定弹窗内多选） */
+export interface AutomationCaseOption {
+  uid: string;
+  name: string;
+  methodName: string;
+  className: string;
+  module: string;
+  fullName: string;
+  description: string;
+  testType?: string;
+  status?: string;
+}
+
+export interface AutomationCasePage {
+  total: number;
+  page: number;
+  size: number;
+  items: AutomationCaseOption[];
+}

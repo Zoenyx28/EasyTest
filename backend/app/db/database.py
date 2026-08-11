@@ -59,6 +59,12 @@ async def init_db():
         "ALTER TABLE defect_modules ADD COLUMN branch_id INTEGER DEFAULT 0",
         "ALTER TABLE defects ADD COLUMN case_uid VARCHAR(256) DEFAULT ''",
         "ALTER TABLE defects ADD COLUMN case_name VARCHAR(512) DEFAULT ''",
+        "ALTER TABLE requirement_sources ADD COLUMN extract_error TEXT",
+        "ALTER TABLE requirement_reviews ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
+        "ALTER TABLE stories ADD COLUMN dimension_scores TEXT DEFAULT ''",
+        "ALTER TABLE stories ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
+        "ALTER TABLE stories ADD COLUMN dependencies TEXT DEFAULT ''",
+        "ALTER TABLE generated_cases ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         "CREATE TABLE IF NOT EXISTS project_members (id INTEGER PRIMARY KEY AUTO_INCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
     ]
 
@@ -71,6 +77,18 @@ async def init_db():
                 await conn.exec_driver_sql(sql)
         except Exception:
             pass
+
+    # ── 长文档正文升级：TEXT(64KB) → MEDIUMTEXT(16MB)（MySQL 专属语法，幂等）──
+    # 飞书文档正文（如产品需求设计文档）常超过 64KB，超限 INSERT 会失败（DataError 1366/1406）。
+    if dialect == 'mysql':
+        try:
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql(
+                    "ALTER TABLE requirement_sources MODIFY text_content "
+                    "MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+                )
+        except Exception as exc:
+            print(f'[init_db] 升级 text_content 为 MEDIUMTEXT 失败: {exc}', flush=True)
 
     # ── Composite primary key migration ──
     # Change test_case_definitions PK from (uid) to (uid, project_id, branch_id)
@@ -209,6 +227,255 @@ async def init_db():
             ")",
         ]
     for sql in defect_tables:
+        try:
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql(sql)
+        except Exception:
+            pass
+
+    # ── Requirement Management tables ──
+    dialect = engine.dialect.name
+    autoinc = 'AUTO_INCREMENT' if dialect == 'mysql' else 'AUTOINCREMENT'
+    on_update = ', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP' if dialect == 'mysql' else ''
+    # 飞书文档正文可能超过 TEXT(64KB) 上限，MySQL 用 MEDIUMTEXT(16MB)，SQLite 忽略长度用 TEXT
+    mediumtext = 'MEDIUMTEXT' if dialect == 'mysql' else 'TEXT'
+    requirement_tables = [
+        "CREATE TABLE IF NOT EXISTS requirements ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "project_id INTEGER NOT NULL, "
+        "branch_id INTEGER NOT NULL, "
+        "title VARCHAR(512) NOT NULL, "
+        "summary TEXT DEFAULT '', "
+        "priority VARCHAR(16) DEFAULT 'P2', "
+        "status VARCHAR(32) DEFAULT 'pending_review', "
+        "created_by INTEGER NOT NULL, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
+        ")",
+        "CREATE TABLE IF NOT EXISTS requirement_sources ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "type VARCHAR(16) DEFAULT 'lark_link', "
+        "link VARCHAR(1024) DEFAULT '', "
+        "text_content " + mediumtext + (" DEFAULT ''" if dialect == 'sqlite' else '') + ", "
+        "filename VARCHAR(256) DEFAULT '', "
+        "filepath VARCHAR(512) DEFAULT '', "
+        "file_size INTEGER DEFAULT 0, "
+        "mime_type VARCHAR(64) DEFAULT '', "
+        "extracted BOOLEAN DEFAULT 0, "
+        "extract_error TEXT DEFAULT '', "
+        "created_by INTEGER NOT NULL, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS requirement_reviews ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "conclusion TEXT DEFAULT '', "
+        "risks TEXT DEFAULT '', "
+        "issues TEXT DEFAULT '', "
+        "score INTEGER DEFAULT 0, "
+        "score_reason TEXT DEFAULT '', "
+        "review_comment TEXT DEFAULT '', "
+        "created_by INTEGER NOT NULL, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS stories ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "title VARCHAR(512) NOT NULL, "
+        "description TEXT DEFAULT '', "
+        "acceptance_criteria TEXT DEFAULT '', "
+        "sort_order INTEGER DEFAULT 0, "
+        "score INTEGER DEFAULT 0, "
+        "score_reason TEXT DEFAULT '', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS generated_cases ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "story_id INTEGER DEFAULT 0, "
+        "title VARCHAR(512) NOT NULL, "
+        "preconditions TEXT DEFAULT '', "
+        "steps TEXT DEFAULT '', "
+        "expected TEXT DEFAULT '', "
+        "score INTEGER DEFAULT 0, "
+        "score_reason TEXT DEFAULT '', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS case_bindings ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "generated_case_id INTEGER NOT NULL, "
+        "uid VARCHAR(64) NOT NULL, "
+        "project_id INTEGER NOT NULL, "
+        "branch_id INTEGER NOT NULL, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS llm_settings ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "provider VARCHAR(32) DEFAULT 'deepseek', "
+        "api_base VARCHAR(512) DEFAULT '', "
+        "text_model VARCHAR(128) DEFAULT '', "
+        "vision_model VARCHAR(128) DEFAULT '', "
+        "api_key VARCHAR(512) DEFAULT '', "
+        "updated_by INTEGER DEFAULT 0, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
+        ")",
+        "CREATE TABLE IF NOT EXISTS user_lark_bindings ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "user_id INTEGER NOT NULL, "
+        "app_id VARCHAR(64) DEFAULT '', "
+        "lark_open_id VARCHAR(128) DEFAULT '', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
+        ")",
+        # ── PRD V2.0 分层测试设计表（#20）──
+        "CREATE TABLE IF NOT EXISTS requirement_analyses ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "project_id INTEGER DEFAULT 0, "
+        "branch_id INTEGER DEFAULT 0, "
+        "elements TEXT DEFAULT '', "
+        "score INTEGER DEFAULT 0, "
+        "score_reason TEXT DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS information_gaps ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "story_id INTEGER DEFAULT 0, "
+        "project_id INTEGER DEFAULT 0, "
+        "branch_id INTEGER DEFAULT 0, "
+        "gap_type VARCHAR(48) DEFAULT '', "
+        "severity VARCHAR(16) DEFAULT 'HIGH', "
+        "description TEXT DEFAULT '', "
+        "question TEXT DEFAULT '', "
+        "status VARCHAR(16) DEFAULT 'pending', "
+        "confirmed_by INTEGER DEFAULT 0, "
+        "confirmed_at DATETIME, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS test_points ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "story_id INTEGER DEFAULT 0, "
+        "parent_id INTEGER DEFAULT 0, "
+        "category VARCHAR(32) DEFAULT 'Functional', "
+        "title VARCHAR(512) NOT NULL, "
+        "description TEXT DEFAULT '', "
+        "sort_order INTEGER DEFAULT 0, "
+        "status VARCHAR(16) DEFAULT 'generated', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS test_point_reviews ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "score INTEGER DEFAULT 0, "
+        "dimension_scores TEXT DEFAULT '', "
+        "coverage TEXT DEFAULT '', "
+        "issues TEXT DEFAULT '', "
+        "suggestions TEXT DEFAULT '', "
+        "gate_status VARCHAR(16) DEFAULT '', "
+        "review_comment TEXT DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS test_scenarios ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "test_point_id INTEGER NOT NULL, "
+        "title VARCHAR(512) NOT NULL, "
+        "description TEXT DEFAULT '', "
+        "coverage_dim VARCHAR(32) DEFAULT '', "
+        "sort_order INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS scenario_reviews ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "score INTEGER DEFAULT 0, "
+        "coverage TEXT DEFAULT '', "
+        "issues TEXT DEFAULT '', "
+        "suggestions TEXT DEFAULT '', "
+        "gate_status VARCHAR(16) DEFAULT '', "
+        "review_comment TEXT DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS case_reviews ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "score INTEGER DEFAULT 0, "
+        "checks TEXT DEFAULT '', "
+        "issues TEXT DEFAULT '', "
+        "suggestions TEXT DEFAULT '', "
+        "gate_status VARCHAR(16) DEFAULT '', "
+        "review_comment TEXT DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS test_strategies ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "automation_ratio INTEGER DEFAULT 0, "
+        "result TEXT DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS review_audits ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "artifact_type VARCHAR(32) NOT NULL, "
+        "artifact_id INTEGER NOT NULL, "
+        "score INTEGER DEFAULT 0, "
+        "dimension_scores TEXT DEFAULT '', "
+        "issues TEXT DEFAULT '', "
+        "suggestions TEXT DEFAULT '', "
+        "information_gaps TEXT DEFAULT '', "
+        "gate_status VARCHAR(16) DEFAULT '', "
+        "model VARCHAR(128) DEFAULT '', "
+        "prompt_version VARCHAR(64) DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS coverage_snapshots ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "requirement_coverage INTEGER DEFAULT 0, "
+        "story_coverage INTEGER DEFAULT 0, "
+        "test_point_coverage INTEGER DEFAULT 0, "
+        "scenario_coverage INTEGER DEFAULT 0, "
+        "case_coverage INTEGER DEFAULT 0, "
+        "automation_coverage INTEGER DEFAULT 0, "
+        "risk_coverage INTEGER DEFAULT 0, "
+        "details TEXT DEFAULT '', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")",
+        "CREATE TABLE IF NOT EXISTS test_gaps ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "layer VARCHAR(32) DEFAULT '', "
+        "description TEXT DEFAULT '', "
+        "severity VARCHAR(4) DEFAULT 'P1', "
+        "status VARCHAR(16) DEFAULT 'open', "
+        "source_ref VARCHAR(128) DEFAULT '', "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "closed_at DATETIME"
+        ")",
+        # ── AI 任务状态机（#21）──
+        "CREATE TABLE IF NOT EXISTS ai_tasks ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "stage VARCHAR(32) NOT NULL, "
+        "status VARCHAR(16) DEFAULT 'PENDING', "
+        "error TEXT DEFAULT '', "
+        "model VARCHAR(128) DEFAULT '', "
+        "prompt_version VARCHAR(64) DEFAULT '', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
+        ")",
+    ]
+    for sql in requirement_tables:
         try:
             async with engine.begin() as conn:
                 await conn.exec_driver_sql(sql)
