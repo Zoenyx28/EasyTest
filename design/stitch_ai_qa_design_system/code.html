@@ -1,0 +1,238 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>TestDesign AI - Workbench</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&amp;family=Fredoka:wght@600&amp;family=JetBrains+Mono:wght@400&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "mint": "#98FF98",
+                      "inverse-primary": "#f7b7af",
+                      "surface-dim": "#d0daf0",
+                      "secondary-container": "#beeaf8",
+                      "on-primary-fixed-variant": "#683a35",
+                      "outline-variant": "#d6c2bf",
+                      "surface-container-high": "#dee8ff",
+                      "on-background": "#121c2c",
+                      "tertiary": "#006e2f",
+                      "error-container": "#ffdad6",
+                      "tertiary-fixed": "#6bff8f",
+                      "inverse-surface": "#273141",
+                      "on-primary": "#ffffff",
+                      "primary-fixed-dim": "#f7b7af",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-fixed-dim": "#a3cddb",
+                      "on-primary-fixed": "#33100d",
+                      "surface-bright": "#f9f9ff",
+                      "bg-input": "#FFF0E9",
+                      "tertiary-fixed-dim": "#4ae176",
+                      "outline": "#2D3748",
+                      "on-tertiary-fixed": "#002109",
+                      "on-secondary-container": "#416a77",
+                      "on-secondary-fixed": "#001f27",
+                      "error": "#ba1a1a",
+                      "on-tertiary-container": "#00642a",
+                      "on-error": "#ffffff",
+                      "on-surface-variant": "#514442",
+                      "primary": "#83514b",
+                      "surface-tint": "#83514b",
+                      "background": "#f9f9ff",
+                      "on-secondary-fixed-variant": "#214c58",
+                      "cta-dark": "#16A34A",
+                      "surface-container-highest": "#d9e3f9",
+                      "on-secondary": "#ffffff",
+                      "surface-container-low": "#f0f3ff",
+                      "secondary": "#3a6470",
+                      "inverse-on-surface": "#ebf1ff",
+                      "primary-container": "#fdbcb4",
+                      "on-error-container": "#93000a",
+                      "surface-container": "#e7eeff",
+                      "broken": "#7C3AED",
+                      "surface-variant": "#d9e3f9",
+                      "primary-fixed": "#ffdad5",
+                      "accent-orange": "#EA580C",
+                      "secondary-fixed": "#beeaf8",
+                      "on-surface": "#121c2c",
+                      "on-primary-container": "#794943",
+                      "lavender": "#E6E6FA",
+                      "tertiary-container": "#51e77b",
+                      "cta": "#22C55E",
+                      "on-tertiary-fixed-variant": "#005321",
+                      "on-tertiary": "#ffffff",
+                      "surface": "#f9f9ff",
+                      "bg-window": "#FFF9F5",
+                      "card": "#FFFFFF"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "header-height": "56px",
+                      "sidebar-width": "260px",
+                      "sm": "8px",
+                      "lg": "20px",
+                      "base": "4px",
+                      "xs": "6px",
+                      "xl": "24px",
+                      "md": "12px",
+                      "micro": "2px"
+              },
+              "fontFamily": {
+                      "code": [
+                              "JetBrains Mono", "monospace"
+                      ],
+                      "label-md": [
+                              "Nunito", "sans-serif"
+                      ],
+                      "label-sm": [
+                              "Nunito", "sans-serif"
+                      ],
+                      "body-semibold": [
+                              "Nunito", "sans-serif"
+                      ],
+                      "display-lg": [
+                              "Fredoka", "sans-serif"
+                      ],
+                      "body-md": [
+                              "Nunito", "sans-serif"
+                      ],
+                      "headline-sm": [
+                              "Fredoka", "sans-serif"
+                      ],
+                      "headline-md": [
+                              "Fredoka", "sans-serif"
+                      ]
+              },
+              "fontSize": {
+                      "code": [
+                              "12px",
+                              {
+                                      "lineHeight": "19px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "11.5px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "label-sm": [
+                              "10.5px",
+                              {
+                                      "lineHeight": "14px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-semibold": [
+                              "12.5px",
+                              {
+                                      "lineHeight": "17.5px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "12.5px",
+                              {
+                                      "lineHeight": "17.5px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-sm": [
+                              "13px",
+                              {
+                                      "lineHeight": "18px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-md": [
+                              "15px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              },
+              "boxShadow": {
+                'hard-md': '4px 4px 0 0 rgba(45, 55, 72, 1)',
+                'hard-sm': '2px 2px 0 0 rgba(45, 55, 72, 1)',
+                'hard-lg': '6px 6px 0 0 rgba(45, 55, 72, 1)',
+                'inset-hard': 'inset 2px 2px 0 0 rgba(45, 55, 72, 0.2)',
+              }
+            },
+          }
+        }
+      </script>
+<style type="text/tailwindcss">
+        @layer utilities {
+          .border-3 { border-width: 3px; }
+          .border-outline { border-color: theme('colors.outline'); }
+        }
+      </style>
+</head>
+<body class="bg-bg-window text-on-surface font-body-md overflow-hidden h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-surface/80 dark:bg-inverse-surface/80 font-headline-md text-headline-md fixed top-0 w-full h-[56px] z-50 border-b-3 border-outline dark:border-outline-variant backdrop-blur-md shadow-[0_4px_0_0_rgba(0,0,0,0.1)] flex items-center justify-between px-xl h-header-height w-full">
+<div class="flex items-center gap-xl">
+<div class="font-display-lg text-display-lg text-primary dark:text-primary-fixed-dim tracking-tight">TestDesign AI</div>
+<nav class="hidden md:flex items-center gap-lg">
+<a class="text-on-surface-variant dark:text-surface-variant hover:translate-y-0.5 hover:shadow-[0_2px_0_0_rgba(0,0,0,0.1)] transition-all active:translate-y-1 active:shadow-none font-body-semibold text-body-semibold py-sm px-md rounded-md hover:bg-surface-container-high" href="#">Dashboard</a>
+<a class="text-primary dark:text-primary-fixed-dim border-b-2 border-primary hover:translate-y-0.5 hover:shadow-[0_2px_0_0_rgba(0,0,0,0.1)] transition-all active:translate-y-1 active:shadow-none font-body-semibold text-body-semibold py-sm px-md" href="#">Projects</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:translate-y-0.5 hover:shadow-[0_2px_0_0_rgba(0,0,0,0.1)] transition-all active:translate-y-1 active:shadow-none font-body-semibold text-body-semibold py-sm px-md rounded-md hover:bg-surface-container-high" href="#">Releases</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<div class="hidden lg:flex items-center gap-sm bg-surface-container-high px-md py-sm rounded-full border-2 border-outline shadow-hard-sm">
+<div class="w-2 h-2 rounded-full bg-cta animate-pulse"></div>
+<span class="font-label-md text-label-md text-on-surface">Agent: Active</span>
+</div>
+<button class="bg-primary text-on-primary font-body-semibold text-body-semibold px-md py-sm rounded-lg border-2 border-outline shadow-hard-sm hover:translate-y-0.5 hover:shadow-hard-sm transition-transform active:translate-y-1 active:shadow-none flex items-center gap-xs">
+                Create New
+            </button>
+<div class="flex items-center gap-sm">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high border-2 border-outline shadow-hard-sm transition-transform hover:translate-y-0.5 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-on-surface" style="font-variation-settings: 'FILL' 0;">notifications</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-high border-2 border-outline shadow-hard-sm transition-transform hover:translate-y-0.5 active:translate-y-1 active:shadow-none">
+<span class="material-symbols-outlined text-on-surface" style="font-variation-settings: 'FILL' 0;">settings</span>
+</button>
+<img class="w-10 h-10 rounded-full border-2 border-outline shadow-hard-sm object-cover ml-sm" data-alt="A stylized, modern geometric user avatar with a soft peach and warm mint color palette, representing a professional tech profile picture. Flat design with bold outlines." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjCj7Tg4o4nhQTf46bkC_vp2q7ThcOFqlahSwr4FJkE1r9y9UXB2IM5d34FTFdXy_Br4qua_7v1r2HDR37P3SjtXNNKSP2FpldJ8Kl1sq0UqxzDi_15Qd5m7XfUOT-H4UOhyNTVAwSinPtH8-iyzdiGkB7rO29qFPjCBHt75ui-L9tEMQq1ri5LxKny_O6gBsKcAk-mLhW3brEdxkUrfEYv2Dy4uLfYVN-3st3NkGLxrO4l8wGswZ2TQ">
+</div>
+</div>
+</header>
+<!-- Main Content Area -->
+<div class="flex flex-1 pt-[56px] h-full w-full">
+<!-- Center Workspace -->
+<main class="flex-1 overflow-y-auto bg-bg-window p-xl flex gap-xl h-full pb-[100px]"><div class="flex-1 flex flex-col gap-lg w-full max-w-7xl mx-auto"><div class="flex items-center justify-between"><div class="flex items-center gap-md"><div class="relative group"><button class="flex items-center gap-sm bg-card border-2 border-outline px-md py-sm rounded-lg shadow-hard-sm font-headline-md text-headline-md">User Refund Feature <span class="material-symbols-outlined">expand_more</span></button></div><span class="bg-primary-container text-on-primary-container px-sm py-[2px] rounded-full border-2 border-outline font-label-sm text-label-sm shadow-hard-sm uppercase tracking-wider">Requirement Phase</span></div><div class="flex gap-sm"><button class="p-sm rounded-lg border-2 border-outline bg-card hover:bg-surface-container-low shadow-hard-sm"><span class="material-symbols-outlined">edit</span></button><button class="p-sm rounded-lg border-2 border-outline bg-card hover:bg-surface-container-low shadow-hard-sm"><span class="material-symbols-outlined">history</span></button></div></div><div class="flex flex-row gap-lg flex-1"><div class="w-[55%] flex flex-col gap-md"><div class="bg-card border-3 border-outline rounded-xl p-xl shadow-hard-md h-full overflow-y-auto"><h2 class="font-headline-md text-headline-md mb-md border-b-2 border-outline/10 pb-sm">Requirement Document</h2><div class="font-body-md text-body-md text-on-surface-variant space-y-md"><p class=""><strong>1. Overview:</strong> The system shall allow registered users to request full refunds for orders delivered within the last 14 days.<span class="ml-xs material-symbols-outlined text-primary text-[14px] cursor-help" title="Linked to US-01">link</span></p><p class=""><strong>2. Validation:</strong> The system must verify the order status is 'Delivered' and the delivery date is within the 14-day window.<span class="ml-xs material-symbols-outlined text-primary text-[14px] cursor-help" title="Linked to US-01">link</span></p><p class=""><strong>3. Processing:</strong> Upon validation, a Refund Order entity is created and the status is set to 'Pending Admin Review'.</p></div></div></div><div class="w-[45%] flex flex-col gap-md"><h3 class="font-headline-sm text-headline-sm flex items-center gap-xs"><span class="material-symbols-outlined text-tertiary">auto_awesome</span> Recommended Stories</h3><div class="flex gap-sm mb-md"><button class="flex-1 bg-surface-container-high text-on-surface-variant border-2 border-outline rounded-lg py-sm px-md font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform flex items-center justify-center gap-xs"><span class="material-symbols-outlined text-[18px]">refresh</span> Regenerate All</button><button class="flex-1 bg-card text-on-surface border-2 border-outline rounded-lg py-sm px-md font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform flex items-center justify-center gap-xs"><span class="material-symbols-outlined text-[18px]">add</span> Add Story</button></div><div class="flex flex-col gap-md"><div class="bg-card border-3 border-outline rounded-xl p-md shadow-hard-md flex flex-col gap-sm relative"><div class="absolute top-2 right-2 flex gap-xs"><span class="bg-mint text-on-tertiary-container px-2 py-0.5 rounded border-2 border-outline font-label-sm shadow-hard-sm">92</span><span class="bg-surface-variant text-on-surface px-2 py-0.5 rounded border-2 border-outline font-label-sm shadow-hard-sm">待确定</span></div><div class="flex items-start gap-sm"><span class="material-symbols-outlined text-primary mt-1">auto_awesome</span><div class="flex-1 pr-20"><h4 class="font-body-semibold text-body-semibold">US-01: Initiate Full Refund</h4><p class="text-label-md text-on-surface-variant mt-1">Standard user refund flow with 14-day validation.</p></div></div><div class="mt-2 pt-2 border-t-2 border-outline/10"><span class="text-label-sm font-label-sm text-accent-orange uppercase tracking-tighter">Items to Confirm:</span><ul class="mt-1 space-y-1"><li class="flex items-center gap-xs text-label-md text-on-surface-variant"><span class="w-1 h-1 rounded-full bg-accent-orange"></span> Refund method (Original vs Credit)</li></ul></div><div class="mt-2 pt-2 border-t-2 border-outline/10 flex flex-col gap-sm"><textarea class="w-full bg-bg-input border-2 border-outline rounded-md p-sm text-body-md font-body-md shadow-inset-hard placeholder:text-on-surface-variant/50 focus:ring-0 focus:border-outline" placeholder="User Comments..." rows="2"></textarea></div><div class="mt-2 pt-2 border-t-2 border-outline/10 flex justify-end gap-sm"><button class="bg-transparent text-error border-2 border-transparent hover:border-error/20 hover:bg-error/10 rounded-lg py-xs px-sm font-label-md transition-all flex items-center gap-xs" title="删除"><span class="material-symbols-outlined text-[18px]">delete</span> 删除</button><button class="bg-surface-container-high text-on-surface border-2 border-outline rounded-lg py-xs px-sm font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform flex items-center justify-center gap-xs"><span class="material-symbols-outlined text-[16px]">edit_note</span> AI 修改 (Story + 需求)</button><button class="bg-transparent text-on-surface border-2 border-transparent hover:border-outline/20 hover:bg-surface-container rounded-lg py-xs px-sm font-label-md transition-all flex items-center gap-xs" title="评论"><span class="material-symbols-outlined text-[18px]">comment</span> 评论</button><button class="bg-cta text-on-primary border-2 border-outline rounded-lg py-xs px-sm font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform active:translate-y-1 active:shadow-none flex items-center gap-xs" title="确认并开始生成测试点"><span class="material-symbols-outlined text-[18px]">check_circle</span> 确认</button></div></div><div class="bg-card border-3 border-outline rounded-xl p-md shadow-hard-md flex flex-col gap-sm relative"><div class="absolute top-2 right-2 flex gap-xs"><span class="bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded border-2 border-outline font-label-sm shadow-hard-sm">85</span><span class="bg-surface-variant text-on-surface px-2 py-0.5 rounded border-2 border-outline font-label-sm shadow-hard-sm">AI评审中</span></div><div class="flex items-start gap-sm"><span class="material-symbols-outlined text-primary mt-1">auto_awesome</span><div class="flex-1 pr-24"><h4 class="font-body-semibold text-body-semibold">US-02: Admin Review</h4><p class="text-label-md text-on-surface-variant mt-1">Back-office approval/rejection workflow.</p></div></div><div class="mt-2 pt-2 border-t-2 border-outline/10"><span class="text-label-sm font-label-sm text-accent-orange uppercase tracking-tighter">Items to Confirm:</span><ul class="mt-1 space-y-1"><li class="flex items-center gap-xs text-label-md text-on-surface-variant"><span class="w-1 h-1 rounded-full bg-accent-orange"></span> SLA for review completion</li></ul></div><div class="mt-2 pt-2 border-t-2 border-outline/10 flex flex-col gap-sm"><textarea class="w-full bg-bg-input border-2 border-outline rounded-md p-sm text-body-md font-body-md shadow-inset-hard placeholder:text-on-surface-variant/50 focus:ring-0 focus:border-outline" placeholder="User Comments..." rows="2"></textarea></div><div class="mt-2 pt-2 border-t-2 border-outline/10 flex justify-end gap-sm"><button class="bg-transparent text-error border-2 border-transparent hover:border-error/20 hover:bg-error/10 rounded-lg py-xs px-sm font-label-md transition-all flex items-center gap-xs" title="删除"><span class="material-symbols-outlined text-[18px]">delete</span> 删除</button><button class="bg-surface-container-high text-on-surface border-2 border-outline rounded-lg py-xs px-sm font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform flex items-center justify-center gap-xs"><span class="material-symbols-outlined text-[16px]">edit_note</span> AI 修改 (Story + 需求)</button><button class="bg-transparent text-on-surface border-2 border-transparent hover:border-outline/20 hover:bg-surface-container rounded-lg py-xs px-sm font-label-md transition-all flex items-center gap-xs" title="评论"><span class="material-symbols-outlined text-[18px]">comment</span> 评论</button><button class="bg-cta text-on-primary border-2 border-outline rounded-lg py-xs px-sm font-label-md shadow-hard-sm hover:translate-y-0.5 transition-transform active:translate-y-1 active:shadow-none flex items-center gap-xs" title="确认并开始生成测试点"><span class="material-symbols-outlined text-[18px]">check_circle</span> 确认</button></div></div></div></div></div></div></main>
+</div>
+<style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: 20px;
+        }
+    </style>
+
+
+</body></html>

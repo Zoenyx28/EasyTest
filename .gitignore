@@ -15,3 +15,7 @@ logs/
 
 # 开发进程 PID 文件
 *.pid
+
+
+# pytest cache
+.pytest-*.json

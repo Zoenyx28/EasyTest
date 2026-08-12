@@ -1,29 +1,13 @@
-"""Database engine and session management.
+"""Database engine and session management (backward-compat re-exports).
 
-MySQL is the production default.  SQLite remains an explicit local fallback
-(`DATABASE_URL=sqlite+aiosqlite:///...`) so contributors can inspect the API
-without starting the middleware stack.
+Base, engine, async_session_factory, and session_ctx are now defined in
+app.shared.database.  This file re-exports them and retains init_db()
+which will be progressively migrated to Alembic over subsequent tickets.
 """
-from contextlib import asynccontextmanager
-
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
 
-from app.config import DATABASE_URL
-
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    pool_timeout=30,
-)
-async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
-
-class Base(DeclarativeBase):
-    pass
+# Re-export from the canonical location
+from app.shared.database import Base, engine, async_session_factory, session_ctx, get_session  # noqa: F401, E402
 
 
 async def init_db():
@@ -549,16 +533,3 @@ async def init_db():
                 await conn.exec_driver_sql(sql)
         except Exception:
             pass
-
-
-async def get_session() -> AsyncSession:
-    """Yield an async session for dependency injection."""
-    async with async_session_factory() as session:
-        yield session
-
-
-@asynccontextmanager
-async def session_ctx():
-    """Context manager for direct session use in services."""
-    async with async_session_factory() as session:
-        yield session

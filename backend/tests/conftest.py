@@ -21,11 +21,19 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 # ── 用 NullPool 引擎替换默认引擎（避免跨事件循环复用连接） ──
-import app.db.database as db
+# Engine and session factory are defined in app.shared.database.
+# Patch at the source so all import paths (old + new) pick up the test engine.
+import app.shared.database as shared_db
 
 _engine = create_async_engine(os.environ['DATABASE_URL'], poolclass=NullPool)
+shared_db.engine = _engine
+shared_db.async_session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+
+# Also patch app.db.database for backward-compat re-exports
+import app.db.database as db
+
 db.engine = _engine
-db.async_session_factory = async_sessionmaker(_engine, expire_on_commit=False)
+db.async_session_factory = shared_db.async_session_factory
 
 from app.db.database import init_db, session_ctx
 from app.db.models import User, Project, ProjectMember, Branch

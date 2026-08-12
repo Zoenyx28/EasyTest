@@ -41,6 +41,7 @@ from app.api.requirements import router as requirements_router
 from app.api.requirement_layers import router as requirement_layers_router
 from app.api.settings import router as settings_router
 from app.api.workbench import router as workbench_router
+from app.domains.requirement_design.api import router as req_design_router
 from app.config import JWT_SECRET, PROJECTS_DATA_DIR
 from app.db import crud
 from app.db.database import init_db
@@ -283,6 +284,7 @@ app.include_router(requirements_router)
 app.include_router(requirement_layers_router)
 app.include_router(workbench_router)
 app.include_router(settings_router)
+app.include_router(req_design_router)
 
 
 @app.get('/api/health')

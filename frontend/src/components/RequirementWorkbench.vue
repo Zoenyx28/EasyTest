@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProject } from '../composables/useProject';
 import { useBranch } from '../composables/useBranch';
@@ -13,7 +13,7 @@ const emit = defineEmits<{ (e: 'showToast', msg: string): void }>();
 
 const { activeProject, getActiveProject } = useProject();
 const { activeBranch } = useBranch(activeProject.value?.id);
-const { get, post, del } = useApi();
+const { get, post, put, del } = useApi();
 const route = useRoute();
 const router = useRouter();
 
@@ -61,7 +61,187 @@ const statusFilterTabs = [
   { key: 'done', label: '已完成' },
 ];
 
-const assetCounts = computed(() => workbenchData.value?.requirement?.asset_counts || {});
+// Derive asset counts from assets array (workbench requirement doesn't include asset_counts)
+const assetCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  for (const a of (workbenchData.value?.assets || [])) {
+    counts[a.asset_type] = (counts[a.asset_type] || 0) + 1;
+  }
+  return counts;
+});
+
+// ── Analysis state ──
+const analyzing = ref(false);
+let pollingTimer: ReturnType<typeof setInterval> | null = null;
+
+// Analysis asset (first analysis-type asset from workbench)
+const analysisAsset = computed(() => {
+  return (workbenchData.value?.assets || []).find((a: any) => a.asset_type === 'analysis');
+});
+
+// Gap assets
+const gapAssets = computed(() => {
+  return (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === 'gap');
+});
+
+// Parse analysis elements (11 business elements) from content JSON
+const analysisElements = computed(() => {
+  if (!analysisAsset.value?.content) return null;
+  try {
+    const c = typeof analysisAsset.value.content === 'string'
+      ? JSON.parse(analysisAsset.value.content)
+      : analysisAsset.value.content;
+    return c.elements || null;
+  } catch { return null; }
+});
+
+// Analysis score & reason
+const analysisScore = computed(() => analysisAsset.value?.score || 0);
+const analysisReason = computed(() => analysisAsset.value?.review_comment || analysisAsset.value?.description || '');
+
+// Check for CRITICAL gaps
+const hasCriticalGaps = computed(() => {
+  return gapAssets.value.some((g: any) => {
+    const gs = (g.gate_status || '').toUpperCase();
+    if (gs === 'CRITICAL') return true;
+    try {
+      const c = typeof g.content === 'string' ? JSON.parse(g.content) : g.content;
+      return (c?.severity || '').toUpperCase() === 'CRITICAL';
+    } catch { return false; }
+  });
+});
+
+// Is analysis currently running?
+const analysisRunning = computed(() => {
+  if (analyzing.value) return true;
+  const tasks = workbenchData.value?.ai_tasks || [];
+  return tasks.some((t: any) =>
+    t.stage === 'analyze' && ['PENDING', 'RUNNING'].includes(t.status),
+  );
+});
+
+// ── Assets / Story state ──
+const assetLayer = ref<'story' | 'test_point' | 'scenario' | 'case'>('story');
+const selectedStoryId = ref<number | null>(null);
+const storyGenRunning = ref(false);
+const storyReviewRunning = ref(false);
+
+// Story assets from workbench
+const storyAssets = computed(() => {
+  return (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === 'story');
+});
+
+// Selected story detail
+const selectedStory = computed(() => {
+  if (!selectedStoryId.value) return null;
+  return storyAssets.value.find((s: any) => s.id === selectedStoryId.value) || null;
+});
+
+// Parse story content JSON
+function parseStoryContent(story: any): Record<string, any> {
+  if (!story?.content) return {};
+  try {
+    return typeof story.content === 'string' ? JSON.parse(story.content) : story.content;
+  } catch { return {}; }
+}
+
+// Computed: story gen running
+const storyGenActive = computed(() => {
+  if (storyGenRunning.value) return true;
+  const tasks = workbenchData.value?.ai_tasks || [];
+  return tasks.some((t: any) =>
+    t.stage === 'stories' && ['PENDING', 'RUNNING'].includes(t.status),
+  );
+});
+
+// Computed: story review running
+const storyReviewActive = computed(() => {
+  if (storyReviewRunning.value) return true;
+  const tasks = workbenchData.value?.ai_tasks || [];
+  return tasks.some((t: any) =>
+    t.stage === 'story_review' && ['PENDING', 'RUNNING'].includes(t.status),
+  );
+});
+
+// ── Test Point / Scenario / Case state ──
+const selectedTpId = ref<number | null>(null);
+const selectedScId = ref<number | null>(null);
+const selectedCaseId = ref<number | null>(null);
+const tpGenRunning = ref(false);
+const tpReviewRunning = ref(false);
+const scGenRunning = ref(false);
+const scReviewRunning = ref(false);
+const caseGenRunning = ref(false);
+const caseReviewRunning = ref(false);
+
+const testPointAssets = computed(() =>
+  (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === 'test_point'),
+);
+const scenarioAssets = computed(() =>
+  (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === 'scenario'),
+);
+const caseAssets = computed(() =>
+  (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === 'case'),
+);
+
+// Build test point tree (parent_id → children)
+const testPointTree = computed(() => {
+  const items = testPointAssets.value.map((tp: any) => ({
+    ...tp, children: [] as any[],
+  }));
+  const byId = new Map<number, any>();
+  const roots: any[] = [];
+  for (const tp of items) { byId.set(tp.id, tp); }
+  for (const tp of items) {
+    if (tp.parent_id && byId.has(tp.parent_id)) {
+      byId.get(tp.parent_id)!.children.push(tp);
+    } else { roots.push(tp); }
+  }
+  return roots;
+});
+
+// Scenario groups by test point
+const scenarioGroups = computed(() => {
+  const map = new Map<number, any[]>();
+  for (const sc of scenarioAssets.value) {
+    const tpId = sc.parent_id || 0;
+    if (!map.has(tpId)) map.set(tpId, []);
+    map.get(tpId)!.push(sc);
+  }
+  return map;
+});
+
+// Running state helpers
+function makeLayerActive(stage: string, refVal: boolean): boolean {
+  if (refVal) return true;
+  const tasks = workbenchData.value?.ai_tasks || [];
+  return tasks.some((t: any) => t.stage === stage && ['PENDING', 'RUNNING'].includes(t.status));
+}
+const tpGenActive = computed(() => makeLayerActive('test_points', tpGenRunning.value));
+const tpReviewActive = computed(() => makeLayerActive('test_point_review', tpReviewRunning.value));
+const scGenActive = computed(() => makeLayerActive('scenarios', scGenRunning.value));
+const scReviewActive = computed(() => makeLayerActive('scenario_review', scReviewRunning.value));
+const caseGenActive = computed(() => makeLayerActive('cases', caseGenRunning.value));
+const caseReviewActive = computed(() => makeLayerActive('case_review', caseReviewRunning.value));
+
+// Element display labels
+const ELEMENT_LABELS: Record<string, string> = {
+  business_goal: '业务目标',
+  roles: '角色',
+  entities: '业务实体',
+  flows: '关键流程',
+  rules: '业务规则',
+  states: '状态',
+  inputs_outputs: '输入输出',
+  exceptions: '异常场景',
+  permissions: '权限',
+  dependencies: '外部依赖',
+  risks: '风险',
+};
+
+const SEVERITY_TONES: Record<string, 'red' | 'orange' | 'yellow' | 'blue'> = {
+  CRITICAL: 'red', HIGH: 'orange', MEDIUM: 'yellow', LOW: 'blue',
+};
 
 const filteredReqs = computed(() => {
   let list = requirements.value;
@@ -93,6 +273,7 @@ async function loadWorkbench(reqId: number) {
 }
 
 function selectReq(reqId: number) {
+  stopPolling();
   selectedReqId.value = reqId;
   activeTab.value = 'overview';
   loadWorkbench(reqId);
@@ -118,6 +299,304 @@ async function createRequirement() {
   } catch (e: any) { emit('showToast', e.message || '创建失败'); }
 }
 
+// ── AI Analysis ──
+async function triggerAnalysis() {
+  if (!selectedReqId.value || analysisRunning.value) return;
+  analyzing.value = true;
+  try {
+    const res = await post<{ task_id: number; status: string }>(`/req/${selectedReqId.value}/analyze`, {});
+    analysisTaskId.value = res.task_id;
+    emit('showToast', 'AI 分析已启动');
+    startPolling();
+  } catch (e: any) {
+    analyzing.value = false;
+    emit('showToast', e.message || '启动分析失败');
+  }
+}
+
+function startPolling() {
+  if (pollingTimer) clearInterval(pollingTimer);
+  pollingTimer = setInterval(async () => {
+    if (!selectedReqId.value) { stopPolling(); return; }
+    await loadWorkbench(selectedReqId.value);
+    if (!analysisRunning.value) {
+      stopPolling();
+      emit('showToast', 'AI 分析完成');
+    }
+  }, 2000);
+}
+
+function stopPolling() {
+  analyzing.value = false;
+  if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+}
+
+const analysisTaskId = ref<number | null>(null);
+
+// Gap actions
+async function confirmGap(gapId: number) {
+  try {
+    await put(`/requirements/${selectedReqId.value}/assets/${gapId}`, {
+      status: 'confirmed',
+    });
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '缺口已确认');
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+async function ignoreGap(gapId: number) {
+  try {
+    await put(`/requirements/${selectedReqId.value}/assets/${gapId}`, {
+      status: 'ignored',
+    });
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '缺口已忽略');
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+// ── Story Generation & Review ──
+async function triggerStoryGen() {
+  if (!selectedReqId.value || storyGenActive.value) return;
+  storyGenRunning.value = true;
+  try {
+    await post(`/req/${selectedReqId.value}/stories/generate`, {});
+    emit('showToast', 'Story 生成已启动');
+    startStoryPolling('generate');
+  } catch (e: any) {
+    storyGenRunning.value = false;
+    emit('showToast', e.message || '启动失败');
+  }
+}
+
+async function triggerStoryReview() {
+  if (!selectedReqId.value || storyReviewActive.value) return;
+  storyReviewRunning.value = true;
+  try {
+    await post(`/req/${selectedReqId.value}/stories/review`, {});
+    emit('showToast', 'Story 评审已启动');
+    startStoryPolling('review');
+  } catch (e: any) {
+    storyReviewRunning.value = false;
+    emit('showToast', e.message || '评审启动失败');
+  }
+}
+
+function startStoryPolling(mode: 'generate' | 'review') {
+  const timer = setInterval(async () => {
+    if (!selectedReqId.value) { clearInterval(timer); return; }
+    await loadWorkbench(selectedReqId.value);
+    if (mode === 'generate' && !storyGenActive.value) {
+      clearInterval(timer);
+      storyGenRunning.value = false;
+      emit('showToast', 'Story 生成完成');
+    }
+    if (mode === 'review' && !storyReviewActive.value) {
+      clearInterval(timer);
+      storyReviewRunning.value = false;
+      emit('showToast', 'Story 评审完成');
+    }
+  }, 2000);
+}
+
+function selectStory(story: any) {
+  selectedStoryId.value = story.id;
+}
+
+// Story actions
+async function confirmStory(storyId: number) {
+  try {
+    await put(`/requirements/${selectedReqId.value}/assets/${storyId}`, { status: 'confirmed' });
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', 'Story 已确认');
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+async function ignoreStory(storyId: number) {
+  try {
+    await put(`/requirements/${selectedReqId.value}/assets/${storyId}`, { status: 'ignored' });
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', 'Story 已忽略');
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+// ── Asset helpers ──
+const currentLayerAssets = computed(() => {
+  return (workbenchData.value?.assets || []).filter((a: any) => a.asset_type === assetLayer.value);
+});
+
+// Generic layer trigger
+async function triggerLayerGen(endpoint: string, refVal: any, label: string) {
+  if (!selectedReqId.value) return;
+  refVal.value = true;
+  try {
+    await post(`/req/${selectedReqId.value}/${endpoint}`, {});
+    emit('showToast', `${label}已启动`);
+    pollLayer(endpoint, refVal, label);
+  } catch (e: any) { refVal.value = false; emit('showToast', e.message || '启动失败'); }
+}
+
+function pollLayer(endpoint: string, refVal: any, _label: string) {
+  const timer = setInterval(async () => {
+    if (!selectedReqId.value) { clearInterval(timer); return; }
+    await loadWorkbench(selectedReqId.value);
+    // Check if any running task still exists for this stage
+    const stageMap: Record<string, string> = {
+      'test-points/generate': 'test_points',
+      'test-points/review': 'test_point_review',
+      'test-scenarios/generate': 'scenarios',
+      'test-scenarios/review': 'scenario_review',
+      'cases/generate': 'cases',
+      'cases/review': 'case_review',
+    };
+    const stage = stageMap[endpoint] || '';
+    const tasks = workbenchData.value?.ai_tasks || [];
+    const running = tasks.some((t: any) => t.stage === stage && ['PENDING', 'RUNNING'].includes(t.status));
+    if (!running) { clearInterval(timer); refVal.value = false; emit('showToast', '任务完成'); }
+  }, 2000);
+}
+
+// Test point helpers
+function parseTpContent(tp: any): Record<string, any> {
+  if (!tp?.content) return {};
+  try { return typeof tp.content === 'string' ? JSON.parse(tp.content) : tp.content; } catch { return {}; }
+}
+
+function categoryLabel(cat: string): string {
+  const map: Record<string, string> = {
+    Functional: '功能', Boundary: '边界', Exception: '异常', State: '状态',
+    Permission: '权限', Security: '安全', Data: '数据', Concurrency: '并发',
+    Performance: '性能', Compatibility: '兼容', Dependency: '依赖',
+  };
+  return map[cat] || cat;
+}
+
+function statusLabel(s: string): string {
+  const map: Record<string, string> = { generated: '已生成', confirmed: '已确认', ignored: '已忽略', pending: '待处理' };
+  return map[s] || s;
+}
+function statusClass(s: string): string {
+  return s === 'confirmed' ? 'text-green' : s === 'ignored' ? 'text-muted' : '';
+}
+function assetTypeTone(t: string): 'blue' | 'gray' | 'green' | 'orange' | 'purple' | 'red' | 'yellow' {
+  const map: Record<string, 'blue' | 'gray' | 'green' | 'orange' | 'purple' | 'red' | 'yellow'> = { story: 'blue', test_point: 'purple', scenario: 'orange', case: 'green' };
+  return map[t] || 'yellow';
+}
+function dimBarClass(score: number): string {
+  if (score >= 80) return 'dim-pass';
+  if (score >= 60) return 'dim-warn';
+  return 'dim-fail';
+}
+
+// ── Execution / Defect state ──
+const showBindingInput = ref(false);
+const bindUid = ref('');
+const executing = ref(false);
+const executionResults = ref<any[]>([]);
+const selectedExecCases = ref<Set<string>>(new Set());
+const showDefectModal = ref(false);
+const showNewDefectModal = ref(false);
+const expandedDefectId = ref<number | null>(null);
+const defectForm = ref({
+  title: '', description: '', steps: '', severity: 'P3', priority: 'P3',
+  case_uid: '', module_id: 0,
+});
+
+// Bound cases from workbench
+const boundCases = computed(() => workbenchData.value?.bindings || []);
+
+async function addBinding() {
+  if (!bindUid.value.trim() || !selectedReqId.value) return;
+  try {
+    await post(`/req/${selectedReqId.value}/bindings`, {
+      generated_case_id: 0,
+      uid: bindUid.value.trim(),
+      project_id: projectId.value,
+      branch_id: branchId.value,
+    });
+    bindUid.value = '';
+    showBindingInput.value = false;
+    await loadWorkbench(selectedReqId.value);
+    emit('showToast', '绑定成功');
+  } catch (e: any) { emit('showToast', e.message || '绑定失败'); }
+}
+
+async function removeBinding(bindingId: number) {
+  try {
+    await del(`/req/${selectedReqId.value}/bindings/${bindingId}`);
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '绑定已取消');
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+async function executeCases() {
+  if (!selectedReqId.value || executing.value) return;
+  const uids = boundCases.value.map((b: any) => b.uid);
+  if (uids.length === 0) { emit('showToast', '请先绑定用例'); return; }
+  executing.value = true;
+  try {
+    const res = await post<any>(`/req/${selectedReqId.value}/execute`, { uids, concurrency: 2 });
+    emit('showToast', `执行已启动 (${res.execution_id})`);
+    // Poll for results
+    pollExecution(res.execution_id);
+  } catch (e: any) { executing.value = false; emit('showToast', e.message || '执行失败'); }
+}
+
+function pollExecution(execId: string) {
+  const timer = setInterval(async () => {
+    try {
+      const data = await get<any>(`/executions/${execId}/cases?size=200`);
+      executionResults.value = data.items || [];
+      const allDone = executionResults.value.every((c: any) => !['waiting', 'running'].includes(c.status));
+      if (allDone) { clearInterval(timer); executing.value = false; emit('showToast', '执行完成'); }
+    } catch { clearInterval(timer); executing.value = false; }
+  }, 2000);
+}
+
+function openDefectFromExec(caseUid: string, caseName: string) {
+  defectForm.value = {
+    title: `[自动] ${caseName} 执行失败`,
+    description: `用例 ${caseUid} 执行失败，需进一步排查`,
+    steps: '', severity: 'P2', priority: 'P2',
+    case_uid: caseUid, module_id: 0,
+  };
+  showDefectModal.value = true;
+}
+
+async function submitDefect() {
+  if (!defectForm.value.title.trim()) return;
+  try {
+    await post('/defects', {
+      ...defectForm.value,
+      project_id: projectId.value,
+      branch_id: branchId.value,
+      requirement_id: selectedReqId.value,
+    });
+    showDefectModal.value = false;
+    showNewDefectModal.value = false;
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '缺陷创建成功');
+  } catch (e: any) { emit('showToast', e.message || '创建失败'); }
+}
+
+function openNewDefect() {
+  defectForm.value = {
+    title: '', description: '', steps: '', severity: 'P3', priority: 'P3',
+    case_uid: '', module_id: 0,
+  };
+  showNewDefectModal.value = true;
+}
+
+async function loadDefectDetail(defectId: number) {
+  try {
+    const detail = await get<any>(`/defects/${defectId}/detail`);
+    // Store in local map
+    defectDetails.value.set(defectId, detail);
+    expandedDefectId.value = defectId;
+  } catch { }
+}
+
+const defectDetails = ref<Map<number, any>>(new Map());
+
 // ── Branch / URL handling ──
 watch(activeBranch, () => {
   loadRequirements();
@@ -130,6 +609,10 @@ onMounted(async () => {
   await loadRequirements();
   const qReqId = Number(route.query.req_id);
   if (qReqId) selectReq(qReqId);
+});
+
+onUnmounted(() => {
+  if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
 });
 </script>
 
@@ -196,13 +679,29 @@ onMounted(async () => {
 
         <!-- Overview Tab -->
         <div v-if="activeTab === 'overview'" class="tab-content">
+          <!-- BLOCKED banner -->
+          <div v-if="hasCriticalGaps" class="blocked-banner">
+            ⛔ 存在严重信息缺口，需求分析未通过
+          </div>
+
           <div class="overview-grid">
             <div class="ov-card">
-              <h4>{{ workbenchData.requirement.title }}</h4>
+              <div class="ov-card-header">
+                <h4>{{ workbenchData.requirement.title }}</h4>
+                <BaseButton
+                  size="sm"
+                  @click="triggerAnalysis"
+                  :disabled="analysisRunning"
+                  :loading="analysisRunning"
+                >
+                  {{ analysisRunning ? '分析中...' : 'AI 分析' }}
+                </BaseButton>
+              </div>
               <div class="ov-meta">
                 <span>优先级: {{ workbenchData.requirement.priority }}</span>
                 <span>来源: {{ workbenchData.requirement.source_type === 'lark_link' ? '飞书' : workbenchData.requirement.source_type === 'file' ? '文件' : '文本' }}</span>
                 <span>状态: <BaseTag :tone="STATUS_META[workbenchData.requirement.status]?.tone || 'gray'" size="sm">{{ STATUS_META[workbenchData.requirement.status]?.label || workbenchData.requirement.status }}</BaseTag></span>
+                <span v-if="hasCriticalGaps"><BaseTag tone="red" size="sm">BLOCKED</BaseTag></span>
               </div>
               <div v-if="workbenchData.requirement.content" class="ov-content">
                 {{ (workbenchData.requirement.content || '').substring(0, 500) }}{{ (workbenchData.requirement.content || '').length > 500 ? '...' : '' }}
@@ -233,19 +732,281 @@ onMounted(async () => {
               <div class="text-lg font-bold">{{ workbenchData.defect_count }} 个</div>
               <div class="text-sm" style="color:var(--text-tertiary);">{{ workbenchData.open_defect_count }} 个未关闭</div>
             </div>
+
+            <!-- Analysis Result Card (full width, 11 business elements) -->
+            <div v-if="analysisAsset" class="ov-card ov-card-full">
+              <h4>AI 分析结果 <span class="text-sm font-normal" style="color:var(--text-tertiary);">评分 {{ analysisScore }}/100</span></h4>
+              <div v-if="analysisReason" class="analysis-reason">{{ analysisReason }}</div>
+              <div v-if="analysisElements" class="elements-grid">
+                <div v-for="(val, key) in analysisElements" :key="key" class="element-chip"
+                  :class="{ 'element-empty': !val || (Array.isArray(val) && val.length === 0) }">
+                  <span class="element-key">{{ ELEMENT_LABELS[key] || key }}</span>
+                  <span class="element-val" v-if="val && !(Array.isArray(val) && val.length === 0)">
+                    {{ Array.isArray(val) ? val.join(', ') : val }}
+                  </span>
+                  <span class="element-val element-na" v-else>—</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Information Gaps Card (full width) -->
+            <div v-if="gapAssets.length > 0" class="ov-card ov-card-full">
+              <h4>信息缺口 ({{ gapAssets.length }})</h4>
+              <div class="gaps-list">
+                <div v-for="gap in gapAssets" :key="gap.id" class="gap-item"
+                  :class="{ 'gap-confirmed': gap.status === 'confirmed', 'gap-ignored': gap.status === 'ignored' }">
+                  <div class="gap-header">
+                    <BaseTag :tone="SEVERITY_TONES[(gap.gate_status || '').toUpperCase()] || 'yellow'" size="sm">{{ gap.gate_status || gap.title }}</BaseTag>
+                    <span class="gap-question">{{ gap.description }}</span>
+                  </div>
+                  <div class="gap-actions" v-if="gap.status === 'pending'">
+                    <button class="gap-btn confirm" @click="confirmGap(gap.id)">确认</button>
+                    <button class="gap-btn ignore" @click="ignoreGap(gap.id)">忽略</button>
+                  </div>
+                  <div v-else class="gap-status-label">
+                    {{ gap.status === 'confirmed' ? '已确认' : '已忽略' }}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <!-- Assets Tab -->
-        <div v-if="activeTab === 'assets'" class="tab-content">
-          <div class="assets-view">
-            <p class="text-sm" style="color:var(--text-secondary);">分层测试资产 · {{ workbenchData.assets?.length || 0 }} 条</p>
-            <div v-if="!workbenchData.assets?.length" class="empty-state">暂无资产，请先触发 AI 分析</div>
-            <div v-for="a in workbenchData.assets" :key="a.id" class="asset-row">
-              <BaseTag :tone="a.asset_type === 'story' ? 'blue' : a.asset_type === 'test_point' ? 'purple' : a.asset_type === 'case' ? 'green' : 'yellow'" size="sm">{{ a.asset_type }}</BaseTag>
+        <div v-if="activeTab === 'assets'" class="tab-content assets-tab">
+          <!-- Layer selector + actions -->
+          <div class="layer-bar">
+            <div class="layer-tabs">
+              <button class="layer-tab" :class="{ active: assetLayer === 'story' }" @click="selectedStoryId = null; assetLayer = 'story'">
+                Story <span class="layer-count">{{ assetCounts.story || 0 }}</span>
+              </button>
+              <button class="layer-tab" :class="{ active: assetLayer === 'test_point' }" @click="assetLayer = 'test_point'">
+                测试点 <span class="layer-count">{{ assetCounts.test_point || 0 }}</span>
+              </button>
+              <button class="layer-tab" :class="{ active: assetLayer === 'scenario' }" @click="assetLayer = 'scenario'">
+                场景 <span class="layer-count">{{ assetCounts.scenario || 0 }}</span>
+              </button>
+              <button class="layer-tab" :class="{ active: assetLayer === 'case' }" @click="assetLayer = 'case'">
+                用例 <span class="layer-count">{{ assetCounts.case || 0 }}</span>
+              </button>
+            </div>
+            <div class="layer-actions">
+              <template v-if="assetLayer === 'story'">
+                <BaseButton size="sm" @click="triggerStoryGen" :loading="storyGenActive" :disabled="storyGenActive || storyReviewActive">
+                  {{ storyGenActive ? '生成中...' : 'AI 生成 Story' }}
+                </BaseButton>
+                <BaseButton v-if="storyAssets.length > 0" size="sm" variant="secondary" @click="triggerStoryReview" :loading="storyReviewActive" :disabled="storyGenActive || storyReviewActive">
+                  {{ storyReviewActive ? '评审中...' : 'AI 评审 Story' }}
+                </BaseButton>
+              </template>
+              <template v-else-if="assetLayer === 'test_point'">
+                <BaseButton size="sm" @click="triggerLayerGen('test-points/generate', tpGenRunning, '测试点生成')" :loading="tpGenActive" :disabled="tpGenActive || tpReviewActive">
+                  {{ tpGenActive ? '生成中...' : 'AI 生成测试点' }}
+                </BaseButton>
+                <BaseButton v-if="testPointAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('test-points/review', tpReviewRunning, '测试点评审')" :loading="tpReviewActive" :disabled="tpGenActive || tpReviewActive">
+                  {{ tpReviewActive ? '评审中...' : 'AI 评审测试点' }}
+                </BaseButton>
+              </template>
+              <template v-else-if="assetLayer === 'scenario'">
+                <BaseButton size="sm" @click="triggerLayerGen('test-scenarios/generate', scGenRunning, '场景生成')" :loading="scGenActive" :disabled="scGenActive || scReviewActive">
+                  {{ scGenActive ? '生成中...' : 'AI 生成场景' }}
+                </BaseButton>
+                <BaseButton v-if="scenarioAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('test-scenarios/review', scReviewRunning, '场景评审')" :loading="scReviewActive" :disabled="scGenActive || scReviewActive">
+                  {{ scReviewActive ? '评审中...' : 'AI 评审场景' }}
+                </BaseButton>
+              </template>
+              <template v-else-if="assetLayer === 'case'">
+                <BaseButton size="sm" @click="triggerLayerGen('cases/generate', caseGenRunning, '用例生成')" :loading="caseGenActive" :disabled="caseGenActive || caseReviewActive">
+                  {{ caseGenActive ? '生成中...' : 'AI 生成用例' }}
+                </BaseButton>
+                <BaseButton v-if="caseAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('cases/review', caseReviewRunning, '用例评审')" :loading="caseReviewActive" :disabled="caseGenActive || caseReviewActive">
+                  {{ caseReviewActive ? '评审中...' : 'AI 评审用例' }}
+                </BaseButton>
+              </template>
+            </div>
+          </div>
+
+          <!-- Story View: Left-Right Split -->
+          <div v-if="assetLayer === 'story'" class="assets-split">
+            <!-- Left: Story List -->
+            <div class="assets-list-panel">
+              <div v-if="storyAssets.length === 0" class="empty-state">暂无 Story，请点击「AI 生成 Story」开始</div>
+              <div v-for="s in storyAssets" :key="s.id"
+                class="asset-list-item" :class="{ selected: selectedStoryId === s.id }"
+                @click="selectStory(s)">
+                <div class="asset-item-header">
+                  <span class="asset-item-title">{{ s.title }}</span>
+                  <BaseTag v-if="s.gate_status" :tone="s.gate_status === 'PASS' ? 'green' : s.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">{{ s.gate_status }}</BaseTag>
+                </div>
+                <div class="asset-item-meta">
+                  <span v-if="s.score">评分 {{ s.score }}</span>
+                  <span :class="statusClass(s.status)">{{ statusLabel(s.status) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: Story Detail -->
+            <div class="assets-detail-panel">
+              <template v-if="selectedStory">
+                <h4 class="detail-title">{{ selectedStory.title }}</h4>
+                <div class="detail-meta">
+                  <span>评分: <strong>{{ selectedStory.score || '—' }}</strong></span>
+                  <BaseTag v-if="selectedStory.gate_status" :tone="selectedStory.gate_status === 'PASS' ? 'green' : selectedStory.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">
+                    {{ selectedStory.gate_status }}
+                  </BaseTag>
+                  <span>{{ statusLabel(selectedStory.status) }}</span>
+                </div>
+                <div v-if="selectedStory.description" class="detail-section">
+                  <h5>描述</h5>
+                  <p>{{ selectedStory.description }}</p>
+                </div>
+                <div v-if="parseStoryContent(selectedStory).acceptance_criteria?.length" class="detail-section">
+                  <h5>验收标准</h5>
+                  <ul class="ac-list">
+                    <li v-for="(ac, i) in parseStoryContent(selectedStory).acceptance_criteria" :key="i">{{ ac }}</li>
+                  </ul>
+                </div>
+                <!-- 7-dim scores -->
+                <div v-if="Object.keys(parseStoryContent(selectedStory).dimension_scores || {}).length" class="detail-section">
+                  <h5>7 维评审明细</h5>
+                  <div class="dim-scores">
+                    <div v-for="(score, dim) in parseStoryContent(selectedStory).dimension_scores" :key="dim" class="dim-row">
+                      <span class="dim-name">{{ dim }}</span>
+                      <div class="dim-bar"><div class="dim-fill" :style="{ width: score + '%' }" :class="dimBarClass(score)"></div></div>
+                      <span class="dim-val">{{ score }}</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- Issues -->
+                <div v-if="parseStoryContent(selectedStory).issues?.length" class="detail-section">
+                  <h5>问题</h5>
+                  <div v-for="(iss, i) in parseStoryContent(selectedStory).issues" :key="i" class="issue-item">
+                    <strong>{{ iss.title }}</strong>: {{ iss.detail }}
+                  </div>
+                </div>
+                <!-- Actions -->
+                <div class="detail-actions">
+                  <BaseButton v-if="selectedStory.status !== 'confirmed'" size="sm" @click="confirmStory(selectedStory.id)">确认</BaseButton>
+                  <BaseButton v-if="selectedStory.status !== 'ignored'" size="sm" variant="warning" @click="ignoreStory(selectedStory.id)">忽略</BaseButton>
+                </div>
+              </template>
+              <div v-else class="empty-state">← 选择一条 Story 查看详情</div>
+            </div>
+          </div>
+
+          <!-- Test Point View: Tree -->
+          <div v-else-if="assetLayer === 'test_point'" class="assets-split">
+            <div class="assets-list-panel">
+              <div v-if="testPointTree.length === 0" class="empty-state">暂无测试点，请点击「AI 生成测试点」</div>
+              <div v-for="tp in testPointTree" :key="tp.id">
+                <div class="asset-list-item" :class="{ selected: selectedTpId === tp.id }" @click="selectedTpId = tp.id">
+                  <div class="asset-item-header">
+                    <BaseTag :tone="tonemap('purple')" size="sm">{{ categoryLabel(parseTpContent(tp).category) }}</BaseTag>
+                    <span class="asset-item-title">{{ tp.title }}</span>
+                    <BaseTag v-if="tp.gate_status" :tone="tp.gate_status === 'PASS' ? 'green' : tp.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">{{ tp.gate_status }}</BaseTag>
+                  </div>
+                  <div class="asset-item-meta">
+                    <span v-if="tp.score">评分 {{ tp.score }}</span>
+                  </div>
+                </div>
+                <!-- Children -->
+                <div v-for="child in tp.children" :key="child.id" class="asset-list-item tree-child" :class="{ selected: selectedTpId === child.id }" @click="selectedTpId = child.id">
+                  <div class="asset-item-header">
+                    <BaseTag :tone="tonemap('purple')" size="sm">{{ categoryLabel(parseTpContent(child).category) }}</BaseTag>
+                    <span class="asset-item-title">{{ child.title }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="assets-detail-panel">
+              <div v-if="!selectedTpId" class="empty-state">← 选择测试点查看详情</div>
+              <div v-else v-for="tp in testPointAssets.filter(a => a.id === selectedTpId)" :key="tp.id">
+                <h4 class="detail-title">{{ tp.title }}</h4>
+                <div class="detail-meta">
+                  <BaseTag :tone="tonemap('purple')" size="sm">{{ categoryLabel(parseTpContent(tp).category) }}</BaseTag>
+                  <span>评分: <strong>{{ tp.score || '—' }}</strong></span>
+                  <BaseTag v-if="tp.gate_status" :tone="tp.gate_status === 'PASS' ? 'green' : 'red'" size="sm">{{ tp.gate_status }}</BaseTag>
+                </div>
+                <div v-if="tp.description" class="detail-section"><h5>描述</h5><p>{{ tp.description }}</p></div>
+                <div v-if="Object.keys(parseTpContent(tp).dimension_scores || {}).length" class="detail-section">
+                  <h5>11 维评审明细</h5>
+                  <div class="dim-scores">
+                    <div v-for="(score, dim) in parseTpContent(tp).dimension_scores" :key="dim" class="dim-row">
+                      <span class="dim-name">{{ dim }}</span><div class="dim-bar"><div class="dim-fill" :style="{ width: score + '%' }" :class="dimBarClass(score)"></div></div><span class="dim-val">{{ score }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scenario View -->
+          <div v-else-if="assetLayer === 'scenario'" class="assets-split">
+            <div class="assets-list-panel">
+              <div v-if="scenarioAssets.length === 0" class="empty-state">暂无场景，请点击「AI 生成场景」</div>
+              <div v-for="sc in scenarioAssets" :key="sc.id" class="asset-list-item" :class="{ selected: selectedScId === sc.id }" @click="selectedScId = sc.id">
+                <div class="asset-item-header">
+                  <BaseTag :tone="tonemap('orange')" size="sm">{{ parseTpContent(sc).coverage_dim || 'Normal' }}</BaseTag>
+                  <span class="asset-item-title">{{ sc.title }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="assets-detail-panel">
+              <div v-if="!selectedScId" class="empty-state">← 选择场景查看详情</div>
+              <div v-else v-for="sc in scenarioAssets.filter(a => a.id === selectedScId)" :key="sc.id">
+                <h4 class="detail-title">{{ sc.title }}</h4>
+                <div class="detail-meta">
+                  <BaseTag :tone="tonemap('orange')" size="sm">{{ parseTpContent(sc).coverage_dim || 'Normal' }}</BaseTag>
+                  <span v-if="sc.score">评分: <strong>{{ sc.score }}</strong></span>
+                  <BaseTag v-if="sc.gate_status" :tone="sc.gate_status === 'PASS' ? 'green' : 'red'" size="sm">{{ sc.gate_status }}</BaseTag>
+                </div>
+                <div v-if="sc.description" class="detail-section"><h5>描述</h5><p>{{ sc.description }}</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Case View -->
+          <div v-else-if="assetLayer === 'case'" class="assets-split">
+            <div class="assets-list-panel">
+              <div v-if="caseAssets.length === 0" class="empty-state">暂无用例，请点击「AI 生成用例」</div>
+              <div v-for="c in caseAssets" :key="c.id" class="asset-list-item" :class="{ selected: selectedCaseId === c.id }" @click="selectedCaseId = c.id">
+                <div class="asset-item-header">
+                  <span class="asset-item-title">{{ c.title }}</span>
+                  <BaseTag v-if="c.gate_status" :tone="c.gate_status === 'PASS' ? 'green' : c.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">{{ c.gate_status }}</BaseTag>
+                </div>
+                <div class="asset-item-meta"><span v-if="c.score">评分 {{ c.score }}</span></div>
+              </div>
+            </div>
+            <div class="assets-detail-panel">
+              <div v-if="!selectedCaseId" class="empty-state">← 选择用例查看详情</div>
+              <div v-else v-for="c in caseAssets.filter(a => a.id === selectedCaseId)" :key="c.id">
+                <h4 class="detail-title">{{ c.title }}</h4>
+                <div class="detail-meta">
+                  <span>评分: <strong>{{ c.score || '—' }}</strong></span>
+                  <BaseTag v-if="c.gate_status" :tone="c.gate_status === 'PASS' ? 'green' : c.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">{{ c.gate_status }}</BaseTag>
+                </div>
+                <div v-if="c.description" class="detail-section"><h5>描述</h5><p>{{ c.description }}</p></div>
+                <div v-if="parseTpContent(c).preconditions" class="detail-section"><h5>前置条件</h5><p>{{ parseTpContent(c).preconditions }}</p></div>
+                <div v-if="parseTpContent(c).steps" class="detail-section"><h5>步骤</h5><pre class="case-pre">{{ parseTpContent(c).steps }}</pre></div>
+                <div v-if="parseTpContent(c).expected" class="detail-section"><h5>预期结果</h5><pre class="case-pre">{{ parseTpContent(c).expected }}</pre></div>
+                <div v-if="Object.keys(parseTpContent(c).checks || {}).length" class="detail-section">
+                  <h5>9 维检查</h5>
+                  <div class="dim-scores">
+                    <div v-for="(score, dim) in parseTpContent(c).checks" :key="dim" class="dim-row">
+                      <span class="dim-name">{{ dim }}</span><div class="dim-bar"><div class="dim-fill" :style="{ width: score + '%' }" :class="dimBarClass(score)"></div></div><span class="dim-val">{{ score }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Flat list for unknown layers -->
+          <div v-else class="assets-flat">
+            <div v-for="a in currentLayerAssets" :key="a.id" class="asset-row">
+              <BaseTag :tone="assetTypeTone(a.asset_type)" size="sm">{{ a.asset_type }}</BaseTag>
               <span class="flex-1 mx-2">{{ a.title }}</span>
               <span v-if="a.score" class="text-xs">{{ a.score }}分</span>
-              <BaseTag v-if="a.gate_status" :tone="a.gate_status === 'PASS' ? 'green' : a.gate_status === 'WARNING' ? 'yellow' : 'red'" size="sm">{{ a.gate_status }}</BaseTag>
             </div>
           </div>
         </div>
@@ -376,12 +1137,74 @@ onMounted(async () => {
   border: 2px solid var(--outline);
 }
 .ov-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.ov-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; flex-wrap: wrap; }
+.ov-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.ov-card-header h4 { margin-bottom: 0; flex: 1; }
+.ov-card-full { grid-column: 1 / -1; }
+.ov-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
 .ov-content { font-size: 12px; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; }
 .progress-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
 .exec-stats { display: flex; gap: 12px; font-size: 18px; font-weight: 700; }
 .exec-stats .pass { color: #22c55e; }
 .exec-stats .fail { color: #ef4444; }
+
+.blocked-banner {
+  padding: 8px 16px; margin-bottom: 12px;
+  border-radius: var(--radius-md); background: #fef2f2;
+  border: 2px solid #ef4444; color: #b91c1c;
+  font-size: 13px; font-weight: 600;
+}
+
+.spinner-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor; animation: spin 1s ease-in-out infinite;
+  vertical-align: middle;
+}
+@keyframes spin {
+  0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; }
+}
+.mr-1 { margin-right: 4px; }
+
+.analysis-reason {
+  font-size: 12px; color: var(--text-secondary); margin-bottom: 10px;
+  padding: 6px 10px; border-radius: var(--radius-sm); background: var(--bg-soft);
+}
+
+.elements-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px;
+}
+
+.element-chip {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-soft); border: 1px solid var(--border);
+  font-size: 12px;
+}
+.element-chip.element-empty { opacity: 0.55; }
+.element-key { font-weight: 600; color: var(--text-primary); }
+.element-val { color: var(--text-secondary); line-height: 1.4; }
+.element-na { font-style: italic; color: var(--text-tertiary); }
+
+.gaps-list { display: flex; flex-direction: column; gap: 8px; }
+.gap-item {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-soft); border: 1px solid var(--border);
+  font-size: 12px;
+}
+.gap-item.gap-confirmed { border-left: 3px solid #22c55e; opacity: 0.7; }
+.gap-item.gap-ignored { border-left: 3px solid #9ca3af; opacity: 0.55; text-decoration: line-through; }
+.gap-header { display: flex; align-items: center; gap: 8px; flex: 1; }
+.gap-question { color: var(--text-secondary); }
+.gap-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.gap-btn {
+  padding: 3px 10px; border-radius: 99px; font-size: 11px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card-bg);
+}
+.gap-btn.confirm { color: #16a34a; border-color: #16a34a; }
+.gap-btn.confirm:hover { background: #f0fdf4; }
+.gap-btn.ignore { color: #9ca3af; border-color: #9ca3af; }
+.gap-btn.ignore:hover { background: #f9fafb; }
+.gap-status-label { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
 
 .assets-view, .execution-view, .defects-view { display: flex; flex-direction: column; gap: 8px; }
 .asset-row, .defect-row {
@@ -397,4 +1220,71 @@ onMounted(async () => {
 .modal-panel h3 { font-family: var(--font-heading); font-size: 15px; font-weight: 600; margin-bottom: 12px; }
 .radio-label { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
 .btn-cancel { padding: 7px 16px; border-radius: var(--radius-sm); font-size: 12px; background: var(--bg-soft); border: 2px solid var(--outline); color: var(--text-secondary); cursor: pointer; }
+
+/* ── Assets Tab ── */
+.assets-tab { display: flex; flex-direction: column; }
+
+.layer-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+.layer-tabs { display: flex; gap: 4px; }
+.layer-tab {
+  padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: 500; cursor: pointer;
+  border: 1px solid var(--outline); background: var(--input-bg); color: var(--text-secondary);
+}
+.layer-tab.active { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+.layer-count { font-size: 10px; opacity: 0.8; }
+.layer-actions { display: flex; gap: 6px; }
+.layer-placeholder-text { font-size: 12px; color: var(--text-tertiary); }
+
+.assets-split { flex: 1; display: flex; gap: 12px; min-height: 0; overflow: hidden; }
+
+.assets-list-panel {
+  width: 280px; min-width: 220px; flex-shrink: 0;
+  overflow-y: auto; border-right: 1px solid var(--border);
+  padding-right: 8px;
+}
+.assets-detail-panel {
+  flex: 1; overflow-y: auto; background: var(--card-bg-2);
+  border-radius: var(--radius-md); border: 1px solid var(--outline);
+  padding: 16px;
+}
+.assets-flat { overflow-y: auto; flex: 1; }
+
+.asset-list-item {
+  padding: 10px 12px; cursor: pointer; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); margin-bottom: 6px;
+  transition: background-color 0.15s;
+}
+.asset-list-item:hover { background-color: var(--hover-bg); }
+.asset-list-item.selected { background-color: var(--accent-bg); border-left: 3px solid var(--color-primary); }
+.asset-item-header { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.asset-item-title { font-size: 13px; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-item-meta { display: flex; gap: 8px; font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+
+.detail-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+.detail-meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
+.detail-section { margin-bottom: 16px; }
+.detail-section h5 { font-size: 12px; font-weight: 600; margin-bottom: 6px; color: var(--text-primary); }
+.detail-section p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.ac-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-secondary); }
+.ac-list li { margin-bottom: 4px; }
+
+.dim-scores { display: flex; flex-direction: column; gap: 6px; }
+.dim-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.dim-name { width: 100px; flex-shrink: 0; color: var(--text-secondary); text-align: right; }
+.dim-bar { flex: 1; height: 6px; background: var(--bg-soft); border-radius: 3px; overflow: hidden; }
+.dim-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.dim-pass { background: #22c55e; }
+.dim-warn { background: #f59e0b; }
+.dim-fail { background: #ef4444; }
+.dim-val { width: 28px; font-weight: 600; color: var(--text-primary); text-align: right; }
+
+.issue-item { font-size: 11px; padding: 4px 8px; margin-bottom: 4px; background: #fef2f2; border-radius: 4px; color: #b91c1c; }
+
+.detail-actions { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+.tree-child { margin-left: 16px; border-left: 2px solid var(--outline); padding-left: 12px; }
+.case-pre { font-size: 11px; color: var(--text-secondary); white-space: pre-wrap; background: var(--bg-soft); padding: 8px; border-radius: var(--radius-sm); margin: 0; }
+
+.text-green { color: #16a34a; }
+.text-muted { color: var(--text-tertiary); }
 </style>

@@ -16,7 +16,7 @@ const emit = defineEmits<{
 }>();
 
 const { activeProject, getActiveProject } = useProject();
-const { activeBranch, loadBranches } = useBranch(activeProject.value?.id);
+const { activeBranch } = useBranch(activeProject.value?.id);
 const { get, post, del, postFormData } = useApi();
 const router = useRouter();
 
@@ -83,14 +83,13 @@ async function loadRequirements() {
   }
 }
 
-watch([activeProject, activeBranch], () => {
-  if (activeProject.value?.id) loadBranches(activeProject.value.id);
+// 分支加载由 Header 全局负责（useBranch 单例共享），此处只监听 activeBranch 变化加载需求列表
+watch(activeBranch, () => {
   loadRequirements();
 });
 
 onMounted(async () => {
   if (!activeProject.value?.id) await getActiveProject();
-  if (activeProject.value?.id) loadBranches(activeProject.value.id);
   loadRequirements();
 });
 

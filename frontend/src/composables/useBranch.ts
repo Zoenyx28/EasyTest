@@ -15,14 +15,16 @@ export function useBranch(projectId?: number) {
     try {
       const { get } = useApi(pid);
       branches.value = await get<BranchInfo[]>(`/projects/${pid}/branches`);
-      // Auto-select from URL or default
+      // 依据新分支列表重新选定当前分支：URL version 优先，否则默认分支。
+      // 仅在目标变化时赋值，避免无意义触发下游 watch。
       const versionParam = route.query.version;
-      if (versionParam) {
-        const found = branches.value.find(b => b.id === Number(versionParam));
-        if (found) activeBranch.value = found;
-      }
-      if (!activeBranch.value) {
-        activeBranch.value = branches.value.find(b => b.is_default) || branches.value[0] || null;
+      const target = versionParam
+        ? branches.value.find(b => b.id === Number(versionParam))
+        : branches.value.find(b => b.is_default) || branches.value[0] || null;
+      if (target && activeBranch.value?.id !== target.id) {
+        activeBranch.value = target;
+      } else if (!target) {
+        activeBranch.value = null;
       }
     } catch {
       branches.value = [];
