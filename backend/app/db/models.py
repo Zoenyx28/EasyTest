@@ -246,6 +246,8 @@ class Defect(Base):
     creator_id: Mapped[int] = mapped_column(Integer, nullable=False)
     case_uid: Mapped[str] = mapped_column(String(256), default='')
     case_name: Mapped[str] = mapped_column(String(512), default='')
+    # ADR-0016: 缺陷追溯需求
+    requirement_id: Mapped[int] = mapped_column(Integer, default=0)
     bug_type: Mapped[str] = mapped_column(String(32), default='code_error')
     deadline: Mapped[str] = mapped_column(String(32), default='')
     resolved_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -313,6 +315,12 @@ class Requirement(Base):
     branch_id: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     summary: Mapped[str] = mapped_column(Text, default='')
+
+    # ADR-0016: 来源信息嵌入（替代独立 requirement_sources 表）
+    content: Mapped[str] = mapped_column(Text, default='')
+    source_type: Mapped[str] = mapped_column(String(16), default='text')
+    source_meta: Mapped[str] = mapped_column(Text, default='')
+
     priority: Mapped[str] = mapped_column(String(16), default='P2')
     status: Mapped[str] = mapped_column(String(32), default='pending_review')
     created_by: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -683,3 +691,49 @@ class AITask(Base):
     created_by: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ══════════════════════════════════════════════════════════
+# ADR-0016 新增模型 — 统一资产表
+# ══════════════════════════════════════════════════════════
+
+
+class RequirementAsset(Base):
+    """统一分层资产表 — 替代 12 张独立分层表。
+
+    asset_type 区分层级：analysis / story / story_review / test_point /
+    test_point_review / scenario / scenario_review / case / case_review / strategy
+
+    parent_id 支持树形层级（TestPoint 树、Scenario→TestPoint 引用）。
+    story_id 支持 Story→Story 引用和 Case→Story 引用。
+    content 存储各层可变结构化数据（JSON 格式）。
+    """
+    __tablename__ = 'requirement_assets'
+    __table_args__ = (
+        Index('idx_ra_requirement_id', 'requirement_id'),
+        Index('idx_ra_asset_type', 'requirement_id', 'asset_type'),
+        Index('idx_ra_parent_id', 'parent_id'),
+        Index('idx_ra_story_id', 'story_id'),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    parent_id: Mapped[int] = mapped_column(Integer, default=0)
+    story_id: Mapped[int] = mapped_column(Integer, default=0)
+
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default='')
+
+    # JSON content — 各层可变结构化数据（评分维度/步骤/覆盖率等）
+    content: Mapped[str] = mapped_column(Text, default='')
+
+    # 评审元数据（story_review / test_point_review / scenario_review / case_review）
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    gate_status: Mapped[str] = mapped_column(String(16), default='')
+    review_comment: Mapped[str] = mapped_column(Text, default='')
+
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default='generated')
+    created_by: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

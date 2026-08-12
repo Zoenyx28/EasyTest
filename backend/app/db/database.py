@@ -64,6 +64,11 @@ async def init_db():
         "ALTER TABLE requirement_reviews ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         "ALTER TABLE stories ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         "ALTER TABLE generated_cases ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
+        # ADR-0016: Requirement source embedding + Defect traceability
+        "ALTER TABLE requirements ADD COLUMN content TEXT DEFAULT ''",
+        "ALTER TABLE requirements ADD COLUMN source_type VARCHAR(16) DEFAULT 'text'",
+        "ALTER TABLE requirements ADD COLUMN source_meta TEXT DEFAULT ''",
+        "ALTER TABLE defects ADD COLUMN requirement_id INTEGER DEFAULT 0",
         "CREATE TABLE IF NOT EXISTS project_members (id INTEGER PRIMARY KEY AUTO_INCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
     ]
 
@@ -495,6 +500,38 @@ async def init_db():
         ")",
     ]
     for sql in requirement_tables:
+        try:
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql(sql)
+        except Exception:
+            pass
+
+    # ── ADR-0016: 统一资产表 + 需求/缺陷新字段 ──
+    adr0016_tables = []
+    if dialect == 'mysql':
+        autoinc = 'AUTO_INCREMENT'
+    else:
+        autoinc = 'AUTOINCREMENT'
+    adr0016_tables.append(
+        "CREATE TABLE IF NOT EXISTS requirement_assets ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "requirement_id INTEGER NOT NULL, "
+        "asset_type VARCHAR(32) NOT NULL, "
+        "parent_id INTEGER DEFAULT 0, "
+        "story_id INTEGER DEFAULT 0, "
+        "title VARCHAR(512) NOT NULL, "
+        "description TEXT DEFAULT '', "
+        "content TEXT DEFAULT '', "
+        "score INTEGER DEFAULT 0, "
+        "gate_status VARCHAR(16) DEFAULT '', "
+        "review_comment TEXT DEFAULT '', "
+        "sort_order INTEGER DEFAULT 0, "
+        "status VARCHAR(16) DEFAULT 'generated', "
+        "created_by INTEGER DEFAULT 0, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP"
+        ")"
+    )
+    for sql in adr0016_tables:
         try:
             async with engine.begin() as conn:
                 await conn.exec_driver_sql(sql)
