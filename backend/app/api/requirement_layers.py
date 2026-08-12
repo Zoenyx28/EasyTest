@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import base64
 import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request, Query, Body
@@ -36,6 +38,26 @@ async def _guard(request: Request, req_id: int) -> tuple[dict | None, int]:
     if not await crud.is_project_member(req['project_id'], user['id']):
         return None, 403
     return {'user': user, 'req': req}, 0
+
+
+async def _collect_image_sources(sources: list[dict]) -> list[dict]:
+    """从文件类来源收集图片（mime image/*），读 base64 供视觉模型分析（#12）。"""
+    images = []
+    for s in sources:
+        if s.get('type') != 'file':
+            continue
+        mime = s.get('mime_type') or ''
+        if not mime.startswith('image/'):
+            continue
+        path = Path(s.get('filepath') or '')
+        if not path.exists():
+            continue
+        try:
+            data = base64.b64encode(path.read_bytes()).decode('ascii')
+            images.append({'data': data, 'mime_type': mime})
+        except OSError:
+            continue
+    return images
 
 
 # ── 请求模型 ──
@@ -322,7 +344,7 @@ async def list_review_audits(request: Request, req_id: int,
     # 审计记录按需求聚合：查询该需求关联的全部评审
     audits = []
     for atype in ('requirement', 'analysis', 'story', 'test_points',
-                  'scenarios', 'cases', 'strategy', 'coverage'):
+                  'scenarios', 'cases', 'strategy', 'coverage', 'ai_task'):
         if artifact_type and atype != artifact_type:
             continue
         rows = await crud.list_review_audits(atype, req_id)
@@ -425,10 +447,11 @@ async def analyze_requirement_agent(request: Request, req_id: int,
         return fail(err, '需求不存在或无权访问')
     req, user = ctx['req'], ctx['user']
     sources = await crud.list_requirement_sources(req_id)
+    images = await _collect_image_sources(sources)
     comment = (data.review_comment or '').strip()
     task, result, client, error = await _run_ai_task(
         req_id, 'analyze', user['id'],
-        lambda c: layered_agent.analyze_requirement(c, req, sources, comment),
+        lambda c: layered_agent.analyze_requirement(c, req, sources, comment, images),
         build_client=_build_llm_client,
     )
     if error:
@@ -869,3 +892,111 @@ async def generate_supplement_cases_agent(request: Request, gap_id: int,
     return ok({'cases': added, 'score': result.get('score', 0),
                'score_reason': result.get('score_reason', ''), 'task': task},
               msg='补充用例已生成')
+
+
+# ══════════════════════════════════════════════════════════
+# 11. AI 任务状态机：确认 / 推进 / 重试（#21）
+# 补全 PRD §8 状态机：REVIEW/WAITING_HUMAN → CONFIRMED → NEXT_STAGE；
+# 异常 RUNNING → FAILED → RETRY（重新执行该 stage）。
+# ══════════════════════════════════════════════════════════
+
+
+class AiTaskConfirmBody(BaseModel):
+    perspective: str = ''    # 'product' | 'testing'（双视角确认，#22）
+
+
+@router.post('/ai-tasks/{task_id}/confirm')
+async def confirm_ai_task(request: Request, task_id: int,
+                          data: AiTaskConfirmBody = Body(...)):
+    """人工确认 AI 任务：REVIEW / WAITING_HUMAN → CONFIRMED。
+
+    perspective 可选（product/testing），用于 #22 双视角确认；落一条审计。
+    """
+    task = await crud.get_ai_task(task_id)
+    if task is None:
+        return fail(404, 'AI 任务不存在')
+    ctx, err = await _guard(request, task['requirement_id'])
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    if task['status'] not in ('REVIEW', 'WAITING_HUMAN'):
+        return fail(400, f'当前状态 {task["status"]} 不可确认')
+    perspective = (data.perspective or '').strip()
+    if perspective and perspective not in ('product', 'testing'):
+        return fail(400, 'perspective 只能是 product / testing')
+    updated = await crud.update_ai_task_status(task_id, 'CONFIRMED')
+    await crud.create_review_audit(
+        artifact_type='ai_task', artifact_id=task['requirement_id'], score=0,
+        dimension_scores=json.dumps({'perspective': perspective}, ensure_ascii=False),
+        gate_status='CONFIRMED', model=task.get('model', ''),
+        prompt_version=task.get('prompt_version', ''),
+        user_id=ctx['user']['id'],
+    )
+    return ok(updated, msg='AI 任务已确认')
+
+
+@router.post('/ai-tasks/{task_id}/advance')
+async def advance_ai_task(request: Request, task_id: int):
+    """推进 AI 任务进入下一阶段：CONFIRMED → NEXT_STAGE。"""
+    task = await crud.get_ai_task(task_id)
+    if task is None:
+        return fail(404, 'AI 任务不存在')
+    ctx, err = await _guard(request, task['requirement_id'])
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    if task['status'] != 'CONFIRMED':
+        return fail(400, f'当前状态 {task["status"]} 不可推进')
+    updated = await crud.update_ai_task_status(task_id, 'NEXT_STAGE')
+    return ok(updated, msg='已进入下一阶段')
+
+
+# 重试分发表：stage → 对应的智能体动作端点（复用既有逻辑，覆盖式持久化）
+_STAGE_ROUTES: dict[str, Any] = {
+    'analyze': analyze_requirement_agent,
+    'review_stories': review_stories_agent,
+    'test_points': generate_test_points_agent,
+    'review_test_points': review_test_points_agent,
+    'scenarios': generate_scenarios_agent,
+    'review_scenarios': review_scenarios_agent,
+    'cases': review_cases_agent,
+    'strategy': recommend_strategy_agent,
+    'coverage': analyze_coverage_agent,
+    'supplement': generate_supplement_cases_agent,
+}
+
+
+@router.post('/ai-tasks/{task_id}/retry')
+async def retry_ai_task(request: Request, task_id: int):
+    """重试失败的 AI 任务：FAILED → RETRY → 重新执行该 stage。
+
+    复用对应智能体端点的既有逻辑（会创建新任务）；旧任务标记 RETRY 表示已被重试取代。
+    """
+    task = await crud.get_ai_task(task_id)
+    if task is None:
+        return fail(404, 'AI 任务不存在')
+    ctx, err = await _guard(request, task['requirement_id'])
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    if task['status'] != 'FAILED':
+        return fail(400, f'当前状态 {task["status"]} 不可重试')
+    stage = task.get('stage', '')
+    if stage not in _STAGE_ROUTES:
+        return fail(400, f'stage {stage} 不支持重试')
+    await crud.update_ai_task_status(task_id, 'RETRY', error='')
+    new_req = Request(request.scope, request.receive)
+    try:
+        if stage == 'strategy':
+            result = await _STAGE_ROUTES[stage](new_req, task['requirement_id'])
+        elif stage == 'supplement':
+            gaps = await crud.list_test_gaps(task['requirement_id'])
+            open_gaps = [g for g in gaps if g.get('status') == 'open']
+            if not open_gaps:
+                return fail(400, '无待补测缺口，无需重试')
+            result = await _STAGE_ROUTES[stage](new_req, open_gaps[-1]['id'], ReviewCommentBody())
+        else:
+            result = await _STAGE_ROUTES[stage](new_req, task['requirement_id'], ReviewCommentBody())
+    except Exception as exc:  # 直接调用端点时的兜底
+        return fail(500, f'重试失败：{exc}')
+    if result.get('code', 200) >= 400:
+        return fail(result.get('code', 500), result.get('msg', '重试失败'))
+    return ok({'retried_task_id': task_id, 'result': result.get('data')},
+              msg='重试已重新执行')

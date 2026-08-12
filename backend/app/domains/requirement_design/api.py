@@ -52,12 +52,22 @@ class AssetUpdateReq(BaseModel):
     gate_status: str | None = None
     review_comment: str | None = None
     status: str | None = None
+    perspective: str | None = None   # 'product' | 'testing'（双视角确认，#22）
 
 
 class ExecuteReq(BaseModel):
     uids: list[str]
     concurrency: int = 2
     sequential: bool = True
+
+
+class ReviewCommentBody(BaseModel):
+    review_comment: str = ''    # 重审评论（#22）
+
+
+def _assets_confirmed(assets: list[dict]) -> bool:
+    """全部资产均已完成双视角确认（status=confirmed）。"""
+    return bool(assets) and all(a.get('status') == 'confirmed' for a in assets)
 
 
 # ── Permission helper ──
@@ -197,6 +207,8 @@ async def update_asset(request: Request, req_id: int, asset_id: int, body: Asset
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if body.perspective is not None and body.perspective not in ('product', 'testing'):
+        return fail(400, 'perspective 只能是 product / testing')
     asset = await req_crud.update_asset(asset_id, **updates)
     return ok(asset, msg='资产已更新')
 
@@ -249,8 +261,9 @@ async def delete_binding(request: Request, req_id: int, binding_id: int):
 
 
 @router.post('/{req_id}/analyze')
-async def trigger_analysis(request: Request, req_id: int):
-    """Trigger AI requirement analysis."""
+async def trigger_analysis(request: Request, req_id: int,
+                           data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """Trigger AI requirement analysis（可携带 review_comment 重新评审）。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
@@ -258,6 +271,7 @@ async def trigger_analysis(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    comment = (data.review_comment or '').strip()
 
     # Create AI task record
     task = await req_crud.create_ai_task(req_id, 'analyze', created_by=user_id)
@@ -269,8 +283,8 @@ async def trigger_analysis(request: Request, req_id: int):
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             sources = [{'text_content': req.get('content', '') or req.get('title', '')}]
-            result = await asyncio.to_thread(
-                layered_agent.analyze_requirement, client, requirement, sources,
+            result = await layered_agent.analyze_requirement(
+                client, requirement, sources, comment,
             )
             items = [
                 {
@@ -315,6 +329,8 @@ async def trigger_stories(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    if not (req.get('content') or '').strip():
+        return fail(400, '请先完善需求内容（上传/粘贴需求文档）再拆解 Story')
 
     task = await req_crud.create_ai_task(req_id, 'stories', created_by=user_id)
     await req_crud.update_ai_task(task['id'], status='RUNNING')
@@ -327,8 +343,8 @@ async def trigger_stories(request: Request, req_id: int):
             # Get latest review for context
             tasks = await req_crud.get_ai_tasks(req_id, 'analyze')
             latest_review = tasks[0] if tasks else None
-            result = await asyncio.to_thread(
-                requirement_agent.split_stories, client, requirement, sources, latest_review,
+            result = await requirement_agent.split_stories(
+                client, requirement, sources, latest_review,
             )
             items = []
             stories = result.get('stories', [])
@@ -359,8 +375,9 @@ async def trigger_stories(request: Request, req_id: int):
 
 
 @router.post('/{req_id}/stories/review')
-async def trigger_story_review(request: Request, req_id: int):
-    """Trigger 7-dimension story review."""
+async def trigger_story_review(request: Request, req_id: int,
+                               data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """Trigger 7-dimension story review（可携带 review_comment 重新评审）。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
@@ -368,6 +385,7 @@ async def trigger_story_review(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    comment = (data.review_comment or '').strip()
 
     # Get existing stories as assets
     stories = await req_crud.get_assets(req_id, asset_type='story')
@@ -382,8 +400,8 @@ async def trigger_story_review(request: Request, req_id: int):
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             sources = [{'text_content': req.get('content', '') or req.get('title', '')}]
-            result = await asyncio.to_thread(
-                layered_agent.review_stories, client, requirement, sources, stories,
+            result = await layered_agent.review_stories(
+                client, requirement, sources, stories, comment,
             )
             # Update each story with review results
             reviews = result.get('reviews', [])
@@ -423,8 +441,8 @@ async def trigger_test_points(request: Request, req_id: int):
     req = ctx['req']
 
     stories = await req_crud.get_assets(req_id, asset_type='story')
-    if not stories:
-        return fail(400, '请先生成 Story')
+    if not _assets_confirmed(stories):
+        return fail(400, '请先确认全部 Story（产品+测试双视角确认）后再生成测试点')
 
     task = await req_crud.create_ai_task(req_id, 'test_points', created_by=user_id)
     await req_crud.update_ai_task(task['id'], status='RUNNING')
@@ -433,8 +451,8 @@ async def trigger_test_points(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                layered_agent.generate_test_points, client, requirement, stories,
+            result = await layered_agent.generate_test_points(
+                client, requirement, stories,
             )
             tps = result.get('test_points') or []
             items = []
@@ -474,8 +492,9 @@ async def trigger_test_points(request: Request, req_id: int):
 
 
 @router.post('/{req_id}/test-points/review')
-async def trigger_test_point_review(request: Request, req_id: int):
-    """Trigger 11-dimension test point review."""
+async def trigger_test_point_review(request: Request, req_id: int,
+                                    data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """Trigger 11-dimension test point review（可携带 review_comment 重新评审）。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
@@ -483,6 +502,7 @@ async def trigger_test_point_review(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    comment = (data.review_comment or '').strip()
 
     stories = await req_crud.get_assets(req_id, asset_type='story')
     test_points = await req_crud.get_assets(req_id, asset_type='test_point')
@@ -496,8 +516,8 @@ async def trigger_test_point_review(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                layered_agent.review_test_points, client, requirement, stories, test_points,
+            result = await layered_agent.review_test_points(
+                client, requirement, stories, test_points, comment,
             )
             reviews = result.get('reviews', [])
             for rv in reviews:
@@ -537,8 +557,8 @@ async def trigger_scenarios(request: Request, req_id: int):
     req = ctx['req']
 
     test_points = await req_crud.get_assets(req_id, asset_type='test_point')
-    if not test_points:
-        return fail(400, '请先生成测试点')
+    if not _assets_confirmed(test_points):
+        return fail(400, '请先确认全部测试点后再生成场景')
 
     task = await req_crud.create_ai_task(req_id, 'scenarios', created_by=user_id)
     await req_crud.update_ai_task(task['id'], status='RUNNING')
@@ -547,8 +567,8 @@ async def trigger_scenarios(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                layered_agent.generate_scenarios, client, requirement, test_points,
+            result = await layered_agent.generate_scenarios(
+                client, requirement, test_points,
             )
             scenarios = result.get('scenarios', [])
             items = []
@@ -579,8 +599,9 @@ async def trigger_scenarios(request: Request, req_id: int):
 
 
 @router.post('/{req_id}/test-scenarios/review')
-async def trigger_scenario_review(request: Request, req_id: int):
-    """Trigger scenario review."""
+async def trigger_scenario_review(request: Request, req_id: int,
+                                  data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """Trigger scenario review（可携带 review_comment 重新评审）。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
@@ -588,6 +609,7 @@ async def trigger_scenario_review(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    comment = (data.review_comment or '').strip()
 
     test_points = await req_crud.get_assets(req_id, asset_type='test_point')
     scenarios = await req_crud.get_assets(req_id, asset_type='scenario')
@@ -601,8 +623,8 @@ async def trigger_scenario_review(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                layered_agent.review_scenarios, client, requirement, test_points, scenarios,
+            result = await layered_agent.review_scenarios(
+                client, requirement, test_points, scenarios, comment,
             )
             reviews = result.get('reviews', [])
             for rv in reviews:
@@ -639,6 +661,10 @@ async def trigger_cases(request: Request, req_id: int):
     user_id = ctx['user']['id']
     req = ctx['req']
 
+    scenarios = await req_crud.get_assets(req_id, asset_type='scenario')
+    if not _assets_confirmed(scenarios):
+        return fail(400, '请先确认全部场景后再生成用例')
+
     stories = await req_crud.get_assets(req_id, asset_type='story')
     if not stories:
         return fail(400, '请先生成 Story')
@@ -650,8 +676,8 @@ async def trigger_cases(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                requirement_agent.generate_cases, client, requirement, stories,
+            result = await requirement_agent.generate_cases(
+                client, requirement, stories,
             )
             cases = result.get('cases', [])
             items = []
@@ -685,8 +711,9 @@ async def trigger_cases(request: Request, req_id: int):
 
 
 @router.post('/{req_id}/cases/review')
-async def trigger_case_review(request: Request, req_id: int):
-    """Trigger 9-dimension case review."""
+async def trigger_case_review(request: Request, req_id: int,
+                              data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """Trigger 9-dimension case review（可携带 review_comment 重新评审）。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
@@ -694,8 +721,11 @@ async def trigger_case_review(request: Request, req_id: int):
     import asyncio
     user_id = ctx['user']['id']
     req = ctx['req']
+    comment = (data.review_comment or '').strip()
 
     stories = await req_crud.get_assets(req_id, asset_type='story')
+    test_points = await req_crud.get_assets(req_id, asset_type='test_point')
+    scenarios = await req_crud.get_assets(req_id, asset_type='scenario')
     cases = await req_crud.get_assets(req_id, asset_type='case')
     if not cases:
         return fail(400, '请先生成用例')
@@ -707,8 +737,8 @@ async def trigger_case_review(request: Request, req_id: int):
         try:
             client = llm_client.LLMClient()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
-            result = await asyncio.to_thread(
-                layered_agent.review_cases, client, requirement, stories, cases,
+            result = await layered_agent.review_cases(
+                client, requirement, stories, test_points, scenarios, cases, comment,
             )
             reviews = result.get('reviews', [])
             for rv in reviews:
@@ -794,3 +824,142 @@ async def execute_bound_cases(request: Request, req_id: int, body: ExecuteReq):
         'task_id': task_id,
         'uids': body.uids,
     }, msg='执行已启动')
+
+
+# ── 覆盖率 / TestGap / AI 补测（#23）──
+
+
+@router.post('/{req_id}/coverage/analyze')
+async def analyze_coverage(request: Request, req_id: int):
+    """确定性覆盖率分析（#23）：7 层覆盖率 + TestGap 推导 + 落快照/审计。不调 LLM。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    user, req = ctx['user'], ctx['req']
+    from app.db import crud_requirements
+
+    task = await req_crud.create_ai_task(req_id, 'coverage', created_by=user['id'])
+    await req_crud.update_ai_task(task['id'], status='RUNNING')
+
+    values = await crud_requirements.compute_coverage(req_id)
+    await crud_requirements.save_coverage_snapshot(
+        req_id, values, json.dumps(values, ensure_ascii=False))
+    gaps = await crud_requirements.derive_test_gaps(req_id, req['project_id'], req['branch_id'])
+    await req_crud.create_review_audit(
+        artifact_type='coverage', artifact_id=req_id, score=0,
+        dimension_scores=json.dumps(values, ensure_ascii=False),
+        information_gaps=json.dumps(gaps, ensure_ascii=False),
+        gate_status='', model='deterministic', prompt_version='rule-v1',
+        user_id=user['id'],
+    )
+    updated = await req_crud.update_ai_task(task['id'], status='CONFIRMED')
+    return ok({'coverage': values, 'test_gaps': gaps, 'task': updated}, msg='覆盖率分析完成')
+
+
+@router.get('/{req_id}/test-gaps')
+async def list_test_gaps(request: Request, req_id: int):
+    """列出需求测试缺口（#23）。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    from app.db import crud_requirements
+    return ok(await crud_requirements.list_test_gaps(req_id))
+
+
+@router.post('/{req_id}/test-gaps/{gap_id}/generate')
+async def generate_supplement(request: Request, req_id: int, gap_id: int,
+                              data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """AI 补测全链（#23）：TestPoint → Scenario → Case 挂载到需求，缺口关闭。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    user, req = ctx['user'], ctx['req']
+    from app.db import crud_requirements
+
+    gap = await crud_requirements.get_test_gap(gap_id)
+    if gap is None or gap['requirement_id'] != req_id:
+        return fail(404, '测试缺口不存在')
+
+    import asyncio
+    comment = (data.review_comment or '').strip()
+    task = await req_crud.create_ai_task(req_id, 'supplement', created_by=user['id'])
+    await req_crud.update_ai_task(task['id'], status='RUNNING')
+
+    try:
+        client = llm_client.LLMClient()
+    except Exception as exc:
+        await req_crud.update_ai_task(task['id'], status='FAILED', error=str(exc))
+        return fail(400, f'LLM 配置错误：{exc}')
+
+    requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
+    cases = await req_crud.get_assets(req_id, asset_type='case')
+    try:
+        result = await layered_agent.generate_supplement_cases(
+            client, requirement, gap, cases, comment,
+        )
+    except Exception as exc:
+        await req_crud.update_ai_task(task['id'], status='FAILED', error=str(exc))
+        return fail(400, f'AI 补测失败：{exc}')
+
+    # 挂载到需求：story → test_point → scenario → case（parent 链）
+    stories = await req_crud.get_assets(req_id, asset_type='story')
+    confirmed_stories = [s for s in stories if s['status'] == 'confirmed']
+    story_id = (confirmed_stories[0] if confirmed_stories else stories[0] if stories else {}).get('id', 0)
+
+    tp_ids: list[int] = []
+    tps = result.get('test_points') or []
+    for i, tp in enumerate(tps):
+        row = await req_crud.create_asset(req_id, 'test_point', {
+            'title': tp.get('title', ''),
+            'description': tp.get('description', ''),
+            'content': json.dumps({'category': tp.get('category', 'Functional'),
+                                   'supplement': True}, ensure_ascii=False),
+            'story_id': story_id, 'sort_order': 100 + i, 'status': 'generated',
+        }, created_by=user['id'])
+        tp_ids.append(row['id'])
+
+    sc_ids: list[int] = []
+    scs = result.get('scenarios') or []
+    for i, sc in enumerate(scs):
+        tpidx = int(sc.get('test_point_index', 0))
+        pid = tp_ids[tpidx] if 0 <= tpidx < len(tp_ids) else (tp_ids[0] if tp_ids else 0)
+        row = await req_crud.create_asset(req_id, 'scenario', {
+            'title': sc.get('title', ''),
+            'description': sc.get('description', ''),
+            'content': json.dumps({'coverage_dim': sc.get('coverage_dim', ''),
+                                   'supplement': True}, ensure_ascii=False),
+            'parent_id': pid, 'sort_order': 100 + i, 'status': 'generated',
+        }, created_by=user['id'])
+        sc_ids.append(row['id'])
+
+    added: list[dict] = []
+    cs = result.get('cases') or []
+    for i, c in enumerate(cs):
+        scidx = int(c.get('scenario_index', 0))
+        pid = sc_ids[scidx] if 0 <= scidx < len(sc_ids) else (sc_ids[0] if sc_ids else 0)
+        content = {
+            'preconditions': c.get('preconditions', ''),
+            'steps': c.get('steps', []),
+            'expected': c.get('expected', ''),
+            'supplement': True,
+        }
+        row = await req_crud.create_asset(req_id, 'case', {
+            'title': c.get('title', ''),
+            'description': '',
+            'content': json.dumps(content, ensure_ascii=False),
+            'parent_id': pid, 'story_id': story_id,
+            'score': result.get('score', 0), 'sort_order': 100 + i, 'status': 'generated',
+        }, created_by=user['id'])
+        added.append(row)
+
+    await crud_requirements.close_test_gap(gap_id)
+    await req_crud.create_review_audit(
+        artifact_type='cases', artifact_id=req_id, score=result.get('score', 0),
+        dimension_scores=json.dumps({'test_points': len(tps), 'scenarios': len(scs),
+                                     'cases': len(cs)}, ensure_ascii=False),
+        gate_status='PASS', model=client.text_model,
+        prompt_version=layered_agent.PROMPT_VERSION, user_id=user['id'],
+    )
+    updated = await req_crud.update_ai_task(task['id'], status='CONFIRMED')
+    return ok({'added': added, 'gap': await crud_requirements.get_test_gap(gap_id),
+               'score': result.get('score', 0), 'task': updated}, msg='AI 补测已生成')

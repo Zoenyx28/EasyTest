@@ -111,6 +111,46 @@ class LLMClient:
         raise last_exc
 
 
+    async def chat_vision(self, prompt: str, images: list[dict], *,
+                          max_tokens: int = 8192, schema_hint: str = 'JSON') -> Any:
+        """调用视觉模型分析图片并返回解析后的 JSON（#12）。
+
+        images: [{'data': <base64>, 'mime_type': 'image/png'}]。多模态 content：
+        ``[{type:text},{type:image_url,image_url:{url:data:...;base64,...}}]``。
+        """
+        if not self.vision_model:
+            raise LLMConfigError('未配置视觉模型（vision_model）')
+        content: list[dict] = [{'type': 'text', 'text': prompt}]
+        for img in images:
+            content.append({
+                'type': 'image_url',
+                'image_url': {
+                    'url': f"data:{img.get('mime_type', 'image/png')};base64,{img['data']}",
+                },
+            })
+        payload = {
+            'model': self.vision_model,
+            'messages': [{'role': 'user', 'content': content}],
+            'max_tokens': max_tokens,
+        }
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                data = await self._post(payload)
+                content_text = data['choices'][0]['message']['content']
+                return parse_json_output(content_text)
+            except (json.JSONDecodeError, ValueError, KeyError, IndexError) as exc:
+                last_exc = LLMCallError(f'LLM 输出非合法 {schema_hint}: {exc}')
+            except LLMCallError as exc:
+                last_exc = exc
+            except httpx.HTTPError as exc:
+                last_exc = LLMCallError(f'LLM 调用失败: {exc}')
+            if attempt >= self.max_retries:
+                break
+            await asyncio.sleep(self.retry_delay * (2 ** attempt))
+        raise last_exc
+
+
 def _match_bracket(text: str, start: int) -> int:
     """从 start 处的左括号（{ 或 [）出发，返回配对的右括号下标；不匹配返回 -1。
 

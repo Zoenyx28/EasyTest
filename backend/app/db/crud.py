@@ -2777,17 +2777,20 @@ async def delete_defect_comment(comment_id: int) -> bool:
 # ══════════════════════════════════════════════
 
 
-async def list_requirements(project_id: int, branch_id: int) -> list[dict]:
-    """List requirements within a (project_id, branch_id) scope, newest first."""
+async def list_requirements(project_id: int, branch_id: int, status: str = '') -> list[dict]:
+    """List requirements within a (project_id, branch_id) scope, newest first.
+
+    status 可选过滤（#12：状态筛选）。
+    """
     async with session_ctx() as session:
-        result = await session.execute(
-            select(Requirement)
-            .where(
-                Requirement.project_id == project_id,
-                Requirement.branch_id == branch_id,
-            )
-            .order_by(desc(Requirement.created_at))
+        q = select(Requirement).where(
+            Requirement.project_id == project_id,
+            Requirement.branch_id == branch_id,
         )
+        if status:
+            q = q.where(Requirement.status == status)
+        q = q.order_by(desc(Requirement.created_at))
+        result = await session.execute(q)
         return [
             {
                 'id': r.id,

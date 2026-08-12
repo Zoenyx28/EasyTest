@@ -118,8 +118,11 @@ def _gate(score: int, *, blocked: bool = False) -> str:
 
 
 async def analyze_requirement(client: LLMClient, requirement: dict, sources: list[dict],
-                              review_comment: str = '') -> dict:
-    """需求分析：理解业务要素（11 项）+ 识别信息缺口 + 需求可测性评分。"""
+                              review_comment: str = '', images: list[dict] | None = None) -> dict:
+    """需求分析：理解业务要素（11 项）+ 识别信息缺口 + 需求可测性评分。
+
+    images 非空时走视觉模型（#12：截图/图片需求文档），否则文本模型。
+    """
     prompt = f"""你是资深测试需求分析师（Requirement Analyzer）。请先理解需求，再输出结构化业务要素与信息缺口。
 
 【需求标题】{requirement.get('title', '')}
@@ -137,7 +140,10 @@ async def analyze_requirement(client: LLMClient, requirement: dict, sources: lis
 2. information_gaps 类型取 AMBIGUOUS_DESCRIPTION / BUSINESS_RULE_MISSING / SCENARIO_MISSING / DATA_DEFINITION_MISSING / ACCEPTANCE_CRITERIA_MISSING / DEPENDENCY_UNKNOWN / RISK_UNSPECIFIED；严重度取 CRITICAL/HIGH/MEDIUM/LOW
 3. 存在重大歧义或关键规则缺失时 severity=CRITICAL
 4. score 为 0-100 的整数"""
-    data = await client.chat_json(prompt, schema_hint='需求分析')
+    if images:
+        data = await client.chat_vision(prompt, images, schema_hint='需求分析')
+    else:
+        data = await client.chat_json(prompt, schema_hint='需求分析')
     if not isinstance(data, dict):
         raise ValueError('需求分析输出应为 JSON 对象')
     _require_fields(data, ['elements', 'score', 'score_reason'])
@@ -515,8 +521,8 @@ async def analyze_coverage(client: LLMClient, requirement: dict, layers_stats: d
 
 async def generate_supplement_cases(client: LLMClient, requirement: dict, gap: dict,
                                     cases: list[dict], review_comment: str = '') -> dict:
-    """针对测试缺口生成补充测试用例，形成覆盖率闭环。"""
-    prompt = f"""你是资深测试设计专家。请针对以下测试缺口，生成补充测试用例。
+    """针对测试缺口生成补充链路：TestPoint → Scenario → Case，形成覆盖率闭环（#23 全链）。"""
+    prompt = f"""你是资深测试设计专家。请针对以下测试缺口，生成补充测试链路：先补测试点（TestPoint），再为测试点生成业务场景（Scenario），最后为场景生成测试用例（Case）。
 
 【需求标题】{requirement.get('title', '')}
 【需求摘要】{requirement.get('summary', '')}
@@ -532,15 +538,33 @@ async def generate_supplement_cases(client: LLMClient, requirement: dict, gap: d
 {_extra_comment(review_comment)}
 
 请严格按以下 JSON 返回（不要输出其他内容）：
-{{"cases": [{{"title": "用例标题", "preconditions": "前置条件", "steps": ["步骤1"], "expected": "预期结果"}}], "score": 0, "score_reason": "补充质量评分原因"}}
+{{"test_points": [{{"title": "测试点标题", "category": "Functional", "description": "测什么"}}], "scenarios": [{{"title": "场景标题", "test_point_index": 0, "coverage_dim": "正常", "description": "在什么业务情况下测"}}], "cases": [{{"title": "用例标题", "preconditions": "前置条件", "steps": ["步骤1"], "expected": "预期结果", "scenario_index": 0}}], "score": 0, "score_reason": "补充质量评分原因"}}
 
 要求：
-1. 每条用例必须针对上述缺口，与现有用例不重复
-2. 步骤可执行、预期明确；数量 1-5 条
-3. score 为 0-100 的整数"""
+1. 全链路针对上述缺口；test_points 至少 1 条；scenarios 的 test_point_index 引用上方测试点序号（从 0 开始）；cases 的 scenario_index 引用上方场景序号
+2. 用例与现有用例不重复；步骤可执行、预期明确；数量 1-5 条
+3. category 取 Functional/Boundary/Exception/State/Permission/Security/Data/Concurrency/Performance/Compatibility/Dependency
+4. score 为 0-100 的整数"""
     data = await client.chat_json(prompt, schema_hint='AI 补测')
     if not isinstance(data, dict):
         raise ValueError('AI 补测输出应为 JSON 对象')
+    tps = data.get('test_points') or []
+    if not isinstance(tps, list):
+        tps = []
+    for tp in tps:
+        _require_fields(tp, ['title'])
+        tp.setdefault('category', 'Functional')
+        tp.setdefault('description', '')
+    data['test_points'] = tps
+    scenarios = data.get('scenarios') or []
+    if not isinstance(scenarios, list):
+        scenarios = []
+    for sc in scenarios:
+        _require_fields(sc, ['title'])
+        sc.setdefault('test_point_index', 0)
+        sc.setdefault('coverage_dim', '')
+        sc.setdefault('description', '')
+    data['scenarios'] = scenarios
     cases_out = data.get('cases') or []
     if not isinstance(cases_out, list):
         cases_out = []
@@ -548,6 +572,7 @@ async def generate_supplement_cases(client: LLMClient, requirement: dict, gap: d
         _require_fields(c, ['title', 'preconditions', 'expected'])
         if not isinstance(c.get('steps'), list):
             c['steps'] = []
+        c.setdefault('scenario_index', 0)
     data['cases'] = cases_out
     data['score'] = _as_score(data.get('score'))
     return data

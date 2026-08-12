@@ -171,9 +171,52 @@ async def upsert_assets(
         return [_asset_to_dict(a) for a in new_assets]
 
 
-async def update_asset(asset_id: int, **kwargs) -> dict | None:
-    """Update a single asset's fields."""
+async def create_asset(requirement_id: int, asset_type: str, item: dict,
+                       created_by: int = 0) -> dict:
+    """Append a single asset（追加，不覆盖 —— 用于 AI 补测挂载，#23）。"""
     async with session_ctx() as session:
+        asset = RequirementAsset(
+            requirement_id=requirement_id,
+            asset_type=asset_type,
+            parent_id=item.get('parent_id', 0),
+            story_id=item.get('story_id', 0),
+            title=item.get('title', ''),
+            description=item.get('description', ''),
+            content=item.get('content', ''),
+            score=item.get('score', 0),
+            gate_status=item.get('gate_status', ''),
+            review_comment=item.get('review_comment', ''),
+            sort_order=item.get('sort_order', 0),
+            status=item.get('status', 'generated'),
+            created_by=created_by,
+        )
+        session.add(asset)
+        await session.commit()
+        await session.refresh(asset)
+        return _asset_to_dict(asset)
+
+
+async def update_asset(asset_id: int, **kwargs) -> dict | None:
+    """Update a single asset's fields. perspective（product/testing）用于双视角确认（#22）。"""
+    perspective = kwargs.pop('perspective', None)
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementAsset).where(RequirementAsset.id == asset_id)
+        )
+        asset = result.scalar_one_or_none()
+        if asset is None:
+            return None
+        if perspective is not None:
+            try:
+                obj = json.loads(asset.content) if asset.content else {}
+            except (json.JSONDecodeError, TypeError):
+                obj = {}
+            confirmations = dict(obj.get('confirmations') or {})
+            confirmations[perspective] = True
+            obj['confirmations'] = confirmations
+            kwargs['content'] = json.dumps(obj, ensure_ascii=False)
+            both = bool(confirmations.get('product') and confirmations.get('testing'))
+            kwargs['status'] = 'confirmed' if both else 'partially_confirmed'
         await session.execute(
             update(RequirementAsset).where(RequirementAsset.id == asset_id).values(**kwargs)
         )
@@ -418,6 +461,27 @@ async def get_ai_tasks(requirement_id: int, stage: str = '') -> list[dict]:
         q = q.order_by(desc(AITask.updated_at))
         result = await session.execute(q)
         return [_aitask_to_dict(t) for t in result.scalars().all()]
+
+
+async def create_review_audit(artifact_type: str, artifact_id: int, score: int,
+                              dimension_scores: str = '', issues: str = '',
+                              suggestions: str = '', information_gaps: str = '',
+                              gate_status: str = '', model: str = '',
+                              prompt_version: str = '', user_id: int = 0) -> dict:
+    """Write an AI review audit record (append-only)."""
+    async with session_ctx() as session:
+        row = ReviewAudit(
+            artifact_type=artifact_type, artifact_id=artifact_id, score=score,
+            dimension_scores=dimension_scores, issues=issues, suggestions=suggestions,
+            information_gaps=information_gaps, gate_status=gate_status,
+            model=model, prompt_version=prompt_version, created_by=user_id,
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return {'id': row.id, 'artifact_type': row.artifact_type,
+                'artifact_id': row.artifact_id, 'score': row.score,
+                'gate_status': row.gate_status}
 
 
 # ── Serialization helpers ──

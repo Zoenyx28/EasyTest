@@ -26,6 +26,18 @@ const STATUS_META: Record<string, { label: string; tone: 'blue' | 'gray' | 'gree
   done: { label: '已完成', tone: 'green' },
 };
 
+// AI 任务状态徽标（#21/#22 状态机：PENDING→RUNNING→REVIEW→WAITING_HUMAN→CONFIRMED→NEXT_STAGE，FAILED→RETRY）
+const TASK_META: Record<string, { label: string; tone: 'blue' | 'gray' | 'green' | 'orange' | 'purple' | 'red' | 'yellow' }> = {
+  PENDING: { label: '排队中', tone: 'gray' },
+  RUNNING: { label: '执行中', tone: 'blue' },
+  REVIEW: { label: '待确认', tone: 'yellow' },
+  WAITING_HUMAN: { label: '等待人工', tone: 'orange' },
+  CONFIRMED: { label: '已确认', tone: 'green' },
+  NEXT_STAGE: { label: '下一阶段', tone: 'purple' },
+  FAILED: { label: '失败', tone: 'red' },
+  RETRY: { label: '重试中', tone: 'orange' },
+};
+
 const ACTIVE_TABS = ['overview', 'assets', 'execution', 'defects'] as const;
 type TabType = (typeof ACTIVE_TABS)[number];
 
@@ -121,7 +133,7 @@ const analysisRunning = computed(() => {
 });
 
 // ── Assets / Story state ──
-const assetLayer = ref<'story' | 'test_point' | 'scenario' | 'case'>('story');
+const assetLayer = ref<'story' | 'test_point' | 'scenario' | 'case' | 'coverage'>('story');
 const selectedStoryId = ref<number | null>(null);
 const storyGenRunning = ref(false);
 const storyReviewRunning = ref(false);
@@ -136,6 +148,11 @@ const selectedStory = computed(() => {
   if (!selectedStoryId.value) return null;
   return storyAssets.value.find((s: any) => s.id === selectedStoryId.value) || null;
 });
+
+// 双视角确认进度（产品/测试）
+const storyConfirmations = computed(() =>
+  selectedStory.value ? confirmationsOf(selectedStory.value) : { product: false, testing: false },
+);
 
 // Parse story content JSON
 function parseStoryContent(story: any): Record<string, any> {
@@ -162,6 +179,75 @@ const storyReviewActive = computed(() => {
     t.stage === 'story_review' && ['PENDING', 'RUNNING'].includes(t.status),
   );
 });
+
+// ── 双视角确认（#22）：product / testing 均确认后 status=confirmed ──
+function confirmationsOf(asset: any): { product: boolean; testing: boolean } {
+  const c = parseStoryContent(asset);
+  const conf = c?.confirmations || {};
+  return { product: !!conf.product, testing: !!conf.testing };
+}
+const allConfirmed = (assets: any[]) => assets.length > 0 && assets.every((a: any) => a.status === 'confirmed');
+
+async function confirmAssetPerspective(assetId: number, perspective: 'product' | 'testing') {
+  if (!selectedReqId.value) return;
+  try {
+    await put(`/requirements/${selectedReqId.value}/assets/${assetId}`, { perspective });
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', `${perspective === 'product' ? '产品' : '测试'}视角已确认`);
+  } catch (e: any) { emit('showToast', e.message || '操作失败'); }
+}
+
+// ── 评论重新评审（#22）：携带 review_comment 触发后端 ──
+const storyReviewComment = ref('');
+const tpReviewComment = ref('');
+const scReviewComment = ref('');
+const caseReviewComment = ref('');
+const analysisReviewComment = ref('');
+const COMMENT_BY_ENDPOINT: Record<string, { ref: typeof storyReviewComment; label: string }> = {
+  'test-points/review': { ref: tpReviewComment, label: '测试点' },
+  'test-scenarios/review': { ref: scReviewComment, label: '场景' },
+  'cases/review': { ref: caseReviewComment, label: '用例' },
+};
+
+// ── 段锁定（#22）：上一段资产全部双视角确认后才解锁下一段 ──
+const storiesConfirmed = computed(() => allConfirmed(storyAssets.value));
+const testPointsConfirmed = computed(() => allConfirmed(testPointAssets.value));
+const scenariosConfirmed = computed(() => allConfirmed(scenarioAssets.value));
+
+// ── AI 任务徽标列表（#21/#22）──
+const aiTasks = computed(() => (workbenchData.value?.ai_tasks || []).slice(0, 10));
+
+// ── 覆盖率 / 缺口（⑥，#23）──
+const COV_LABELS: Record<string, string> = {
+  requirement_coverage: '需求', story_coverage: 'Story', test_point_coverage: '测试点',
+  scenario_coverage: '场景', case_coverage: '用例', automation_coverage: '自动化', risk_coverage: '风险',
+};
+const coverageRunning = ref(false);
+const supplementRunning = ref(false);
+const coverageData = computed(() => workbenchData.value?.coverage || null);
+const testGaps = computed(() => workbenchData.value?.test_gaps || []);
+
+async function runCoverage() {
+  if (!selectedReqId.value || coverageRunning.value) return;
+  coverageRunning.value = true;
+  try {
+    await post(`/req/${selectedReqId.value}/coverage/analyze`, {});
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '覆盖率分析完成');
+  } catch (e: any) { emit('showToast', e.message || '覆盖率分析失败'); }
+  finally { coverageRunning.value = false; }
+}
+
+async function runSupplement(gapId: number) {
+  if (!selectedReqId.value || supplementRunning.value) return;
+  supplementRunning.value = true;
+  try {
+    await post(`/req/${selectedReqId.value}/test-gaps/${gapId}/generate`, {});
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', 'AI 补测已生成');
+  } catch (e: any) { emit('showToast', e.message || '补测失败'); }
+  finally { supplementRunning.value = false; }
+}
 
 // ── Test Point / Scenario / Case state ──
 const selectedTpId = ref<number | null>(null);
@@ -304,7 +390,10 @@ async function triggerAnalysis() {
   if (!selectedReqId.value || analysisRunning.value) return;
   analyzing.value = true;
   try {
-    const res = await post<{ task_id: number; status: string }>(`/req/${selectedReqId.value}/analyze`, {});
+    const res = await post<{ task_id: number; status: string }>(`/req/${selectedReqId.value}/analyze`, {
+      review_comment: analysisReviewComment.value,
+    });
+    analysisReviewComment.value = '';
     analysisTaskId.value = res.task_id;
     emit('showToast', 'AI 分析已启动');
     startPolling();
@@ -372,7 +461,10 @@ async function triggerStoryReview() {
   if (!selectedReqId.value || storyReviewActive.value) return;
   storyReviewRunning.value = true;
   try {
-    await post(`/req/${selectedReqId.value}/stories/review`, {});
+    await post(`/req/${selectedReqId.value}/stories/review`, {
+      review_comment: storyReviewComment.value,
+    });
+    storyReviewComment.value = '';
     emit('showToast', 'Story 评审已启动');
     startStoryPolling('review');
   } catch (e: any) {
@@ -429,7 +521,9 @@ async function triggerLayerGen(endpoint: string, refVal: any, label: string) {
   if (!selectedReqId.value) return;
   refVal.value = true;
   try {
-    await post(`/req/${selectedReqId.value}/${endpoint}`, {});
+    const comment = COMMENT_BY_ENDPOINT[endpoint]?.ref.value || '';
+    await post(`/req/${selectedReqId.value}/${endpoint}`, { review_comment: comment });
+    if (COMMENT_BY_ENDPOINT[endpoint]) COMMENT_BY_ENDPOINT[endpoint].ref.value = '';
     emit('showToast', `${label}已启动`);
     pollLayer(endpoint, refVal, label);
   } catch (e: any) { refVal.value = false; emit('showToast', e.message || '启动失败'); }
@@ -688,14 +782,17 @@ onUnmounted(() => {
             <div class="ov-card">
               <div class="ov-card-header">
                 <h4>{{ workbenchData.requirement.title }}</h4>
-                <BaseButton
-                  size="sm"
-                  @click="triggerAnalysis"
-                  :disabled="analysisRunning"
-                  :loading="analysisRunning"
-                >
-                  {{ analysisRunning ? '分析中...' : 'AI 分析' }}
-                </BaseButton>
+                <div class="ov-actions">
+                  <BaseInput v-model="analysisReviewComment" placeholder="评审反馈（可选，携带重新分析）" size="sm" class="review-comment-input" />
+                  <BaseButton
+                    size="sm"
+                    @click="triggerAnalysis"
+                    :disabled="analysisRunning"
+                    :loading="analysisRunning"
+                  >
+                    {{ analysisRunning ? '分析中...' : (analysisAsset ? '重新分析' : 'AI 分析') }}
+                  </BaseButton>
+                </div>
               </div>
               <div class="ov-meta">
                 <span>优先级: {{ workbenchData.requirement.priority }}</span>
@@ -789,6 +886,18 @@ onUnmounted(() => {
               <button class="layer-tab" :class="{ active: assetLayer === 'case' }" @click="assetLayer = 'case'">
                 用例 <span class="layer-count">{{ assetCounts.case || 0 }}</span>
               </button>
+              <button class="layer-tab" :class="{ active: assetLayer === 'coverage' }" @click="assetLayer = 'coverage'">
+                ⑥ 覆盖率
+              </button>
+            </div>
+            <!-- AI 任务状态徽标（#21/#22，随轮询更新）-->
+            <div class="ai-task-badges">
+              <span v-for="t in aiTasks" :key="t.id" class="ai-task-badge" :class="'task-' + t.status.toLowerCase()">
+                <span class="task-stage">{{ t.stage }}</span>
+                <span class="task-status">{{ TASK_META[t.status]?.label || t.status }}</span>
+                <span v-if="t.status === 'RUNNING'" class="task-dot">●</span>
+              </span>
+              <span v-if="aiTasks.length === 0" class="ai-task-empty">暂无 AI 任务</span>
             </div>
             <div class="layer-actions">
               <template v-if="assetLayer === 'story'">
@@ -798,31 +907,40 @@ onUnmounted(() => {
                 <BaseButton v-if="storyAssets.length > 0" size="sm" variant="secondary" @click="triggerStoryReview" :loading="storyReviewActive" :disabled="storyGenActive || storyReviewActive">
                   {{ storyReviewActive ? '评审中...' : 'AI 评审 Story' }}
                 </BaseButton>
+                <BaseInput v-if="storyAssets.length > 0 && !storyGenActive" v-model="storyReviewComment"
+                  placeholder="评审反馈（可选，携带重新评审）" size="sm" class="review-comment-input" />
               </template>
               <template v-else-if="assetLayer === 'test_point'">
-                <BaseButton size="sm" @click="triggerLayerGen('test-points/generate', tpGenRunning, '测试点生成')" :loading="tpGenActive" :disabled="tpGenActive || tpReviewActive">
+                <BaseButton size="sm" @click="triggerLayerGen('test-points/generate', tpGenRunning, '测试点生成')" :loading="tpGenActive" :disabled="tpGenActive || tpReviewActive || !storiesConfirmed" :title="storiesConfirmed ? '' : '需全部 Story 双视角确认'">
                   {{ tpGenActive ? '生成中...' : 'AI 生成测试点' }}
                 </BaseButton>
                 <BaseButton v-if="testPointAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('test-points/review', tpReviewRunning, '测试点评审')" :loading="tpReviewActive" :disabled="tpGenActive || tpReviewActive">
                   {{ tpReviewActive ? '评审中...' : 'AI 评审测试点' }}
                 </BaseButton>
+                <BaseInput v-if="testPointAssets.length > 0 && !tpGenActive" v-model="tpReviewComment"
+                  placeholder="评审反馈（可选）" size="sm" class="review-comment-input" />
               </template>
               <template v-else-if="assetLayer === 'scenario'">
-                <BaseButton size="sm" @click="triggerLayerGen('test-scenarios/generate', scGenRunning, '场景生成')" :loading="scGenActive" :disabled="scGenActive || scReviewActive">
+                <BaseButton size="sm" @click="triggerLayerGen('test-scenarios/generate', scGenRunning, '场景生成')" :loading="scGenActive" :disabled="scGenActive || scReviewActive || !testPointsConfirmed" :title="testPointsConfirmed ? '' : '需全部测试点确认'">
                   {{ scGenActive ? '生成中...' : 'AI 生成场景' }}
                 </BaseButton>
                 <BaseButton v-if="scenarioAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('test-scenarios/review', scReviewRunning, '场景评审')" :loading="scReviewActive" :disabled="scGenActive || scReviewActive">
                   {{ scReviewActive ? '评审中...' : 'AI 评审场景' }}
                 </BaseButton>
+                <BaseInput v-if="scenarioAssets.length > 0 && !scGenActive" v-model="scReviewComment"
+                  placeholder="评审反馈（可选）" size="sm" class="review-comment-input" />
               </template>
               <template v-else-if="assetLayer === 'case'">
-                <BaseButton size="sm" @click="triggerLayerGen('cases/generate', caseGenRunning, '用例生成')" :loading="caseGenActive" :disabled="caseGenActive || caseReviewActive">
+                <BaseButton size="sm" @click="triggerLayerGen('cases/generate', caseGenRunning, '用例生成')" :loading="caseGenActive" :disabled="caseGenActive || caseReviewActive || !scenariosConfirmed" :title="scenariosConfirmed ? '' : '需全部场景确认'">
                   {{ caseGenActive ? '生成中...' : 'AI 生成用例' }}
                 </BaseButton>
                 <BaseButton v-if="caseAssets.length > 0" size="sm" variant="secondary" @click="triggerLayerGen('cases/review', caseReviewRunning, '用例评审')" :loading="caseReviewActive" :disabled="caseGenActive || caseReviewActive">
                   {{ caseReviewActive ? '评审中...' : 'AI 评审用例' }}
                 </BaseButton>
+                <BaseInput v-if="caseAssets.length > 0 && !caseGenActive" v-model="caseReviewComment"
+                  placeholder="评审反馈（可选）" size="sm" class="review-comment-input" />
               </template>
+              <BaseButton v-if="assetLayer === 'case' && caseAssets.length > 0" size="sm" variant="secondary" @click="assetLayer = 'coverage'">⑥ 覆盖率</BaseButton>
             </div>
           </div>
 
@@ -884,10 +1002,19 @@ onUnmounted(() => {
                     <strong>{{ iss.title }}</strong>: {{ iss.detail }}
                   </div>
                 </div>
-                <!-- Actions -->
-                <div class="detail-actions">
-                  <BaseButton v-if="selectedStory.status !== 'confirmed'" size="sm" @click="confirmStory(selectedStory.id)">确认</BaseButton>
-                  <BaseButton v-if="selectedStory.status !== 'ignored'" size="sm" variant="warning" @click="ignoreStory(selectedStory.id)">忽略</BaseButton>
+                <!-- 双视角确认（#22）-->
+                <div class="detail-section">
+                  <h5>双视角确认</h5>
+                  <div class="perspective-row">
+                    <BaseTag :tone="storyConfirmations.product ? 'green' : 'gray'" size="sm">产品 {{ storyConfirmations.product ? '✓' : '未确认' }}</BaseTag>
+                    <BaseTag :tone="storyConfirmations.testing ? 'green' : 'gray'" size="sm">测试 {{ storyConfirmations.testing ? '✓' : '未确认' }}</BaseTag>
+                    <BaseTag v-if="selectedStory.status === 'confirmed'" tone="green" size="sm">已解锁下一段</BaseTag>
+                  </div>
+                  <div class="detail-actions">
+                    <BaseButton v-if="!storyConfirmations.product" size="sm" @click="confirmAssetPerspective(selectedStory.id, 'product')">产品确认</BaseButton>
+                    <BaseButton v-if="!storyConfirmations.testing" size="sm" @click="confirmAssetPerspective(selectedStory.id, 'testing')">测试确认</BaseButton>
+                    <BaseButton v-if="selectedStory.status !== 'ignored'" size="sm" variant="warning" @click="ignoreStory(selectedStory.id)">忽略</BaseButton>
+                  </div>
                 </div>
               </template>
               <div v-else class="empty-state">← 选择一条 Story 查看详情</div>
@@ -997,6 +1124,36 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 覆盖率 / 缺口（⑥，#23）-->
+          <div v-else-if="assetLayer === 'coverage'" class="assets-split">
+            <div class="assets-detail-panel coverage-panel">
+              <div class="coverage-header">
+                <h4>覆盖率</h4>
+                <BaseButton size="sm" @click="runCoverage" :loading="coverageRunning">
+                  {{ coverageRunning ? '分析中...' : '覆盖率分析' }}
+                </BaseButton>
+              </div>
+              <div v-if="coverageData" class="coverage-bars">
+                <div v-for="(v, key) in coverageData" :key="key" class="cov-row">
+                  <span class="cov-name">{{ COV_LABELS[key] || key }}</span>
+                  <div class="dim-bar"><div class="dim-fill" :style="{ width: v + '%' }" :class="dimBarClass(v)"></div></div>
+                  <span class="cov-val">{{ v }}%</span>
+                </div>
+              </div>
+              <div v-else class="empty-state">尚未分析覆盖率，点击「覆盖率分析」计算</div>
+
+              <h4 class="mt-3">测试缺口（TestGap）</h4>
+              <div v-if="testGaps.length === 0" class="empty-state">暂无缺口</div>
+              <div v-for="g in testGaps" :key="g.id" class="gap-row">
+                <BaseTag :tone="g.severity === 'P0' ? 'red' : 'orange'" size="sm">{{ g.severity }}</BaseTag>
+                <BaseTag tone="gray" size="sm">{{ g.layer }}</BaseTag>
+                <span class="flex-1 mx-2">{{ g.description }}</span>
+                <BaseTag :tone="g.status === 'closed' ? 'green' : 'yellow'" size="sm">{{ g.status === 'closed' ? '已关闭' : g.status }}</BaseTag>
+                <BaseButton v-if="g.status !== 'closed'" size="sm" variant="secondary" @click="runSupplement(g.id)" :loading="supplementRunning">AI 补测</BaseButton>
               </div>
             </div>
           </div>
@@ -1139,6 +1296,7 @@ onUnmounted(() => {
 .ov-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .ov-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .ov-card-header h4 { margin-bottom: 0; flex: 1; }
+.ov-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .ov-card-full { grid-column: 1 / -1; }
 .ov-meta { display: flex; gap: 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; flex-wrap: wrap; align-items: center; }
 .ov-content { font-size: 12px; color: var(--text-secondary); line-height: 1.5; white-space: pre-wrap; }
@@ -1234,6 +1392,32 @@ onUnmounted(() => {
 .layer-count { font-size: 10px; opacity: 0.8; }
 .layer-actions { display: flex; gap: 6px; }
 .layer-placeholder-text { font-size: 12px; color: var(--text-tertiary); }
+.review-comment-input { width: 180px; min-width: 140px; }
+
+.perspective-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+
+.ai-task-badges { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ai-task-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-soft); border: 1px solid var(--outline);
+}
+.ai-task-badge .task-stage { color: var(--text-secondary); }
+.ai-task-badge .task-dot { color: var(--accent); animation: pulse 1s infinite; }
+.ai-task-badge.task-running { border-color: var(--accent); color: var(--accent); }
+.ai-task-badge.task-failed { border-color: var(--danger); color: var(--danger); }
+.ai-task-badge.task-review, .ai-task-badge.task-waiting_human, .ai-task-badge.task-retry { border-color: var(--warning); color: var(--warning); }
+.ai-task-badge.task-confirmed, .ai-task-badge.task-next_stage { border-color: var(--success); color: var(--success); }
+.ai-task-empty { font-size: 12px; color: var(--text-tertiary); }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+.coverage-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.coverage-bars { margin-bottom: 16px; }
+.cov-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.cov-name { width: 56px; font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.cov-val { width: 40px; font-size: 12px; text-align: right; flex-shrink: 0; }
+.gap-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.mt-3 { margin-top: 12px; }
 
 .assets-split { flex: 1; display: flex; gap: 12px; min-height: 0; overflow: hidden; }
 

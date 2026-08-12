@@ -7,6 +7,7 @@ prompt → JSON 解析 → 结构校验链路；端点测试 monkeypatch _build_
 import json
 
 import httpx
+import pytest
 from httpx import MockTransport
 
 from app.db import crud
@@ -181,6 +182,52 @@ async def test_analyze_requirement_contract():
     assert gap['severity'] == 'CRITICAL'
     assert result['score'] == 82
     assert result['gate_status'] == 'PASS'
+
+
+# ── #12 视觉模型分析：多模态 content + image_url ──
+
+
+def _vision_transport() -> MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        content = body['messages'][0]['content']
+        assert isinstance(content, list), '视觉调用应为多模态 content'
+        assert any(part.get('type') == 'image_url' and 'data:image/png;base64' in part.get('image_url', {}).get('url', '')
+                   for part in content), '应含 base64 图片'
+        assert body['model'] == 'vision-model'
+        data = {
+            'elements': {'business_goal': '图片需求', 'roles': [], 'entities': [], 'flows': [],
+                         'rules': [], 'states': [], 'inputs_outputs': [], 'exceptions': [],
+                         'permissions': [], 'dependencies': [], 'risks': []},
+            'information_gaps': [], 'score': 80, 'score_reason': '图片需求',
+        }
+        return httpx.Response(200, json={
+            'choices': [{'message': {'content': json.dumps(data, ensure_ascii=False)}}],
+        })
+    return MockTransport(handler)
+
+
+async def test_analyze_requirement_vision_contract():
+    """#12 视觉模型分析：images 非空时走多模态 vision 调用并解析 JSON。"""
+    client = llm_client.LLMClient(
+        {'provider': 'x', 'api_base': 'http://fake', 'text_model': 'text-model',
+         'vision_model': 'vision-model', 'api_key': 'k'},
+        transport=_vision_transport(),
+    )
+    result = await layered_agent.analyze_requirement(
+        client, REQ, SOURCES, images=[{'data': 'aGVsbG8=', 'mime_type': 'image/png'}],
+    )
+    assert result['elements']['business_goal'] == '图片需求'
+    assert result['score'] == 80
+
+
+async def test_analyze_requirement_vision_requires_vision_model():
+    """未配置 vision_model 时带图片分析应抛 LLMConfigError。"""
+    client = _make_client()  # vision_model=''
+    with pytest.raises(llm_client.LLMConfigError):
+        await layered_agent.analyze_requirement(
+            client, REQ, SOURCES, images=[{'data': 'x', 'mime_type': 'image/png'}],
+        )
 
 
 async def test_review_stories_contract():
@@ -544,3 +591,82 @@ async def test_agent_endpoint_permissions(client, ctx, monkeypatch):
     resp = await client.post('/api/test-gaps/999999/generate', json={},
                              headers=_auth(ctx['member']))
     assert resp.json()['code'] == 404
+
+
+# ══════════════════════════════════════════════════════════
+# AITask 状态机：确认 / 推进 / 重试（#21）
+# ══════════════════════════════════════════════════════════
+
+
+async def test_ai_task_confirm_and_advance(client, ctx, monkeypatch):
+    """REVIEW → confirm → CONFIRMED → advance → NEXT_STAGE，非法流转 400。"""
+    await _enable_fake_llm(monkeypatch)
+    req_id = await _create_req(client, ctx['member'], ctx['project_id'], ctx['branch_id'])
+    await _seed_source(req_id, ctx['member']['id'])
+
+    resp = await client.post(f'/api/requirements/{req_id}/analysis/analyze', json={},
+                             headers=_auth(ctx['member']))
+    task = resp.json()['data']['task']
+    task_id = task['id']
+    assert task['status'] == 'REVIEW'
+
+    # 确认 → CONFIRMED
+    resp = await client.post(f'/api/ai-tasks/{task_id}/confirm', json={'perspective': 'product'},
+                             headers=_auth(ctx['member']))
+    body = resp.json()
+    assert body['code'] == 200, body
+    assert body['data']['status'] == 'CONFIRMED'
+
+    # 重复确认 → 400
+    resp = await client.post(f'/api/ai-tasks/{task_id}/confirm', json={},
+                             headers=_auth(ctx['member']))
+    assert resp.json()['code'] == 400
+
+    # 推进 → NEXT_STAGE
+    resp = await client.post(f'/api/ai-tasks/{task_id}/advance',
+                             headers=_auth(ctx['member']))
+    assert resp.json()['code'] == 200
+    assert resp.json()['data']['status'] == 'NEXT_STAGE'
+
+    # 再次推进 → 400
+    resp = await client.post(f'/api/ai-tasks/{task_id}/advance',
+                             headers=_auth(ctx['member']))
+    assert resp.json()['code'] == 400
+
+    # 确认动作落审计
+    audits = (await client.get(f'/api/requirements/{req_id}/review-audits',
+                               headers=_auth(ctx['member']))).json()['data']
+    assert any(a['artifact_type'] == 'ai_task' for a in audits)
+
+
+async def test_ai_task_retry_reruns_failed_stage(client, ctx, monkeypatch):
+    """FAILED → retry → 重新执行该 stage 并成功（新任务终态 REVIEW）。"""
+    req_id = await _create_req(client, ctx['member'], ctx['project_id'], ctx['branch_id'])
+    await _seed_source(req_id, ctx['member']['id'])
+
+    # 未配置 LLM → analyze 失败，任务 FAILED
+    resp = await client.post(f'/api/requirements/{req_id}/analysis/analyze', json={},
+                             headers=_auth(ctx['member']))
+    assert resp.json()['code'] == 400
+    tasks = (await client.get(f'/api/requirements/{req_id}/ai-tasks',
+                              headers=_auth(ctx['member']))).json()['data']
+    failed_id = tasks[0]['id']
+    assert tasks[0]['status'] == 'FAILED'
+
+    # 配置 fake LLM 后重试 → 重新执行成功
+    await _enable_fake_llm(monkeypatch)
+    resp = await client.post(f'/api/ai-tasks/{failed_id}/retry',
+                             headers=_auth(ctx['member']))
+    body = resp.json()
+    assert body['code'] == 200, body
+
+    tasks = (await client.get(f'/api/requirements/{req_id}/ai-tasks',
+                              headers=_auth(ctx['member']))).json()['data']
+    assert any(t['id'] == failed_id and t['status'] == 'RETRY' for t in tasks)
+    assert any(t['status'] == 'REVIEW' for t in tasks)  # 新任务已成功
+
+    # 非 FAILED 任务不可重试 → 400
+    review_task_id = next(t['id'] for t in tasks if t['status'] == 'REVIEW')
+    resp = await client.post(f'/api/ai-tasks/{review_task_id}/retry',
+                             headers=_auth(ctx['member']))
+    assert resp.json()['code'] == 400

@@ -98,6 +98,7 @@ class AssetUpdateReq(BaseModel):
     gate_status: str | None = None
     review_comment: str | None = None
     status: str | None = None
+    perspective: str | None = None   # 'product' | 'testing'（双视角确认，#22）
 
 
 @router.put('/requirements/{req_id}/assets/{asset_id}')
@@ -109,6 +110,8 @@ async def update_asset(request: Request, req_id: int, asset_id: int, body: Asset
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         return fail(400, '无更新内容')
+    if body.perspective is not None and body.perspective not in ('product', 'testing'):
+        return fail(400, 'perspective 只能是 product / testing')
     asset = await crud_requirements.update_asset(asset_id, **updates)
     return ok(asset, msg='资产已更新')
 

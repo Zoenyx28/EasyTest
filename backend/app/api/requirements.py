@@ -11,7 +11,7 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Request, UploadFile, File, Body
+from fastapi import APIRouter, Request, UploadFile, File, Body, Query
 from pydantic import BaseModel
 
 from app.api.common import ok, fail
@@ -147,12 +147,13 @@ async def _enrich_source(src: dict, user_id: int = 0) -> dict:
 
 
 @router.get('')
-async def list_requirements(request: Request, project_id: int, branch_id: int):
-    """需求列表（按项目+版本隔离；仅项目成员可见）"""
+async def list_requirements(request: Request, project_id: int, branch_id: int,
+                            status: str = Query(default='')):
+    """需求列表（按项目+版本隔离 + 可选状态筛选；仅项目成员可见）"""
     user = await get_current_user(request)
     if not await crud.is_project_member(project_id, user['id']):
         return fail(403, '无权访问该项目')
-    items = await crud.list_requirements(project_id, branch_id)
+    items = await crud.list_requirements(project_id, branch_id, status=status)
     enriched = []
     for r in items:
         enriched.append(await _enrich_requirement(r, user['id']))
