@@ -8,6 +8,7 @@ import RegisterView from '../components/RegisterView.vue'
 import DefectView from '../components/DefectView.vue'
 import RequirementsView from '../components/RequirementsView.vue'
 import TestDesignWorkbench from '../components/TestDesignWorkbench.vue'
+import RequirementWorkbench from '../components/RequirementWorkbench.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -46,12 +47,11 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/requirements',
     name: 'requirements',
-    component: RequirementsView,
+    component: RequirementWorkbench,
   },
   {
     path: '/requirements/:reqId',
-    name: 'requirement-workbench',
-    component: TestDesignWorkbench,
+    redirect: to => ({ path: '/requirements', query: { req_id: to.params.reqId } }),
   },
   {
     path: '/login',
