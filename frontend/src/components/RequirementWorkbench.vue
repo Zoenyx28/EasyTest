@@ -43,6 +43,79 @@ const branchId = computed(() => activeBranch.value?.id || 0);
 // ── 文档 ──
 const docContent = ref('');
 const docSaving = ref(false);
+const extractingDoc = ref(false);
+
+// ── 新建需求 ──
+const showNewReqModal = ref(false);
+const newReqTitle = ref('');
+const newReqContent = ref('');
+const newReqSourceType = ref<'text' | 'lark_link'>('text');
+const newReqLarkLink = ref('');
+
+function parseMeta(s: string): any {
+  try { return JSON.parse(s || '{}'); } catch { return {}; }
+}
+// 需求有链接来源但 content 为空（未提取）→ 文档面板提示提取
+const docNeedsExtract = computed(() => {
+  const req = workbenchData.value?.requirement;
+  if (!req) return false;
+  if ((req.content || '').trim()) return false;
+  return !!parseMeta(req.source_meta).link;
+});
+
+async function extractDoc() {
+  if (!selectedReqId.value || extractingDoc.value) return;
+  const meta = parseMeta(workbenchData.value?.requirement?.source_meta);
+  if (!meta.link) return;
+  extractingDoc.value = true;
+  try {
+    const res = await post<any>(`/requirements/${selectedReqId.value}/sources`, {
+      type: 'lark_link', link: meta.link,
+    });
+    if (res.extracted) {
+      await loadWorkbench(selectedReqId.value);
+      emit('showToast', '文档已加载');
+    } else {
+      emit('showToast', res.extract_error || '提取失败，请检查飞书授权');
+    }
+  } catch (e: any) { emit('showToast', e.message || '提取失败'); }
+  finally { extractingDoc.value = false; }
+}
+
+async function createRequirement() {
+  if (!newReqTitle.value.trim()) return;
+  const title = newReqTitle.value.trim();
+  const sourceType = newReqSourceType.value;
+  const link = newReqLarkLink.value.trim();
+  try {
+    const body: any = {
+      project_id: projectId.value, branch_id: branchId.value, title,
+      content: newReqContent.value, source_type: sourceType, source_meta: '{}',
+    };
+    if (sourceType === 'lark_link') {
+      body.source_meta = JSON.stringify({ link, extracted: false });
+    }
+    const created = await post<any>('/requirements', body);
+    showNewReqModal.value = false;
+    newReqTitle.value = ''; newReqContent.value = ''; newReqLarkLink.value = '';
+    await loadRequirements();
+    selectReq(created.id);
+    if (sourceType === 'lark_link' && link) {
+      // 创建后立即提取，把飞书文档加载进左侧文档
+      extractingDoc.value = true;
+      try {
+        const res = await post<any>(`/requirements/${created.id}/sources`, { type: 'lark_link', link });
+        if (res.extracted) emit('showToast', '需求已创建，文档已加载');
+        else emit('showToast', res.extract_error || '需求已创建，文档提取失败');
+      } finally {
+        extractingDoc.value = false;
+        await loadWorkbench(created.id);
+      }
+    } else {
+      emit('showToast', '需求创建成功');
+    }
+  } catch (e: any) { emit('showToast', e.message || '创建失败'); }
+}
 
 // ── 阶段 ──
 const activeStage = ref<'review' | 'story' | 'test_point' | 'case'>('review');
@@ -241,6 +314,7 @@ onUnmounted(() => {});
     <aside class="req-sidebar">
       <div class="sidebar-header">
         <h3 class="sidebar-title">需求列表</h3>
+        <BaseButton size="sm" @click="showNewReqModal = true">新增需求</BaseButton>
       </div>
       <div class="px-3 pb-2">
         <BaseInput v-model="searchQuery" placeholder="搜索需求" class="w-full text-sm" />
@@ -262,9 +336,16 @@ onUnmounted(() => {});
         <div class="doc-panel">
           <div class="panel-head">
             <h4>需求文档</h4>
-            <BaseButton size="sm" @click="saveDoc" :loading="docSaving">保存</BaseButton>
+            <BaseButton v-if="!docNeedsExtract" size="sm" @click="saveDoc" :loading="docSaving">保存</BaseButton>
           </div>
-          <textarea v-model="docContent" class="doc-editor" placeholder="需求文档内容（可编辑；编辑不自动触发评审）"></textarea>
+          <div v-if="docNeedsExtract" class="doc-empty">
+            <p>该需求来自飞书链接，尚未提取文档。</p>
+            <p class="doc-link">{{ parseMeta(workbenchData.requirement.source_meta).link }}</p>
+            <BaseButton variant="primary" size="sm" @click="extractDoc" :loading="extractingDoc">
+              {{ extractingDoc ? '提取中...' : '提取文档' }}
+            </BaseButton>
+          </div>
+          <textarea v-else v-model="docContent" class="doc-editor" placeholder="需求文档内容（可编辑；编辑不自动触发评审）"></textarea>
         </div>
 
         <!-- 右侧阶段 -->
@@ -370,6 +451,30 @@ onUnmounted(() => {});
     <div v-else class="wb-main flex-1 flex items-center justify-center" style="color: var(--text-tertiary);">
       请选择左侧需求
     </div>
+
+    <!-- 新增需求弹窗 -->
+    <div v-if="showNewReqModal" class="modal-mask" @click.self="showNewReqModal = false">
+      <div class="modal-box">
+        <h4>新增需求</h4>
+        <label class="modal-label">标题</label>
+        <BaseInput v-model="newReqTitle" placeholder="需求标题" />
+        <label class="modal-label">来源</label>
+        <div class="src-tabs">
+          <button :class="{ active: newReqSourceType === 'text' }" @click="newReqSourceType = 'text'">文本</button>
+          <button :class="{ active: newReqSourceType === 'lark_link' }" @click="newReqSourceType = 'lark_link'">飞书链接</button>
+        </div>
+        <label v-if="newReqSourceType === 'text'" class="modal-label">需求内容</label>
+        <textarea v-if="newReqSourceType === 'text'" v-model="newReqContent" class="doc-editor modal-content" placeholder="需求文档内容"></textarea>
+        <template v-else>
+          <label class="modal-label">飞书文档链接</label>
+          <BaseInput v-model="newReqLarkLink" placeholder="https://xxx.feishu.cn/wiki/...（保存后自动提取）" />
+        </template>
+        <div class="modal-actions">
+          <BaseButton variant="ghost" @click="showNewReqModal = false">取消</BaseButton>
+          <BaseButton variant="primary" @click="createRequirement">创建</BaseButton>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -414,5 +519,14 @@ onUnmounted(() => {});
 .comment-input { width: 100%; height: 56px; resize: none; padding: 6px; border-radius: 8px; border: 1px solid var(--outline); background: var(--card-bg-2); color: var(--text-primary); font-size: 12px; }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
 .gap-actions { display: flex; gap: 6px; margin-top: 6px; }
-.empty-state { display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 40px; color: var(--text-tertiary); }
+.doc-empty { flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; color: var(--text-tertiary); }
+.doc-link { font-size: 12px; word-break: break-all; max-width: 90%; }
+.modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal-box { width: 480px; max-width: 90%; background: var(--card-bg); border-radius: var(--radius-md); padding: 18px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow-hard); }
+.modal-label { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.modal-content { min-height: 120px; }
+.src-tabs { display: flex; gap: 6px; }
+.src-tabs button { padding: 4px 12px; border-radius: 999px; font-size: 12px; background: var(--bg-soft); color: var(--text-secondary); }
+.src-tabs button.active { background: var(--color-primary); color: #fff; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 </style>
