@@ -297,19 +297,22 @@ async def trigger_analysis(request: Request, req_id: int,
                 },
             ]
             await req_crud.upsert_assets(req_id, 'analysis', items, created_by=user_id)
-            # Add information gaps as separate gap assets
+            # Add information gaps as separate gap assets（去重追加，不覆盖已有卡片状态/线程）
             gaps = result.get('information_gaps', [])
             if gaps:
-                gap_items = []
+                existing = await req_crud.get_assets(req_id, 'gap')
+                existing_descs = {_gap_content(g).get('description') for g in existing}
                 for g in gaps:
-                    gap_items.append({
+                    if g.get('description') in existing_descs:
+                        continue
+                    await req_crud.create_asset(req_id, 'gap', {
                         'title': g.get('gap_type', ''),
                         'description': g.get('description', ''),
                         'content': json.dumps({**g, 'thread': []}, ensure_ascii=False),
                         'gate_status': g.get('severity', 'HIGH'),
                         'status': 'pending',
-                    })
-                await req_crud.upsert_assets(req_id, 'gap', gap_items, created_by=user_id)
+                    }, created_by=user_id)
+                    existing_descs.add(g.get('description'))
 
             await req_crud.update_ai_task(task['id'], status='REVIEW')
         except Exception as exc:
@@ -450,77 +453,86 @@ async def gap_confirm(request: Request, req_id: int, gap_id: int):
 @router.post('/{req_id}/analysis/re-review')
 async def re_review_requirement_agent(request: Request, req_id: int,
                                       data: ReviewCommentBody = Body(default=ReviewCommentBody())):
-    """重新评审（reconcile）：核对旧问题状态 + 产出新分析/新问题，不清空旧问题。"""
+    """重新评审（reconcile）：核对旧问题状态 + 产出新分析/新问题，不清空旧问题。后台任务。"""
     ctx, err = await _guard(request, req_id)
     if ctx is None:
         return fail(err, '需求不存在或无权访问')
     user, req = ctx['user'], ctx['req']
     comment = (data.review_comment or '').strip()
-    old_gaps = await req_crud.get_assets(req_id, 'gap')
-    old_gap_dicts = [
-        {**_gap_content(g), 'id': g['id'], 'status': g.get('status', 'pending')}
-        for g in old_gaps
-    ]
-    try:
-        client = _make_llm()
-        result = await layered_agent.re_review_requirement(
-            client, req, [{'text_content': req.get('content') or req.get('title', '')}],
-            old_gap_dicts, comment,
-        )
-    except ValueError as exc:
-        return fail(400, str(exc))
-    except Exception as exc:
-        return fail(400, f'重新评审失败：{exc}')
 
-    # 应用 reconcile：更新旧问题状态（已确定不动）
-    applied = 0
-    for r in result.get('reconciled') or []:
-        idx = int(r.get('index', 0))
-        if not (0 <= idx < len(old_gaps)):
-            continue
-        gap = old_gaps[idx]
-        if gap.get('status') == 'confirmed':
-            continue
-        new_status = {'fixed': 'fixed', 'not_applicable': 'not_applicable',
-                      'keep': None}.get(r.get('new_status'))
-        if not new_status:
-            continue
-        gc = _gap_content(gap)
-        gc['resolution_note'] = r.get('note', '')
-        await req_crud.update_asset(gap['id'],
-                                    content=json.dumps(gc, ensure_ascii=False),
-                                    status=new_status)
-        applied += 1
+    task = await req_crud.create_ai_task(req_id, 're_review', created_by=user['id'])
+    await req_crud.update_ai_task(task['id'], status='RUNNING')
 
-    # 追加新问题（去重 by description，用 create_asset 追加不覆盖旧卡片）
-    existing_descs = {g.get('description') for g in old_gap_dicts}
-    added = 0
-    for g in result.get('information_gaps') or []:
-        if g.get('description') in existing_descs:
-            continue
-        await req_crud.create_asset(req_id, 'gap', {
-            'title': g.get('gap_type', ''),
-            'description': g.get('description', ''),
-            'content': json.dumps({**g, 'thread': []}, ensure_ascii=False),
-            'gate_status': g.get('severity', 'HIGH'),
-            'status': 'pending',
-        }, created_by=user['id'])
-        added += 1
-        existing_descs.add(g.get('description'))
+    import asyncio
 
-    # 覆盖式更新综合分析
-    await req_crud.upsert_assets(req_id, 'analysis', [{
-        'title': '需求分析',
-        'description': result.get('score_reason', ''),
-        'content': json.dumps(result, ensure_ascii=False),
-        'score': result.get('score', 0),
-        'gate_status': result.get('gate_status', ''),
-        'status': 'generated',
-    }], created_by=user['id'])
+    async def run():
+        try:
+            old_gaps = await req_crud.get_assets(req_id, 'gap')
+            old_gap_dicts = [
+                {**_gap_content(g), 'id': g['id'], 'status': g.get('status', 'pending')}
+                for g in old_gaps
+            ]
+            client = _make_llm()
+            result = await layered_agent.re_review_requirement(
+                client, req, [{'text_content': req.get('content') or req.get('title', '')}],
+                old_gap_dicts, comment,
+            )
 
-    return ok({'reconciled': result.get('reconciled', []), 'applied': applied,
-               'new_gaps': added, 'score': result.get('score', 0),
-               'gate_status': result.get('gate_status', '')}, msg='重新评审完成')
+            # 应用 reconcile：更新旧问题状态（已确定不动）
+            applied = 0
+            for r in result.get('reconciled') or []:
+                try:
+                    idx = int(r.get('index', 0))
+                except (TypeError, ValueError):
+                    continue
+                if not (0 <= idx < len(old_gaps)):
+                    continue
+                gap = old_gaps[idx]
+                if gap.get('status') == 'confirmed':
+                    continue
+                new_status = {'fixed': 'fixed', 'not_applicable': 'not_applicable',
+                              'keep': None}.get(r.get('new_status'))
+                if not new_status:
+                    continue
+                gc = _gap_content(gap)
+                gc['resolution_note'] = r.get('note', '')
+                await req_crud.update_asset(gap['id'],
+                                            content=json.dumps(gc, ensure_ascii=False),
+                                            status=new_status)
+                applied += 1
+
+            # 追加新问题（去重 by description，用 create_asset 追加不覆盖旧卡片）
+            existing_descs = {g.get('description') for g in old_gap_dicts}
+            added = 0
+            for g in result.get('information_gaps') or []:
+                if g.get('description') in existing_descs:
+                    continue
+                await req_crud.create_asset(req_id, 'gap', {
+                    'title': g.get('gap_type', ''),
+                    'description': g.get('description', ''),
+                    'content': json.dumps({**g, 'thread': []}, ensure_ascii=False),
+                    'gate_status': g.get('severity', 'HIGH'),
+                    'status': 'pending',
+                }, created_by=user['id'])
+                added += 1
+                existing_descs.add(g.get('description'))
+
+            # 覆盖式更新综合分析
+            await req_crud.upsert_assets(req_id, 'analysis', [{
+                'title': '需求分析',
+                'description': result.get('score_reason', ''),
+                'content': json.dumps(result, ensure_ascii=False),
+                'score': result.get('score', 0),
+                'gate_status': result.get('gate_status', ''),
+                'status': 'generated',
+            }], created_by=user['id'])
+
+            await req_crud.update_ai_task(task['id'], status='REVIEW')
+        except Exception as exc:
+            await req_crud.update_ai_task(task['id'], status='FAILED', error=str(exc))
+
+    asyncio.create_task(run())
+    return ok({'task_id': task['id'], 'status': 'RUNNING'}, msg='重新评审已启动')
 
 
 @router.post('/{req_id}/stories/generate')

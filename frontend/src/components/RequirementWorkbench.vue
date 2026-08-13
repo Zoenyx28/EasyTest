@@ -134,6 +134,13 @@ function pollUntilIdle(stage: string, doneMsg: string, runningRef?: any) {
     if (!selectedReqId.value) { clearInterval(timer); return; }
     await loadWorkbench(selectedReqId.value);
     const tasks = workbenchData.value?.ai_tasks || [];
+    const failed = tasks.find((t: any) => t.stage === stage && t.status === 'FAILED');
+    if (failed) {
+      clearInterval(timer);
+      if (runningRef) runningRef.value = false;
+      emit('showToast', failed.error || `${stage} 任务失败`);
+      return;
+    }
     const busy = tasks.some((t: any) => t.stage === stage && ['PENDING', 'RUNNING'].includes(t.status));
     if (!busy) {
       clearInterval(timer);

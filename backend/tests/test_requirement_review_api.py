@@ -200,8 +200,16 @@ async def test_re_review_reconciles_and_appends(client, ctx, _enable_fake_llm):
                              headers=_auth(ctx['member']))
     body = resp.json()
     assert body['code'] == 200, body
-    assert body['data']['applied'] == 1       # 仅 g1 被 reconcile（g2 confirmed 不动）
-    assert body['data']['new_gaps'] == 1      # 追加了新问题
+
+    # 后台任务完成后再断言（re-review 为后台任务 + AITask）
+    import asyncio
+    for _ in range(40):
+        wb = (await client.get(f'/api/requirements/{req_id}/workbench',
+                               headers=_auth(ctx['member']))).json()['data']
+        rrt = [t for t in wb.get('ai_tasks') or [] if t['stage'] == 're_review']
+        if rrt and rrt[0]['status'] in ('REVIEW', 'CONFIRMED', 'FAILED'):
+            break
+        await asyncio.sleep(0.3)
 
     gaps = await crud_requirements.get_assets(req_id, 'gap')
     by_id = {g['id']: g for g in gaps}
