@@ -11,7 +11,7 @@ from app.api.common import ok, fail
 from app.api.auth import get_current_user
 from app.config import PROJECTS_DATA_DIR
 from app.domains.requirement_design import crud as req_crud
-from app.services import lark_cli, llm_client, layered_agent, requirement_agent
+from app.services import llm_client, layered_agent, requirement_agent
 from app.services.file_signer import build_signed_url, verify_signature
 
 router = APIRouter(prefix='/api/req', tags=['需求设计'])

@@ -24,7 +24,7 @@ from app.models.schemas import (
     RequirementSourceAdd,
     CaseBindingCreate,
 )
-from app.services import lark_cli, llm_client, requirement_agent
+from app.services import feishu_client, llm_client, requirement_agent
 from app.services.file_signer import build_signed_url, verify_signature
 
 router = APIRouter(prefix='/api/requirements', tags=['需求管理'])
@@ -267,7 +267,7 @@ async def add_link_source(request: Request, req_id: int, data: RequirementSource
     text_content = data.text_content or ''
     extract_error = ''
     if source_type == 'lark_link':
-        result = await lark_cli.fetch_doc(link)
+        result = await feishu_client.fetch_doc(link, user['id'])
         if result.get('extracted'):
             extracted = True
             text_content = result['text_content']
@@ -305,7 +305,7 @@ async def re_extract_source(request: Request, req_id: int, source_id: int):
     if src['type'] != 'lark_link' or not src.get('link'):
         return fail(400, '仅飞书链接来源支持提取')
 
-    result = await lark_cli.fetch_doc(src['link'])
+    result = await feishu_client.fetch_doc(src['link'], user['id'])
     extracted = bool(result.get('extracted'))
     await crud.update_requirement_source(source_id, {
         'text_content': result.get('text_content', '') if extracted else '',

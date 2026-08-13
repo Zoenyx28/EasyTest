@@ -9,6 +9,7 @@ import DefectView from '../components/DefectView.vue'
 import RequirementsView from '../components/RequirementsView.vue'
 import TestDesignWorkbench from '../components/TestDesignWorkbench.vue'
 import RequirementWorkbench from '../components/RequirementWorkbench.vue'
+import FeishuCallback from '../components/FeishuCallback.vue'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -63,6 +64,11 @@ const routes: RouteRecordRaw[] = [
     name: 'register',
     component: RegisterView,
   },
+  {
+    path: '/feishu-callback',
+    name: 'feishu-callback',
+    component: FeishuCallback,
+  },
 ]
 
 const router = createRouter({
@@ -71,7 +77,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  const publicRoutes = ['login', 'register']
+  const publicRoutes = ['login', 'register', 'feishu-callback']
   if (publicRoutes.includes(to.name as string)) {
     next()
     return

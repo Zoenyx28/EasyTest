@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, String, Boolean
+from sqlalchemy import Column, String, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.shared.database import Base
@@ -49,5 +49,24 @@ class UserLarkBinding(Base):
     user_id: Mapped[int] = mapped_column(unique=True, nullable=False)
     app_id: Mapped[str] = mapped_column(String(64), default='')
     lark_open_id: Mapped[str] = mapped_column(String(128), default='')
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserFeishuToken(Base):
+    """Per-user Feishu OAuth tokens — official API (replaces lark-cli keychain).
+
+    user_access_token / refresh_token 以 Fernet 加密存储（密钥见 config.FEISHU_TOKEN_ENC_KEY）。
+    refresh_token 单次使用；授权满 365 天需整重新 OAuth。
+    """
+    __tablename__ = 'user_feishu_tokens'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(unique=True, nullable=False)
+    lark_open_id: Mapped[str] = mapped_column(String(128), default='')
+    access_token_enc: Mapped[str] = mapped_column(Text, default='')
+    refresh_token_enc: Mapped[str] = mapped_column(Text, default='')
+    access_expires_at: Mapped[datetime | None] = mapped_column(default=None)
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)

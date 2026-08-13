@@ -105,39 +105,29 @@ async function saveLlm() {
   }
 }
 
-/* ════════════════ Tab 3：飞书授权（/api/settings/lark/*） ════════════════ */
+/* ════════════════ Tab 3：飞书授权（/api/settings/feishu/*，官方 OAuth）═══ */
 interface LarkStatus {
   bound: boolean;
-  app_id: string;
   lark_open_id: string;
   token_status: string;
   auth_required: boolean;
   auth_pending: boolean;
   auth_error: string;
-  cli_available: boolean;
-}
-interface PendingAuth {
-  verification_url: string;
-  device_code: string;
-  expires_in: number;
-  startedAt: number;
 }
 
 const larkLoading = ref(false);
 const larkStatus = ref<LarkStatus>({
-  bound: false, app_id: '', lark_open_id: '', token_status: '',
-  auth_required: true, auth_pending: false, auth_error: '', cli_available: true,
+  bound: false, lark_open_id: '', token_status: '',
+  auth_required: true, auth_pending: false, auth_error: '',
 });
-const authPending = ref<PendingAuth | null>(null);
 const authStarting = ref(false);
-const authCompleting = ref(false);
 const authDone = ref(false);
 let pollTimer: number | undefined;
 
 async function loadLark() {
   larkLoading.value = true;
   try {
-    larkStatus.value = await api.get<LarkStatus>('/settings/lark/status');
+    larkStatus.value = await api.get<LarkStatus>('/settings/feishu/status');
   } catch (e: any) {
     emit('showToast', e.message || '查询飞书授权状态失败');
   } finally {
@@ -150,13 +140,9 @@ async function startAuth() {
   authDone.value = false;
   larkStatus.value.auth_error = '';
   try {
-    const res = await api.post<{ verification_url: string; device_code: string; expires_in: number }>('/settings/lark/auth');
-    authPending.value = {
-      verification_url: res.verification_url,
-      device_code: res.device_code,
-      expires_in: res.expires_in,
-      startedAt: Date.now(),
-    };
+    const res = await api.get<{ authorize_url: string }>('/settings/feishu/auth-url');
+    window.open(res.authorize_url, '_blank', 'noopener');
+    emit('showToast', '请在浏览器中完成飞书授权');
     startPolling();
   } catch (e: any) {
     emit('showToast', e.message || '发起飞书授权失败');
@@ -165,69 +151,23 @@ async function startAuth() {
   }
 }
 
-/**
- * 单次查询授权状态。发起授权后后端由后台任务执行阻塞式 `auth login --device-code`，
- * 本函数仅轮询快速的 status 接口，确认绑定后自动结束。返回 true 表示仍在等待用户确认。
- */
-async function checkAuthStatus(): Promise<boolean> {
-  if (!authPending.value) return false;
-  try {
-    const s = await api.get<LarkStatus>('/settings/lark/status');
-    larkStatus.value = s;
-    // 后台任务进行中 → 继续等待
-    if (s.auth_pending) return true;
-    // 后台任务已完成但失败
-    if (s.auth_error) {
-      stopPolling();
-      authPending.value = null;
-      emit('showToast', s.auth_error || '飞书授权失败，请重新发起授权');
-      return false;
-    }
-    // 后台任务完成并已自动绑定
-    if (s.bound) {
-      stopPolling();
-      authPending.value = null;
-      authDone.value = true;
-      emit('showToast', '飞书授权成功');
-      return false;
-    }
-    // 兜底：任务结束但未绑定
-    stopPolling();
-    authPending.value = null;
-    emit('showToast', '飞书授权未完成，请重新发起授权');
-    return false;
-  } catch (e: any) {
-    emit('showToast', e.message || '查询飞书授权状态失败');
-    return false;
-  }
-}
-
+/** 轮询 status，绑定成功后自动停止。 */
 function startPolling() {
   stopPolling();
   pollTimer = window.setInterval(async () => {
-    if (!authPending.value) return;
-    // device_code 有效期已过 → 停止等待
-    if (Date.now() - authPending.value.startedAt > authPending.value.expires_in * 1000) {
-      stopPolling();
-      authPending.value = null;
-      emit('showToast', '授权链接已过期，请重新发起授权');
-      return;
-    }
-    await checkAuthStatus();
-  }, 3000);
-}
-
-async function completeAuth() {
-  if (!authPending.value) return;
-  authCompleting.value = true;
-  try {
-    const stillPending = await checkAuthStatus();
-    if (stillPending) {
-      emit('showToast', '授权进行中，请在浏览器完成确认');
-    }
-  } finally {
-    authCompleting.value = false;
-  }
+    try {
+      const s = await api.get<LarkStatus>('/settings/feishu/status');
+      larkStatus.value = s;
+      if (s.bound) {
+        stopPolling();
+        authDone.value = true;
+        emit('showToast', '飞书授权成功');
+      } else if (s.auth_error) {
+        stopPolling();
+        emit('showToast', s.auth_error || '飞书授权失败，请重新发起授权');
+      }
+    } catch { /* 忽略瞬时错误，继续轮询 */ }
+  }, 2000);
 }
 
 function stopPolling() {
@@ -239,18 +179,16 @@ function stopPolling() {
 
 function cancelAuth() {
   stopPolling();
-  authPending.value = null;
   authDone.value = false;
 }
 
-function copyText(text: string) {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(
-      () => emit('showToast', '已复制到剪贴板'),
-      () => emit('showToast', '复制失败'),
-    );
-  } else {
-    emit('showToast', '当前浏览器不支持复制');
+async function unbindFeishu() {
+  try {
+    await api.del('/settings/feishu');
+    await loadLark();
+    emit('showToast', '已解除飞书绑定');
+  } catch (e: any) {
+    emit('showToast', e.message || '解绑失败');
   }
 }
 
@@ -263,12 +201,6 @@ function tokenStatusTag(s: string): { tone: 'green' | 'yellow' | 'red' | 'gray';
     default: return { tone: 'gray', label: s || '未知' };
   }
 }
-
-function formatExpires(sec: number): string {
-  if (sec >= 60) return `${Math.round(sec / 60)} 分钟`;
-  return `${sec} 秒`;
-}
-
 /* ── 打开时按 Tab 加载数据 ── */
 watch(() => props.isOpen, (open) => {
   if (!open) {
@@ -408,7 +340,7 @@ const handleSave = () => {
     <!-- ═══ Tab 3：飞书授权 ═══ -->
     <div v-else class="px-5 py-4 space-y-3">
       <p class="text-[11.5px]" style="color: var(--text-tertiary);">
-        授权飞书后，可在需求来源中提取飞书云文档内容。Token 生命周期由 lark-cli 管理，过期后可一键重新授权。
+        授权飞书后，可在需求来源中提取飞书云文档内容（官方 OAuth，每用户独立授权）。
       </p>
 
       <div v-if="larkLoading" class="py-8 text-center text-[12.5px]" style="color: var(--text-muted);">加载中…</div>
@@ -418,15 +350,12 @@ const handleSave = () => {
         <div class="lark-status-card px-3 py-3">
           <div class="flex items-center gap-2">
             <span class="text-[12px] font-semibold" style="color: var(--text-primary);">授权状态</span>
-            <BaseTag v-if="larkStatus.auth_required" tone="red" size="sm" dot>未授权</BaseTag>
+            <BaseTag v-if="!larkStatus.bound" tone="red" size="sm" dot>未授权</BaseTag>
             <BaseTag v-else :tone="tokenStatusTag(larkStatus.token_status).tone" size="sm" dot>{{ tokenStatusTag(larkStatus.token_status).label }}</BaseTag>
           </div>
-          <div v-if="!larkStatus.auth_required && larkStatus.lark_open_id" class="mt-2 text-[12px] space-y-0.5" style="color: var(--text-secondary);">
+          <div v-if="larkStatus.bound && larkStatus.lark_open_id" class="mt-2 text-[12px] space-y-0.5" style="color: var(--text-secondary);">
             <div>飞书 Open ID：<span style="color: var(--text-primary);">{{ larkStatus.lark_open_id }}</span></div>
             <div>Token 状态：{{ tokenStatusTag(larkStatus.token_status).label }}（{{ larkStatus.token_status }}）</div>
-          </div>
-          <div v-if="!larkStatus.cli_available" class="mt-2">
-            <BaseTag tone="orange" size="sm">飞书 CLI 不可用，无法发起授权</BaseTag>
           </div>
           <div v-if="larkStatus.auth_required && larkStatus.bound" class="mt-2 text-[12px]" style="color: var(--color-warning);">
             已绑定但 Token 已过期/失效，请重新授权。
@@ -436,50 +365,22 @@ const handleSave = () => {
           </div>
         </div>
 
-        <!-- 授权中 -->
-        <div v-if="authPending" class="lark-status-card px-3 py-3 space-y-2">
-          <div class="text-[12px] font-semibold" style="color: var(--text-primary);">请在浏览器中完成授权</div>
-          <div class="text-[12px]">
-            <span style="color: var(--text-secondary);">验证链接：</span>
-            <a
-              :href="authPending.verification_url"
-              target="_blank"
-              rel="noopener"
-              class="underline"
-              style="color: var(--cta); word-break: break-all;"
-            >{{ authPending.verification_url }}</a>
-            <button class="copy-link-btn ml-2" @click="copyText(authPending.verification_url)">复制</button>
-          </div>
-          <div class="text-[12px]" style="color: var(--text-secondary);">
-            Device Code：<span style="color: var(--text-primary); font-family: var(--font-mono);">{{ authPending.device_code }}</span>
-            <button class="copy-link-btn ml-2" @click="copyText(authPending.device_code)">复制</button>
-          </div>
-          <div class="text-[11.5px]" style="color: var(--text-tertiary);">
-            链接有效期 {{ formatExpires(authPending.expires_in) }}。在浏览器完成扫码/确认后，将自动完成绑定，也可点击下方按钮手动完成。
-          </div>
-          <div class="flex items-center gap-2 pt-1">
-            <BaseButton variant="secondary" size="sm" :loading="authCompleting" @click="completeAuth">完成授权</BaseButton>
-            <BaseButton variant="ghost" size="sm" @click="cancelAuth">取消</BaseButton>
-          </div>
-        </div>
-
         <!-- 授权成功提示 -->
-        <div v-else-if="authDone" class="text-[12px]" style="color: var(--color-success);">
+        <div v-if="authDone" class="text-[12px]" style="color: var(--color-success);">
           授权已完成，可正常使用飞书文档提取。
         </div>
 
         <!-- 操作按钮 -->
-        <div v-if="!authPending" class="flex items-center gap-2">
-          <BaseButton
-            variant="primary"
-            :disabled="!larkStatus.cli_available"
-            :loading="authStarting"
-            @click="startAuth"
-          >
-            {{ larkStatus.auth_required ? (larkStatus.bound ? '重新授权' : '发起授权') : '重新授权' }}
+        <div class="flex items-center gap-2">
+          <BaseButton variant="primary" :loading="authStarting" @click="startAuth">
+            {{ larkStatus.bound ? '重新授权' : '发起授权' }}
           </BaseButton>
-          <BaseButton v-if="!larkStatus.auth_required" variant="secondary" @click="loadLark">刷新状态</BaseButton>
+          <BaseButton v-if="larkStatus.bound" variant="secondary" @click="loadLark">刷新状态</BaseButton>
+          <BaseButton v-if="larkStatus.bound" variant="warning" size="sm" @click="unbindFeishu">解除绑定</BaseButton>
         </div>
+        <p class="text-[11px]" style="color: var(--text-tertiary);">
+          授权完成后在「需求来源」重新粘贴/提取链接即可；Token 过期自动刷新，满一年需重新授权。
+        </p>
       </template>
     </div>
 

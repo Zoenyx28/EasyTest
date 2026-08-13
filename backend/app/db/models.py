@@ -19,7 +19,7 @@ This file is retained for backward compatibility only.
 Prefer importing from the canonical domain locations in new code.
 """
 # Shared models
-from app.shared.models import User, LLMSettings, UserLarkBinding  # noqa: F401, E402
+from app.shared.models import User, LLMSettings, UserLarkBinding, UserFeishuToken  # noqa: F401, E402
 
 # Project management domain
 from app.domains.project_mgmt.models import (  # noqa: F401, E402

@@ -13,7 +13,7 @@ from .models import DefectModule, Defect, DefectAttachment, DefectLog, DefectCom
 from .models import UserActiveProject
 from .models import (
     Requirement, RequirementSource, RequirementReview, Story,
-    GeneratedCase, CaseBinding, LLMSettings, UserLarkBinding,
+    GeneratedCase, CaseBinding, LLMSettings, UserLarkBinding, UserFeishuToken,
 )
 from .models import (
     RequirementAnalysis, InformationGap, TestPoint, TestPointReview,
@@ -3296,6 +3296,65 @@ async def upsert_user_lark_binding(user_id: int, app_id: str, lark_open_id: str)
         else:
             b.app_id = app_id
             b.lark_open_id = lark_open_id
+        await session.commit()
+
+
+# ── 飞书官方 API OAuth token（读阶段）──
+
+
+async def get_user_feishu_token(user_id: int) -> dict | None:
+    """读取用户飞书 token（密文），未授权返回 None。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(UserFeishuToken).where(UserFeishuToken.user_id == user_id)
+        )
+        t = result.scalar_one_or_none()
+        if t is None:
+            return None
+        return {
+            'id': t.id, 
+            'user_id': t.user_id, 
+            'lark_open_id': t.lark_open_id,
+            'access_token_enc': t.access_token_enc,
+            'refresh_token_enc': t.refresh_token_enc,
+            'access_expires_at': dt_iso(t.access_expires_at) if t.access_expires_at else '',
+            'refresh_expires_at': dt_iso(t.refresh_expires_at) if t.refresh_expires_at else '',
+            'created_at': dt_iso(t.created_at),
+            'updated_at': dt_iso(t.updated_at),
+        }
+
+
+async def save_user_feishu_token(
+    user_id: int, 
+    lark_open_id: str,
+    access_token_enc: str,
+    refresh_token_enc: str,
+    access_expires_at: datetime | None = None, 
+    refresh_expires_at: datetime | None = None) -> None:
+    """创建或更新用户飞书 token（密文）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(UserFeishuToken).where(UserFeishuToken.user_id == user_id)
+        )
+        t = result.scalar_one_or_none()
+        if t is None:
+            t = UserFeishuToken(user_id=user_id)
+            session.add(t)
+        t.lark_open_id = lark_open_id
+        t.access_token_enc = access_token_enc
+        t.refresh_token_enc = refresh_token_enc
+        t.access_expires_at = access_expires_at
+        t.refresh_expires_at = refresh_expires_at
+        t.updated_at = datetime.utcnow()
+        await session.commit()
+
+
+async def clear_user_feishu_token(user_id: int) -> None:
+    """清除用户飞书 token（授权失效/主动解绑）。"""
+    async with session_ctx() as session:
+        await session.execute(
+            delete(UserFeishuToken).where(UserFeishuToken.user_id == user_id)
+        )
         await session.commit()
 
 

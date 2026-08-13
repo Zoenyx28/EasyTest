@@ -336,6 +336,18 @@ async def init_db():
         "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
         "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
         ")",
+        # ── 飞书官方 API OAuth token（读阶段，替换 lark-cli keychain）──
+        "CREATE TABLE IF NOT EXISTS user_feishu_tokens ("
+        "id INTEGER PRIMARY KEY " + autoinc + ", "
+        "user_id INTEGER NOT NULL, "
+        "lark_open_id VARCHAR(128) DEFAULT '', "
+        "access_token_enc TEXT DEFAULT '', "
+        "refresh_token_enc TEXT DEFAULT '', "
+        "access_expires_at DATETIME, "
+        "refresh_expires_at DATETIME, "
+        "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+        "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP" + on_update +
+        ")",
         # ── PRD V2.0 分层测试设计表（#20）──
         "CREATE TABLE IF NOT EXISTS requirement_analyses ("
         "id INTEGER PRIMARY KEY " + autoinc + ", "

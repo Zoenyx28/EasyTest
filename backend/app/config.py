@@ -49,5 +49,13 @@ PROJECTS_VENV_DIR = PROJECTS_DATA_DIR / "venvs"
 # ── JWT authentication ──
 JWT_SECRET = os.getenv("JWT_SECRET", "easy-test-jwt-secret-key-change-in-production")
 
+# ── 飞书开放平台（官方 API 读阶段，替换 lark-cli）──
+FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
+FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
+# OAuth 回调地址（需在飞书开放平台控制台配置白名单）
+FEISHU_REDIRECT_URI = os.getenv("FEISHU_REDIRECT_URI", "")
+# 用户 token 加密密钥；未设置时退化为从 JWT_SECRET 派生（建议生产显式配置）
+FEISHU_TOKEN_ENC_KEY = os.getenv("FEISHU_TOKEN_ENC_KEY", "")
+
 # 文件访问签名密钥（与 JWT 隔离，用于缺陷附件/内嵌图/临时图的短时效签名 URL）
 FILE_SIGN_SECRET = os.getenv("FILE_SIGN_SECRET", "easy-test-file-sign-secret-change-in-production")
