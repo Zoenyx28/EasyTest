@@ -57,9 +57,11 @@ async def init_db():
         "ALTER TABLE stories ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         "ALTER TABLE generated_cases ADD COLUMN gate_status VARCHAR(16) DEFAULT ''",
         # ADR-0016: Requirement source embedding + Defect traceability
-        "ALTER TABLE requirements ADD COLUMN content TEXT DEFAULT ''",
+        # 注意：MySQL 的 TEXT/MEDIUMTEXT 列不允许 DEFAULT 值（否则 ALTER 静默失败缺列），
+        # 因此 content/source_meta 不带 DEFAULT；VARCHAR 的 source_type 允许。
+        "ALTER TABLE requirements ADD COLUMN content MEDIUMTEXT",
         "ALTER TABLE requirements ADD COLUMN source_type VARCHAR(16) DEFAULT 'text'",
-        "ALTER TABLE requirements ADD COLUMN source_meta TEXT DEFAULT ''",
+        "ALTER TABLE requirements ADD COLUMN source_meta TEXT",
         "ALTER TABLE defects ADD COLUMN requirement_id INTEGER DEFAULT 0",
         "CREATE TABLE IF NOT EXISTS project_members (id INTEGER PRIMARY KEY AUTO_INCREMENT, project_id INTEGER NOT NULL, user_id INTEGER NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
     ]
