@@ -158,6 +158,14 @@ async def test_fetch_doc_unsupported_type(client, ctx, monkeypatch):
     assert result['error_kind'] == feishu_client.ERR_UNSUPPORTED
 
 
+async def test_fetch_doc_sheet_bitable_not_supported_yet(client, ctx, monkeypatch):
+    """本期未启用 sheet/bitable scope → 直接返回「暂不支持」。"""
+    for url in ('https://x.feishu.cn/sheets/Sh1', 'https://x.feishu.cn/base/Ba1'):
+        result = await feishu_client.fetch_doc(url, ctx['member']['id'])
+        assert result['extracted'] is False
+        assert result['error_kind'] == feishu_client.ERR_UNSUPPORTED
+
+
 async def test_fetch_doc_invalid_link(client, ctx):
     result = await feishu_client.fetch_doc('https://baidu.com/', ctx['member']['id'])
     assert result['extracted'] is False

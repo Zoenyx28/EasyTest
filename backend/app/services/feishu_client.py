@@ -38,13 +38,10 @@ _FEISHU_HOST = 'https://open.feishu.cn'
 _OAUTH_HOST = 'https://accounts.feishu.cn'
 _TOKEN_URL = f'{_OAUTH_HOST}/oauth/v3/token'
 
-# 读阶段最小 scope（Q13 定案）
+# 读阶段最小 scope（Q13 定案；多维表格/电子表格/知识库整库权限本期暂不启用）
 SCOPES = [
     'docx:document:readonly',
     'wiki:node:read',
-    'wiki:wiki:readonly',
-    'sheets:spreadsheet:readonly',
-    'bitable:app:readonly',
     'auth:user.id:read',
     'offline_access',
 ]
@@ -55,7 +52,9 @@ DOC_TYPES = {
     'sheets': 'sheet', 'base': 'bitable', 'file': 'file',
     'slides': 'slides', 'mindnotes': 'mindnote',
 }
-_SUPPORTED_READ = {'docx', 'doc', 'wiki', 'sheet', 'bitable'}
+# 本期可读类型：docx + wiki（经 wiki:node:read 解析后读 docx）。
+# sheet/bitable 因 scope 未启用暂不支持。
+_SUPPORTED_READ = {'docx', 'doc', 'wiki'}
 
 _LINK_RE = re.compile(r'/(docx|docs|wiki|sheets|base|file|slides|mindnotes)/([A-Za-z0-9]+)')
 
@@ -350,10 +349,9 @@ async def _extract_by_type(doc_type: str, token: str, access_token: str,
         return await _extract_wiki(token, access_token, auth_kind)
     if doc_type in ('docx', 'doc'):
         return await _extract_docx(token, access_token)
-    if doc_type == 'sheet':
-        return await _extract_sheet(token, access_token)
-    if doc_type == 'bitable':
-        return await _extract_bitable(token, access_token)
+    if doc_type in ('sheet', 'bitable'):
+        # 本期未启用 sheet/bitable scope（用户决策），wiki 解析到该类时明确提示
+        raise FeishuError(ERR_UNSUPPORTED, '该文档类型（电子表格/多维表格）本期暂不支持读取，请手动粘贴内容')
     raise FeishuError(ERR_UNSUPPORTED, f'暂不支持该链接类型（{doc_type}）')
 
 
