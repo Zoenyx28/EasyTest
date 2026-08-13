@@ -12,8 +12,16 @@ from app.shared.database import Base, engine, async_session_factory, session_ctx
 
 async def init_db():
     """Create all tables on startup, then apply lightweight column migrations."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:
+        # uvicorn --workers 2 并发启动时，新增表（如 user_feishu_tokens）可能被
+        # 两个 worker 同时 create_all → MySQL 1050 Table already exists 竞态。
+        # 表已由另一 worker 创建即视为成功；其余错误照常抛出。
+        msg = str(exc)
+        if 'already exists' not in msg and '1050' not in msg:
+            raise
 
     # Lightweight migrations: create_all does not add columns to existing tables,
     # so we ALTER TABLE ADD COLUMN for the newly introduced columns.  Each ALTER
@@ -339,7 +347,7 @@ async def init_db():
         # ── 飞书官方 API OAuth token（读阶段，替换 lark-cli keychain）──
         "CREATE TABLE IF NOT EXISTS user_feishu_tokens ("
         "id INTEGER PRIMARY KEY " + autoinc + ", "
-        "user_id INTEGER NOT NULL, "
+        "user_id INTEGER NOT NULL UNIQUE, "
         "lark_open_id VARCHAR(128) DEFAULT '', "
         "access_token_enc TEXT DEFAULT '', "
         "refresh_token_enc TEXT DEFAULT '', "
