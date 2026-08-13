@@ -158,7 +158,8 @@ def _token_error_message(data: dict) -> str:
 
 
 async def _oauth_post(payload: dict) -> dict:
-    resp = await httpx.post(_TOKEN_URL, json=payload, timeout=20)
+    async with httpx.AsyncClient(timeout=20) as hc:
+        resp = await hc.post(_TOKEN_URL, json=payload)
     data = resp.json()
     if resp.status_code != 200 or not data.get('access_token'):
         raise FeishuError(ERR_NO_AUTH, _token_error_message(data))
@@ -246,10 +247,11 @@ async def _get_tenant_token() -> str:
     if _tenant_token['token'] and _tenant_token['expires_at'] > now + 1800:
         return _tenant_token['token']
     try:
-        resp = await httpx.post(
-            f'{_FEISHU_HOST}/open-apis/auth/v3/tenant_access_token/internal',
-            json={'app_id': FEISHU_APP_ID, 'app_secret': FEISHU_APP_SECRET}, timeout=20,
-        )
+        async with httpx.AsyncClient(timeout=20) as hc:
+            resp = await hc.post(
+                f'{_FEISHU_HOST}/open-apis/auth/v3/tenant_access_token/internal',
+                json={'app_id': FEISHU_APP_ID, 'app_secret': FEISHU_APP_SECRET},
+            )
         data = resp.json()
         token = data.get('tenant_access_token', '')
         if resp.status_code != 200 or data.get('code') != 0 or not token:
@@ -287,15 +289,20 @@ def _call_sdk(method, req, access_token):
 
 
 def _check_resp(resp) -> None:
-    """按 SDK 响应 code 映射业务错误。code==0 成功。"""
+    """按 SDK 响应 code/msg 映射业务错误。code==0 成功。"""
     code = getattr(resp, 'code', 0)
     if code == 0:
         return
     msg = getattr(resp, 'msg', '') or '飞书 API 调用失败'
-    if code in (20037, 99991668, 99991663):        # token 过期 / 无效
+    low = msg.lower()
+    if code in (20037, 99991668, 99991663) or ('token' in low and ('expire' in low or 'invalid' in low)):
         raise FeishuError(ERR_NO_AUTH, '飞书授权已过期，请重新授权')
-    if code in (99991661, 99991672, 99991671, 99991665):  # 权限不足
-        raise FeishuError(ERR_PERMISSION, f'无权限读取该文档（{msg}）')
+    if (code in (99991661, 99991672, 99991671, 99991665)
+            or 'permission' in low or '权限' in msg):
+        raise FeishuError(
+            ERR_PERMISSION,
+            '无权限读取该文档：请确认你本人有访问权限，或先在「设置 → 飞书授权」完成授权；也可手动粘贴文档内容',
+        )
     raise FeishuError(ERR_FETCH, f'飞书读取失败：{msg}')
 
 

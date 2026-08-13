@@ -5,6 +5,7 @@ token 加密回环、OAuth token 落库与状态、需求来源提取降级。
 """
 import json
 
+import httpx
 import pytest
 
 from unittest.mock import AsyncMock
@@ -169,6 +170,70 @@ async def test_fetch_doc_no_auth(client, ctx, monkeypatch):
     result = await feishu_client.fetch_doc('https://x.feishu.cn/docx/Doc1', ctx['member']['id'])
     assert result['extracted'] is False
     assert result['error_kind'] == feishu_client.ERR_NO_AUTH
+
+
+async def test_fetch_doc_permission_error_mapped(client, ctx, monkeypatch):
+    """飞书返回 permission denied → 映射为 ERR_PERMISSION + 引导授权提示。"""
+    class _PermResp:
+        code = 99991661
+        msg = 'permission denied: node permission denied'
+        data = None
+
+    class _RawMethod:
+        def __call__(self, req, opt=None):
+            return _PermResp()
+
+    class _Doc:
+        raw_content = _RawMethod()
+
+    class _V1:
+        document = _Doc()
+
+    class _FakePermClient:
+        def __init__(self):
+            self.docx = type('D', (), {'v1': _V1()})()
+
+    monkeypatch.setattr(feishu_client, '_get_client', lambda: _FakePermClient())
+    monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tt'))
+    monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
+
+    result = await feishu_client.fetch_doc('https://x.feishu.cn/docx/Doc1', ctx['member']['id'])
+    assert result['extracted'] is False
+    assert result['error_kind'] == feishu_client.ERR_PERMISSION
+    assert '授权' in result['error_message']
+
+
+async def test_get_tenant_token_async_path(monkeypatch):
+    """回归：_get_tenant_token 必须走 httpx.AsyncClient（sync httpx.post 不可 await）。"""
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {'code': 0, 'tenant_access_token': 'tt_abc', 'expire': 7200}
+    class FakeAsyncClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None): return FakeResp()
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: FakeAsyncClient())
+
+    token = await feishu_client._get_tenant_token()
+    assert token == 'tt_abc'
+
+
+async def test_oauth_post_async_path(monkeypatch):
+    """回归：_oauth_post 必须走 AsyncClient（否则 exchange_code 在生产挂掉）。"""
+    class FakeResp:
+        status_code = 200
+        def json(self):
+            return {'access_token': 'ua_abc', 'refresh_token': 'rf_x',
+                    'expires_in': 7200, 'open_id': 'ou_x'}
+    class FakeAsyncClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None): return FakeResp()
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: FakeAsyncClient())
+
+    data = await feishu_client._oauth_post({'grant_type': 'authorization_code'})
+    assert data['access_token'] == 'ua_abc'
 
 
 # ── OAuth token 落库 + 状态端点 ──
