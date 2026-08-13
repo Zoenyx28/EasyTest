@@ -344,8 +344,9 @@ async function loadRequirements() {
   if (!projectId.value || !branchId.value) { requirements.value = []; return; }
   loading.value = true;
   try {
-    const data = await get<{ items: RequirementInfo[] }>(`/requirements?project_id=${projectId.value}&branch_id=${branchId.value}`);
-    requirements.value = data.items || [];
+    const data = await get<any>(`/requirements?project_id=${projectId.value}&branch_id=${branchId.value}`);
+    // 兼容两种返回：旧接口裸数组 / 新接口 {items, total}
+    requirements.value = Array.isArray(data) ? data : (data.items || []);
   } catch (e: any) { emit('showToast', e.message || '加载失败'); }
   finally { loading.value = false; }
 }
@@ -716,25 +717,26 @@ onUnmounted(() => {
     <aside class="req-sidebar">
       <div class="sidebar-header">
         <h3 class="sidebar-title">需求列表</h3>
-        <BaseButton size="sm" @click="showNewReqModal = true">+ 新建</BaseButton>
+        <BaseButton size="sm" @click="showNewReqModal = true">新增需求</BaseButton>
       </div>
 
       <!-- Search -->
       <div class="px-3 pb-2">
-        <BaseInput v-model="searchQuery" placeholder="搜索需求..." class="w-full text-sm" />
+        <BaseInput v-model="searchQuery" placeholder="搜索需求" class="w-full text-sm" />
       </div>
 
-      <!-- Status filter -->
-      <div class="filter-bar">
-        <button v-for="t in statusFilterTabs" :key="t.key"
-          class="filter-chip" :class="{ active: statusFilter === t.key }"
-          @click="statusFilter = t.key">
-          {{ t.label }}
-        </button>
-      </div>
+
 
       <!-- List -->
       <div class="req-list" v-if="!loading">
+        <!-- Status filter -->
+        <div class="filter-bar">
+          <button v-for="t in statusFilterTabs" :key="t.key"
+            class="filter-chip" :class="{ active: statusFilter === t.key }"
+            @click="statusFilter = t.key">
+            {{ t.label }}
+          </button>
+        </div>
         <div v-if="filteredReqs.length === 0" class="p-4 text-center text-sm" style="color:var(--text-tertiary);">
           暂无需求
         </div>
@@ -1198,7 +1200,7 @@ onUnmounted(() => {
 
       <!-- No selection placeholder -->
       <div v-else class="placeholder">
-        <p>← 从左侧列表选择一个需求</p>
+        <p>暂无需求</p>
       </div>
     </main>
 
