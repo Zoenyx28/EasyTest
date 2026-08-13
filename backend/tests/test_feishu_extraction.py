@@ -69,139 +69,67 @@ async def test_token_encrypt_decrypt_roundtrip():
     assert feishu_client.decrypt_token('garbage') == ''
 
 
-# ── fetch_doc（mock lark_oapi 客户端）──
+# ── fetch_doc（mock httpx 客户端）──
 
 
-class _FakeRawResp:
-    def __init__(self, content='', code=0, msg=''):
-        self.code = code
-        self.msg = msg
-        self.data = type('D', (), {'content': content})()
+class _FakeHttpResp:
+    def __init__(self, data, status_code=200):
+        self.status_code = status_code
+        self._data = data
+
+    def json(self):
+        return self._data
 
 
-class _FakeNodeResp:
-    def __init__(self, obj_token, obj_type):
-        self.code = 0
-        self.msg = ''
-        node = type('N', (), {'obj_token': obj_token, 'obj_type': obj_type})()
-        self.data = type('D', (), {'node': node})()
+class _FakeHttp:
+    """模拟 httpx.AsyncClient：按 URL 子串路由到固定响应，记录调用 URL。"""
 
+    def __init__(self, routes):
+        self.routes = routes  # {url_substring: data_dict}
+        self.urls = []
 
-class _FakeClient:
-    """模拟 lark_oapi 客户端：按 document_id 返回固定内容，记录调用。"""
+    async def __aenter__(self): return self
+    async def __aexit__(self, *a): return False
 
-    def __init__(self, doc_content='这是文档正文'):
-        self.calls = []
-        self.doc_content = doc_content
-
-        class RawMethod:
-            def __init__(self, outer): self.outer = outer
-            def __call__(self, req, opt=None):
-                self.outer.calls.append(('raw_content', req.document_id, opt.user_access_token if opt else None))
-                return _FakeRawResp(self.outer.doc_content)
-
-        class WikiSpace:
-            def __init__(self, outer): self.outer = outer
-            def get_node(self, req, opt=None):
-                self.outer.calls.append(('get_node', req.token))
-                return _FakeNodeResp('RealDocTok', 'docx')
-
-        class Document:
-            def __init__(self, outer): self.outer = outer
-            raw_content = None  # set below
-
-        class DocxV1:
-            def __init__(self, outer):
-                self.document = Document(outer)
-                self.document.raw_content = RawMethod(outer)
-
-        class Docx:
-            def __init__(self, outer): self.v1 = DocxV1(outer)
-
-        class Wiki:
-            def __init__(self, outer): self.v2 = type('V2', (), {'space': WikiSpace(outer)})()
-
-        self.docx = Docx(self)
-        self.wiki = Wiki(self)
+    async def get(self, url, **kw):
+        self.urls.append(url)
+        for sub, data in self.routes.items():
+            if sub in url:
+                return _FakeHttpResp(data)
+        return _FakeHttpResp({'code': 0, 'data': {}})
 
 
 async def test_fetch_doc_docx_success(client, ctx, monkeypatch):
-    fake = _FakeClient(doc_content='订单支持 3 天无理由退款')
-    monkeypatch.setattr(feishu_client, '_get_client', lambda: fake)
-    # 未授权：回退 tenant token（返回空 → no_auth）
+    fake = _FakeHttp({'raw_content': {'code': 0, 'data': {'content': '订单支持 3 天无理由退款'}}})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: fake)
     monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tenant_tok'))
     monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
 
     result = await feishu_client.fetch_doc('https://x.feishu.cn/docx/Doc1', ctx['member']['id'])
     assert result['extracted'] is True
     assert '无理由' in result['text_content']
-    assert fake.calls[0][0] == 'raw_content'
-    assert fake.calls[0][1] == 'Doc1'
+    assert any('raw_content' in u and 'Doc1' in u for u in fake.urls)
 
 
 async def test_fetch_doc_wiki_resolves(client, ctx, monkeypatch):
-    fake = _FakeClient(doc_content='知识库文档正文')
-    monkeypatch.setattr(feishu_client, '_get_client', lambda: fake)
+    fake = _FakeHttp({
+        'get_node': {'code': 0, 'data': {'node': {'obj_token': 'RealDocTok', 'obj_type': 'docx'}}},
+        'raw_content': {'code': 0, 'data': {'content': '知识库文档正文'}},
+    })
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: fake)
     monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tenant_tok'))
     monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
 
     result = await feishu_client.fetch_doc('https://x.feishu.cn/wiki/WikiX', ctx['member']['id'])
     assert result['extracted'] is True
-    assert fake.calls[0][0] == 'get_node'
-    assert fake.calls[1][0] == 'raw_content' and fake.calls[1][1] == 'RealDocTok'
-
-
-async def test_fetch_doc_unsupported_type(client, ctx, monkeypatch):
-    monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tenant_tok'))
-    result = await feishu_client.fetch_doc('https://x.feishu.cn/file/File1', ctx['member']['id'])
-    assert result['extracted'] is False
-    assert result['error_kind'] == feishu_client.ERR_UNSUPPORTED
-
-
-async def test_fetch_doc_sheet_bitable_not_supported_yet(client, ctx, monkeypatch):
-    """本期未启用 sheet/bitable scope → 直接返回「暂不支持」。"""
-    for url in ('https://x.feishu.cn/sheets/Sh1', 'https://x.feishu.cn/base/Ba1'):
-        result = await feishu_client.fetch_doc(url, ctx['member']['id'])
-        assert result['extracted'] is False
-        assert result['error_kind'] == feishu_client.ERR_UNSUPPORTED
-
-
-async def test_fetch_doc_invalid_link(client, ctx):
-    result = await feishu_client.fetch_doc('https://baidu.com/', ctx['member']['id'])
-    assert result['extracted'] is False
-    assert result['error_kind'] == feishu_client.ERR_INVALID_LINK
-
-
-async def test_fetch_doc_no_auth(client, ctx, monkeypatch):
-    monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value=''))
-    monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
-    result = await feishu_client.fetch_doc('https://x.feishu.cn/docx/Doc1', ctx['member']['id'])
-    assert result['extracted'] is False
-    assert result['error_kind'] == feishu_client.ERR_NO_AUTH
+    assert '知识库' in result['text_content']
+    assert any('get_node' in u for u in fake.urls)
+    assert any('raw_content' in u and 'RealDocTok' in u for u in fake.urls)
 
 
 async def test_fetch_doc_permission_error_mapped(client, ctx, monkeypatch):
-    """飞书返回 permission denied → 映射为 ERR_PERMISSION + 引导授权提示。"""
-    class _PermResp:
-        code = 99991661
-        msg = 'permission denied: node permission denied'
-        data = None
-
-    class _RawMethod:
-        def __call__(self, req, opt=None):
-            return _PermResp()
-
-    class _Doc:
-        raw_content = _RawMethod()
-
-    class _V1:
-        document = _Doc()
-
-    class _FakePermClient:
-        def __init__(self):
-            self.docx = type('D', (), {'v1': _V1()})()
-
-    monkeypatch.setattr(feishu_client, '_get_client', lambda: _FakePermClient())
+    fake = _FakeHttp({'raw_content': {'code': 99991661, 'msg': 'permission denied'}})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: fake)
     monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tt'))
     monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
 

@@ -268,45 +268,6 @@ async def _get_tenant_token() -> str:
 
 # ── 文档提取 ──
 
-_client = None
-
-
-def _get_client():
-    """惰性构建 lark_oapi 客户端（app 凭据驱动 tenant token；user token 每请求传入）。"""
-    global _client
-    if _client is None:
-        import lark_oapi as lark
-        _client = (lark.Client.builder()
-                   .app_id(FEISHU_APP_ID)
-                   .app_secret(FEISHU_APP_SECRET)
-                   .log_level(lark.LogLevel.ERROR)
-                   .build())
-    return _client
-
-
-def _call_sdk(method, req, access_token):
-    """同步 SDK 调用（lark_oapi 为阻塞式），带 user_access_token option。"""
-    from lark_oapi.core.model import RequestOptionBuilder
-    opt = RequestOptionBuilder().user_access_token(access_token).build()
-    return method(req, opt)
-
-
-def _check_resp(resp) -> None:
-    """按 SDK 响应 code/msg 映射业务错误。code==0 成功。"""
-    code = getattr(resp, 'code', 0)
-    if code == 0:
-        return
-    msg = getattr(resp, 'msg', '') or '飞书 API 调用失败'
-    low = msg.lower()
-    if code in (20037, 99991668, 99991663) or ('token' in low and ('expire' in low or 'invalid' in low)):
-        raise FeishuError(ERR_NO_AUTH, '飞书授权已过期，请重新授权')
-    if (code in (99991661, 99991672, 99991671, 99991665)
-            or 'permission' in low or '权限' in msg):
-        raise FeishuError(
-            ERR_PERMISSION,
-            '无权限读取该文档：请确认你本人有访问权限，或先在「设置 → 飞书授权」完成授权；也可手动粘贴文档内容',
-        )
-    raise FeishuError(ERR_FETCH, f'飞书读取失败：{msg}')
 
 
 async def fetch_doc(url: str, user_id: int = 0) -> dict:
@@ -359,24 +320,45 @@ async def _extract_by_type(doc_type: str, token: str, access_token: str,
     raise FeishuError(ERR_UNSUPPORTED, f'暂不支持该链接类型（{doc_type}）')
 
 
+def _raise_api_error(data: dict, fallback: str) -> None:
+    """把飞书 API 的 {code, msg} 映射为 FeishuError（raw httpx 路径）。"""
+    code = data.get('code')
+    msg = (data.get('msg') or fallback or '').lower()
+    if code in (20037, 99991668, 99991663) or ('token' in msg and ('expire' in msg or 'invalid' in msg)):
+        raise FeishuError(ERR_NO_AUTH, '飞书授权已过期，请重新授权')
+    if ('permission' in msg or '权限' in msg or 'forbidden' in msg):
+        raise FeishuError(
+            ERR_PERMISSION,
+            '无权限读取该文档：请确认你本人有访问权限，或先在「设置 → 飞书授权」完成授权；也可手动粘贴文档内容',
+        )
+    raise FeishuError(ERR_FETCH, f'飞书读取失败：{data.get("msg") or fallback}')
+
+
 async def _extract_docx(document_id: str, access_token: str) -> tuple[str, str]:
-    from lark_oapi.api.docx.v1 import RawContentDocumentRequest
-    req = RawContentDocumentRequest.builder().document_id(document_id).build()
-    resp = await asyncio.to_thread(_call_sdk, _get_client().docx.v1.document.raw_content,
-                                   req, access_token)
-    _check_resp(resp)
-    return (resp.data.content or ''), ''
+    async with httpx.AsyncClient(timeout=20) as hc:
+        resp = await hc.get(
+            f'{_FEISHU_HOST}/open-apis/docx/v1/documents/{document_id}/raw_content',
+            headers={'Authorization': f'Bearer {access_token}'},
+        )
+        data = resp.json()
+    if resp.status_code != 200 or data.get('code') != 0:
+        _raise_api_error(data, '文档读取失败')
+    return (data.get('data', {}).get('content') or ''), ''
 
 
 async def _extract_wiki(token: str, access_token: str, auth_kind: str) -> tuple[str, str]:
-    from lark_oapi.api.wiki.v2 import GetNodeSpaceRequest
-    req = GetNodeSpaceRequest.builder().token(token).build()   # 不传 obj_type，自动解析真实类型
-    resp = await asyncio.to_thread(_call_sdk, _get_client().wiki.v2.space.get_node,
-                                   req, access_token)
-    _check_resp(resp)
-    node = resp.data.node
-    obj_token = getattr(node, 'obj_token', '')
-    obj_type = getattr(node, 'obj_type', '')
+    async with httpx.AsyncClient(timeout=20) as hc:
+        resp = await hc.get(
+            f'{_FEISHU_HOST}/open-apis/wiki/v2/spaces/get_node',
+            params={'token': token},
+            headers={'Authorization': f'Bearer {access_token}'},
+        )
+        data = resp.json()
+    if resp.status_code != 200 or data.get('code') != 0:
+        _raise_api_error(data, '知识库节点解析失败')
+    node = data.get('data', {}).get('node', {})
+    obj_token = node.get('obj_token', '')
+    obj_type = node.get('obj_type', '')
     if not obj_token:
         raise FeishuError(ERR_FETCH, '知识库节点解析失败')
     return await _extract_by_type(obj_type, obj_token, access_token, auth_kind)
@@ -411,21 +393,28 @@ async def _extract_sheet(token: str, access_token: str) -> tuple[str, str]:
 
 async def _extract_bitable(token: str, access_token: str) -> tuple[str, str]:
     """多维表格：取第一个表 + 前 50 条记录，字段拼成文本。"""
-    from lark_oapi.api.bitable.v1.model.list_app_table_request import ListAppTableRequest
-    from lark_oapi.api.bitable.v1 import ListAppTableRecordRequest
-
-    req = ListAppTableRequest.builder().app_token(token).page_size(5).build()
-    resp = await asyncio.to_thread(_call_sdk, _get_client().bitable.v1.app_table.list,
-                                   req, access_token)
-    _check_resp(resp)
-    tables = (resp.data.items or []) if resp.data else []
+    async with httpx.AsyncClient(timeout=20) as hc:
+        resp = await hc.get(
+            f'{_FEISHU_HOST}/open-apis/bitable/v1/apps/{token}/tables',
+            params={'page_size': 5},
+            headers={'Authorization': f'Bearer {access_token}'},
+        )
+        data = resp.json()
+    if resp.status_code != 200 or data.get('code') != 0:
+        _raise_api_error(data, '多维表格读取失败')
+    tables = data.get('data', {}).get('items') or []
     if not tables:
         raise FeishuError(ERR_FETCH, '多维表格中无数据表')
-    table_id = tables[0].table_id
-    req2 = ListAppTableRecordRequest.builder().app_token(token).table_id(table_id).page_size(50).build()
-    resp2 = await asyncio.to_thread(_call_sdk, _get_client().bitable.v1.app_table_record.list,
-                                    req2, access_token)
-    _check_resp(resp2)
-    records = (resp2.data.items or []) if resp2.data else []
-    lines = [' | '.join(f'{k}: {v}' for k, v in (rec.fields or {}).items()) for rec in records]
+    table_id = tables[0].get('table_id', '')
+    async with httpx.AsyncClient(timeout=20) as hc:
+        r2 = await hc.get(
+            f'{_FEISHU_HOST}/open-apis/bitable/v1/apps/{token}/tables/{table_id}/records',
+            params={'page_size': 50},
+            headers={'Authorization': f'Bearer {access_token}'},
+        )
+        data2 = r2.json()
+    if r2.status_code != 200 or data2.get('code') != 0:
+        _raise_api_error(data2, '多维表格记录读取失败')
+    records = data2.get('data', {}).get('items') or []
+    lines = [' | '.join(f'{k}: {v}' for k, v in (rec.get('fields') or {}).items()) for rec in records]
     return '\n'.join(lines), ''
