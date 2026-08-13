@@ -271,6 +271,8 @@ async def add_link_source(request: Request, req_id: int, data: RequirementSource
         if result.get('extracted'):
             extracted = True
             text_content = result['text_content']
+            # #25：提取正文自动成为左侧可编辑需求文档（单一事实源）
+            await crud.update_requirement(req_id, {'content': text_content})
         else:
             extract_error = result.get('error_message', '') or '飞书文档读取失败'
 
@@ -307,6 +309,9 @@ async def re_extract_source(request: Request, req_id: int, source_id: int):
 
     result = await feishu_client.fetch_doc(src['link'], user['id'])
     extracted = bool(result.get('extracted'))
+    if extracted:
+        # #25：提取正文自动成为需求文档（单一事实源）
+        await crud.update_requirement(req_id, {'content': result.get('text_content', '')})
     await crud.update_requirement_source(source_id, {
         'text_content': result.get('text_content', '') if extracted else '',
         'extracted': extracted,

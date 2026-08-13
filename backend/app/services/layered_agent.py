@@ -576,3 +576,261 @@ async def generate_supplement_cases(client: LLMClient, requirement: dict, gap: d
     data['cases'] = cases_out
     data['score'] = _as_score(data.get('score'))
     return data
+
+
+# ══════════════════════════════════════════════════════════
+# 11. 需求评审闭环（#25）：问题卡片 评论/忽略/确定 + 重新评审 reconcile
+# ══════════════════════════════════════════════════════════
+
+
+async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str) -> dict:
+    """问题卡片评论/忽略：AI 追加回复。
+
+    action='comment'：用户评论 → AI 回复澄清；
+    action='ignore'：告知 LLM 该问题被忽略 → AI 简短确认。
+    返回 {'reply': str}
+    """
+    thread = gap.get('thread') or []
+    thread_text = '\n'.join(
+        f"{'用户' if t.get('role') == 'user' else 'AI'}: {t.get('text', '')}"
+        for t in thread
+    ) or '（无历史讨论）'
+    if action == 'ignore':
+        instruction = '用户决定忽略该问题（不再要求确认）。请简短确认，并说明后续若需求变化可重新打开。'
+        extra = ''
+    else:
+        instruction = '用户针对该问题提出了评论，请澄清/补充分析。'
+        extra = f'\n【用户评论】{comment}'
+    prompt = f"""你是资深测试需求分析专家。针对以下评审问题，{instruction}
+
+【问题类型】{gap.get('gap_type', '')}（严重度 {gap.get('severity', '')}）
+【问题描述】{gap.get('description', '')}
+【需确认事项】{gap.get('question', '')}
+【历史讨论】
+{thread_text}
+{extra}
+
+请用 1-3 句中文回复，只输出回复文本，不要 JSON 或多余格式。"""
+    reply = await client.chat_text(prompt)
+    return {'reply': reply or '已记录。'}
+
+
+async def confirm_gap_update_doc(client: LLMClient, requirement: dict, gap: dict) -> dict:
+    """确定问题：AI 判断是否需要更新需求文档，需要则返回整篇更新后文档。
+
+    返回 {'doc_changed': bool, 'updated_content': str, 'note': str}
+    """
+    current_content = requirement.get('content') or ''
+    thread_text = '\n'.join(
+        f"{t.get('role')}: {t.get('text', '')}" for t in (gap.get('thread') or [])
+    ) or '（无）'
+    prompt = f"""你是资深测试需求分析师。确定以下评审问题后，判断它是否需要更新需求文档；如需要，输出整篇更新后的需求文档。
+
+【当前需求文档】
+{current_content[:12000]}
+
+【确定的问题】
+类型：{gap.get('gap_type', '')}（严重度 {gap.get('severity', '')}）
+描述：{gap.get('description', '')}
+需确认事项：{gap.get('question', '')}
+评论/讨论：{thread_text}
+
+请严格按以下 JSON 返回（不要输出其他内容）：
+{{"doc_changed": true, "updated_content": "整篇更新后的需求文档（如需修改则全文输出，未涉及部分保持不变）", "note": "修改说明"}}
+
+约束：
+1. doc_changed：该问题确实需要在需求文档补充/修正内容时为 true，否则 false
+2. updated_content 始终为整篇文档（不要省略未修改部分）；doc_changed=false 时可为空串
+3. 若无文档可改（如纯信息澄清），doc_changed=false"""
+    data = await client.chat_json(prompt, schema_hint='确定问题')
+    if not isinstance(data, dict):
+        raise ValueError('确定问题输出应为 JSON 对象')
+    changed = bool(data.get('doc_changed'))
+    updated = (data.get('updated_content') or '').strip()
+    return {
+        'doc_changed': changed,
+        'updated_content': updated if changed and updated else '',
+        'note': data.get('note') or '',
+    }
+
+
+async def re_review_requirement(client: LLMClient, requirement: dict, sources: list[dict],
+                                old_gaps: list[dict], review_comment: str = '') -> dict:
+    """重新评审（reconcile）：核对旧问题状态 + 产出新分析/新问题，不清空旧问题。
+
+    old_gaps: [{gap_type, severity, description, question, status, thread}]
+    返回 {elements, score, score_reason, gate_status, information_gaps(新问题), reconciled}
+    """
+    old_text = '\n'.join(
+        f"- [{g.get('status')}] {g.get('gap_type', '')}/{g.get('severity', '')}: {g.get('description', '')}"
+        for g in old_gaps
+    ) or '（无）'
+    prompt = f"""你是资深测试需求分析专家。基于更新后的需求文档，对评审进行【重新核对】：
+1. 逐条核对旧问题在新文档中的状态；2. 识别新问题；3. 输出综合评审分析。
+
+【需求标题】{requirement.get('title', '')}
+【需求文档】
+{_sources_to_text(sources)}
+{_extra_comment(review_comment)}
+
+【旧问题清单】
+{old_text}
+
+请严格按以下 JSON 返回（不要输出其他内容）：
+{{"elements": {{"business_goal": "", "roles": [], "entities": [], "flows": [], "rules": [], "states": [], "inputs_outputs": [], "exceptions": [], "permissions": [], "dependencies": [], "risks": []}}, "reconciled": [{{"index": 0, "new_status": "fixed|not_applicable|keep", "note": "依据（引用文档内容）"}}], "information_gaps": [{{"gap_type": "", "severity": "HIGH", "description": "", "question": ""}}], "score": 0, "score_reason": "综合分析"}}
+
+约束：
+1. reconciled 逐条对应旧问题清单（index 从 0 起）：
+   - fixed：旧问题已在新文档解决（note 引用解决它的文档内容）
+   - not_applicable：旧问题在需求中已不再涉及
+   - keep：仍存在需继续确认（note 可为空）
+   - 旧问题若已是 confirmed（已确定），标记 keep 即可，不改状态
+2. information_gaps 仅列出新识别的问题；旧问题由 reconciled 反映，不重复列出
+3. score 为 0-100 整数"""
+    data = await client.chat_json(prompt, schema_hint='重新评审')
+    if not isinstance(data, dict):
+        raise ValueError('重新评审输出应为 JSON 对象')
+    if not isinstance(data.get('reconciled'), list):
+        data['reconciled'] = []
+    for r in data['reconciled']:
+        if r.get('new_status') not in ('fixed', 'not_applicable', 'keep'):
+            r['new_status'] = 'keep'
+        r.setdefault('note', '')
+    gaps = data.get('information_gaps') or []
+    if not isinstance(gaps, list):
+        gaps = []
+    for g in gaps:
+        _require_fields(g, ['gap_type', 'severity', 'description', 'question'])
+    data['information_gaps'] = gaps
+    data['score'] = _as_score(data.get('score'))
+    data['gate_status'] = _gate(data['score'])
+    return data
+
+
+# ══════════════════════════════════════════════════════════
+# 11. 需求评审闭环（#25）：问题卡片 评论/忽略/确定 + 重新评审 reconcile
+# ══════════════════════════════════════════════════════════
+
+
+async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str) -> dict:
+    """问题卡片评论/忽略：AI 追加回复。
+
+    action='comment'：用户评论 → AI 回复澄清；
+    action='ignore'：告知 LLM 该问题被忽略 → AI 简短确认。
+    返回 {'reply': str}
+    """
+    thread = gap.get('thread') or []
+    thread_text = '\n'.join(
+        f"{'用户' if t.get('role') == 'user' else 'AI'}: {t.get('text', '')}"
+        for t in thread
+    ) or '（无历史讨论）'
+    if action == 'ignore':
+        instruction = '用户决定忽略该问题（不再要求确认）。请简短确认，并说明后续若需求变化可重新打开。'
+        extra = ''
+    else:
+        instruction = '用户针对该问题提出了评论，请澄清/补充分析。'
+        extra = f'\n【用户评论】{comment}'
+    prompt = f"""你是资深测试需求分析专家。针对以下评审问题，{instruction}
+
+【问题类型】{gap.get('gap_type', '')}（严重度 {gap.get('severity', '')}）
+【问题描述】{gap.get('description', '')}
+【需确认事项】{gap.get('question', '')}
+【历史讨论】
+{thread_text}
+{extra}
+
+请用 1-3 句中文回复，只输出回复文本，不要 JSON 或多余格式。"""
+    reply = await client.chat_text(prompt)
+    return {'reply': reply or '已记录。'}
+
+
+async def confirm_gap_update_doc(client: LLMClient, requirement: dict, gap: dict) -> dict:
+    """确定问题：AI 判断是否需要更新需求文档，需要则返回整篇更新后文档。
+
+    返回 {'doc_changed': bool, 'updated_content': str, 'note': str}
+    """
+    current_content = requirement.get('content') or ''
+    thread_text = '\n'.join(
+        f"{t.get('role')}: {t.get('text', '')}" for t in (gap.get('thread') or [])
+    ) or '（无）'
+    prompt = f"""你是资深测试需求分析师。确定以下评审问题后，判断它是否需要更新需求文档；如需要，输出整篇更新后的需求文档。
+
+【当前需求文档】
+{current_content[:12000]}
+
+【确定的问题】
+类型：{gap.get('gap_type', '')}（严重度 {gap.get('severity', '')}）
+描述：{gap.get('description', '')}
+需确认事项：{gap.get('question', '')}
+评论/讨论：{thread_text}
+
+请严格按以下 JSON 返回（不要输出其他内容）：
+{{"doc_changed": true, "updated_content": "整篇更新后的需求文档（如需修改则全文输出，未涉及部分保持不变）", "note": "修改说明"}}
+
+约束：
+1. doc_changed：该问题确实需要在需求文档补充/修正内容时为 true，否则 false
+2. updated_content 始终为整篇文档（不要省略未修改部分）；doc_changed=false 时可为空串
+3. 若无文档可改（如纯信息澄清），doc_changed=false"""
+    data = await client.chat_json(prompt, schema_hint='确定问题')
+    if not isinstance(data, dict):
+        raise ValueError('确定问题输出应为 JSON 对象')
+    changed = bool(data.get('doc_changed'))
+    updated = (data.get('updated_content') or '').strip()
+    return {
+        'doc_changed': changed,
+        'updated_content': updated if changed and updated else '',
+        'note': data.get('note') or '',
+    }
+
+
+async def re_review_requirement(client: LLMClient, requirement: dict, sources: list[dict],
+                                old_gaps: list[dict], review_comment: str = '') -> dict:
+    """重新评审（reconcile）：核对旧问题状态 + 产出新分析/新问题，不清空旧问题。
+
+    old_gaps: [{gap_type, severity, description, question, status, thread}]
+    返回 {elements, score, score_reason, gate_status, information_gaps(新问题), reconciled}
+    """
+    old_text = '\n'.join(
+        f"- [{g.get('status')}] {g.get('gap_type', '')}/{g.get('severity', '')}: {g.get('description', '')}"
+        for g in old_gaps
+    ) or '（无）'
+    prompt = f"""你是资深测试需求分析专家。基于更新后的需求文档，对评审进行【重新核对】：
+1. 逐条核对旧问题在新文档中的状态；2. 识别新问题；3. 输出综合评审分析。
+
+【需求标题】{requirement.get('title', '')}
+【需求文档】
+{_sources_to_text(sources)}
+{_extra_comment(review_comment)}
+
+【旧问题清单】
+{old_text}
+
+请严格按以下 JSON 返回（不要输出其他内容）：
+{{"elements": {{"business_goal": "", "roles": [], "entities": [], "flows": [], "rules": [], "states": [], "inputs_outputs": [], "exceptions": [], "permissions": [], "dependencies": [], "risks": []}}, "reconciled": [{{"index": 0, "new_status": "fixed|not_applicable|keep", "note": "依据（引用文档内容）"}}], "information_gaps": [{{"gap_type": "", "severity": "HIGH", "description": "", "question": ""}}], "score": 0, "score_reason": "综合分析"}}
+
+约束：
+1. reconciled 逐条对应旧问题清单（index 从 0 起）：
+   - fixed：旧问题已在新文档解决（note 引用解决它的文档内容）
+   - not_applicable：旧问题在需求中已不再涉及
+   - keep：仍存在需继续确认（note 可为空）
+   - 旧问题若已是 confirmed（已确定），标记 keep 即可，不改状态
+2. information_gaps 仅列出新识别的问题；旧问题由 reconciled 反映，不重复列出
+3. score 为 0-100 整数"""
+    data = await client.chat_json(prompt, schema_hint='重新评审')
+    if not isinstance(data, dict):
+        raise ValueError('重新评审输出应为 JSON 对象')
+    if not isinstance(data.get('reconciled'), list):
+        data['reconciled'] = []
+    for r in data['reconciled']:
+        if r.get('new_status') not in ('fixed', 'not_applicable', 'keep'):
+            r['new_status'] = 'keep'
+        r.setdefault('note', '')
+    gaps = data.get('information_gaps') or []
+    if not isinstance(gaps, list):
+        gaps = []
+    for g in gaps:
+        _require_fields(g, ['gap_type', 'severity', 'description', 'question'])
+    data['information_gaps'] = gaps
+    data['score'] = _as_score(data.get('score'))
+    data['gate_status'] = _gate(data['score'])
+    return data

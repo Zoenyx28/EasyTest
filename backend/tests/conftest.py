@@ -120,3 +120,19 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url='http://test') as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+async def _no_feishu_network(monkeypatch):
+    """全局避免 fetch_doc 触发真实飞书网络调用（测试环境无凭据/网络不稳）。
+
+    test_feishu_extraction 等需要特定返回的测试会自行 monkeypatch 覆盖本补丁。
+    """
+    from unittest.mock import AsyncMock
+    from app.services import feishu_client
+    # 保存原函数，供需要实测真实路径的测试恢复（如 _get_tenant_token_async_path）
+    feishu_client._ORIG_GET_TENANT = feishu_client._get_tenant_token
+    feishu_client._ORIG_GET_USER = feishu_client._get_user_token
+    monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value=''))
+    monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
+    yield

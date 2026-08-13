@@ -124,6 +124,16 @@ async def get_assets(
         return [_asset_to_dict(a) for a in result.scalars().all()]
 
 
+async def get_asset(asset_id: int) -> dict | None:
+    """Get a single asset by id."""
+    async with session_ctx() as session:
+        result = await session.execute(
+            select(RequirementAsset).where(RequirementAsset.id == asset_id)
+        )
+        a = result.scalar_one_or_none()
+        return _asset_to_dict(a) if a else None
+
+
 async def upsert_assets(
     requirement_id: int,
     asset_type: str,

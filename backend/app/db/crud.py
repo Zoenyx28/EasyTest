@@ -2858,7 +2858,8 @@ async def update_requirement(req_id: int, fields: dict) -> bool:
         r = result.scalar_one_or_none()
         if r is None:
             return False
-        for key in ('title', 'summary', 'priority', 'status'):
+        for key in ('title', 'summary', 'priority', 'status', 'content',
+                    'source_type', 'source_meta'):
             if key in fields and fields[key] not in (None, ''):
                 setattr(r, key, fields[key].strip() if isinstance(fields[key], str) else fields[key])
         await session.commit()

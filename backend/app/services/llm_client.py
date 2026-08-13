@@ -111,6 +111,38 @@ class LLMClient:
         raise last_exc
 
 
+    async def chat_text(self, prompt: str, *, model_kind: str = 'text',
+                        temperature: float = 0.3, max_tokens: int = 2048) -> str:
+        """调用 LLM 返回纯文本（不做 JSON 解析），用于评论/AI 回复等自由文本。"""
+        if model_kind == 'vision' and not self.vision_model:
+            raise LLMConfigError('未配置视觉模型（vision_model）')
+        model = self.vision_model if model_kind == 'vision' else self.text_model
+        payload = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+        }
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                data = await self._post(payload)
+                content = data['choices'][0]['message']['content']
+                if content and content.strip():
+                    return content.strip()
+                last_exc = LLMCallError('LLM 返回空内容')
+            except (KeyError, IndexError) as exc:
+                last_exc = LLMCallError(f'LLM 输出非合法响应: {exc}')
+            except LLMCallError as exc:
+                last_exc = exc
+            except httpx.HTTPError as exc:
+                last_exc = LLMCallError(f'LLM 调用失败: {exc}')
+            if attempt >= self.max_retries:
+                break
+            await asyncio.sleep(self.retry_delay * (2 ** attempt))
+        raise last_exc
+
+
     async def chat_vision(self, prompt: str, images: list[dict], *,
                           max_tokens: int = 8192, schema_hint: str = 'JSON') -> Any:
         """调用视觉模型分析图片并返回解析后的 JSON（#12）。

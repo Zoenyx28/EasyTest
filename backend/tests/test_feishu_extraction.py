@@ -222,6 +222,7 @@ async def test_get_tenant_token_async_path(monkeypatch):
         async def __aexit__(self, *a): return False
         async def post(self, url, json=None): return FakeResp()
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: FakeAsyncClient())
+    monkeypatch.setattr(feishu_client, '_get_tenant_token', feishu_client._ORIG_GET_TENANT)
 
     token = await feishu_client._get_tenant_token()
     assert token == 'tt_abc'

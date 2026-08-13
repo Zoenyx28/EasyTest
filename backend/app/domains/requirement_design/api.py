@@ -305,7 +305,7 @@ async def trigger_analysis(request: Request, req_id: int,
                     gap_items.append({
                         'title': g.get('gap_type', ''),
                         'description': g.get('description', ''),
-                        'content': json.dumps(g, ensure_ascii=False),
+                        'content': json.dumps({**g, 'thread': []}, ensure_ascii=False),
                         'gate_status': g.get('severity', 'HIGH'),
                         'status': 'pending',
                     })
@@ -317,6 +317,210 @@ async def trigger_analysis(request: Request, req_id: int,
 
     asyncio.create_task(run())
     return ok({'task_id': task['id'], 'status': 'RUNNING'}, msg='分析已启动')
+
+
+# ── 需求评审闭环（#25）：问题卡片 评论/忽略/确定 + 重新评审 reconcile ──
+
+
+class GapActionBody(BaseModel):
+    comment: str = ''
+
+
+def _gap_content(gap: dict) -> dict:
+    try:
+        return json.loads(gap.get('content') or '{}')
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _make_llm():
+    try:
+        return llm_client.LLMClient()
+    except Exception as exc:
+        raise ValueError(f'LLM 配置错误：{exc}')
+
+
+async def _snapshot_content(req_id: int, content: str) -> None:
+    """把旧需求文档快照存入 requirements.source_meta.prev_content。"""
+    req = await req_crud.get_requirement(req_id)
+    if req is None:
+        return
+    try:
+        meta = json.loads(req.get('source_meta') or '{}')
+    except (json.JSONDecodeError, TypeError):
+        meta = {}
+    meta['prev_content'] = content[:40000]
+    await req_crud.update_requirement(req_id, source_meta=json.dumps(meta, ensure_ascii=False))
+
+
+@router.post('/{req_id}/gaps/{gap_id}/comment')
+async def gap_comment(request: Request, req_id: int, gap_id: int,
+                      data: GapActionBody = Body(...)):
+    """问题卡片评论：追加用户评论 → AI 回复 → 存线程。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    comment = (data.comment or '').strip()
+    if not comment:
+        return fail(400, '评论不能为空')
+    gap = await req_crud.get_asset(gap_id)
+    if gap is None or gap['asset_type'] != 'gap' or gap['requirement_id'] != req_id:
+        return fail(404, '问题卡片不存在')
+    content = _gap_content(gap)
+    thread = list(content.get('thread') or [])
+    thread.append({'role': 'user', 'text': comment, 'ts': _now_iso()})
+    try:
+        client = _make_llm()
+        reply = await layered_agent.respond_to_gap(
+            client, {**content, 'thread': thread}, comment, 'comment')
+    except ValueError as exc:
+        return fail(400, str(exc))
+    except Exception as exc:
+        return fail(400, f'AI 回复失败：{exc}')
+    thread.append({'role': 'ai', 'text': reply.get('reply', ''), 'ts': _now_iso()})
+    content['thread'] = thread
+    await req_crud.update_asset(gap_id, content=json.dumps(content, ensure_ascii=False))
+    return ok({'thread': thread, 'reply': reply.get('reply', '')}, msg='已回复')
+
+
+@router.post('/{req_id}/gaps/{gap_id}/ignore')
+async def gap_ignore(request: Request, req_id: int, gap_id: int):
+    """问题卡片忽略：告知 LLM 该问题被忽略 → 追加 AI 回复 → 状态 ignored。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    gap = await req_crud.get_asset(gap_id)
+    if gap is None or gap['asset_type'] != 'gap' or gap['requirement_id'] != req_id:
+        return fail(404, '问题卡片不存在')
+    content = _gap_content(gap)
+    thread = list(content.get('thread') or [])
+    try:
+        client = _make_llm()
+        reply = await layered_agent.respond_to_gap(
+            client, {**content, 'thread': thread}, '', 'ignore')
+    except ValueError as exc:
+        return fail(400, str(exc))
+    except Exception as exc:
+        return fail(400, f'AI 回复失败：{exc}')
+    thread.append({'role': 'ai', 'text': reply.get('reply', ''), 'ts': _now_iso()})
+    content['thread'] = thread
+    await req_crud.update_asset(gap_id, content=json.dumps(content, ensure_ascii=False),
+                                status='ignored')
+    return ok({'thread': thread, 'reply': reply.get('reply', ''), 'status': 'ignored'},
+              msg='已忽略')
+
+
+@router.post('/{req_id}/gaps/{gap_id}/confirm')
+async def gap_confirm(request: Request, req_id: int, gap_id: int):
+    """问题卡片确定：状态→confirmed；若涉及文档变更，AI 整篇覆盖 content（先存快照）。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    req = ctx['req']
+    gap = await req_crud.get_asset(gap_id)
+    if gap is None or gap['asset_type'] != 'gap' or gap['requirement_id'] != req_id:
+        return fail(404, '问题卡片不存在')
+    content = _gap_content(gap)
+    thread = list(content.get('thread') or [])
+    try:
+        client = _make_llm()
+        result = await layered_agent.confirm_gap_update_doc(
+            client, {'content': req.get('content') or ''}, {**content, 'thread': thread})
+    except ValueError as exc:
+        return fail(400, str(exc))
+    except Exception as exc:
+        return fail(400, f'AI 更新文档失败：{exc}')
+    doc_changed = bool(result.get('doc_changed'))
+    if doc_changed and result.get('updated_content'):
+        await _snapshot_content(req_id, req.get('content') or '')
+        await req_crud.update_requirement(req_id, content=result['updated_content'])
+    content['resolved_doc_change'] = doc_changed
+    content['resolution_note'] = result.get('note', '')
+    await req_crud.update_asset(gap_id, content=json.dumps(content, ensure_ascii=False),
+                                status='confirmed')
+    return ok({'status': 'confirmed', 'doc_changed': doc_changed,
+               'note': result.get('note', '')}, msg='已确定')
+
+
+@router.post('/{req_id}/analysis/re-review')
+async def re_review_requirement_agent(request: Request, req_id: int,
+                                      data: ReviewCommentBody = Body(default=ReviewCommentBody())):
+    """重新评审（reconcile）：核对旧问题状态 + 产出新分析/新问题，不清空旧问题。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    user, req = ctx['user'], ctx['req']
+    comment = (data.review_comment or '').strip()
+    old_gaps = await req_crud.get_assets(req_id, 'gap')
+    old_gap_dicts = [
+        {**_gap_content(g), 'id': g['id'], 'status': g.get('status', 'pending')}
+        for g in old_gaps
+    ]
+    try:
+        client = _make_llm()
+        result = await layered_agent.re_review_requirement(
+            client, req, [{'text_content': req.get('content') or req.get('title', '')}],
+            old_gap_dicts, comment,
+        )
+    except ValueError as exc:
+        return fail(400, str(exc))
+    except Exception as exc:
+        return fail(400, f'重新评审失败：{exc}')
+
+    # 应用 reconcile：更新旧问题状态（已确定不动）
+    applied = 0
+    for r in result.get('reconciled') or []:
+        idx = int(r.get('index', 0))
+        if not (0 <= idx < len(old_gaps)):
+            continue
+        gap = old_gaps[idx]
+        if gap.get('status') == 'confirmed':
+            continue
+        new_status = {'fixed': 'fixed', 'not_applicable': 'not_applicable',
+                      'keep': None}.get(r.get('new_status'))
+        if not new_status:
+            continue
+        gc = _gap_content(gap)
+        gc['resolution_note'] = r.get('note', '')
+        await req_crud.update_asset(gap['id'],
+                                    content=json.dumps(gc, ensure_ascii=False),
+                                    status=new_status)
+        applied += 1
+
+    # 追加新问题（去重 by description，用 create_asset 追加不覆盖旧卡片）
+    existing_descs = {g.get('description') for g in old_gap_dicts}
+    added = 0
+    for g in result.get('information_gaps') or []:
+        if g.get('description') in existing_descs:
+            continue
+        await req_crud.create_asset(req_id, 'gap', {
+            'title': g.get('gap_type', ''),
+            'description': g.get('description', ''),
+            'content': json.dumps({**g, 'thread': []}, ensure_ascii=False),
+            'gate_status': g.get('severity', 'HIGH'),
+            'status': 'pending',
+        }, created_by=user['id'])
+        added += 1
+        existing_descs.add(g.get('description'))
+
+    # 覆盖式更新综合分析
+    await req_crud.upsert_assets(req_id, 'analysis', [{
+        'title': '需求分析',
+        'description': result.get('score_reason', ''),
+        'content': json.dumps(result, ensure_ascii=False),
+        'score': result.get('score', 0),
+        'gate_status': result.get('gate_status', ''),
+        'status': 'generated',
+    }], created_by=user['id'])
+
+    return ok({'reconciled': result.get('reconciled', []), 'applied': applied,
+               'new_gaps': added, 'score': result.get('score', 0),
+               'gate_status': result.get('gate_status', '')}, msg='重新评审完成')
 
 
 @router.post('/{req_id}/stories/generate')
