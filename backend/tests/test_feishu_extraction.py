@@ -250,6 +250,7 @@ async def test_oauth_post_async_path(monkeypatch):
 async def test_oauth_token_saved_and_status(client, ctx, monkeypatch):
     # mock 掉真实 HTTP：exchange_code 里的 _oauth_post 返回假 token
     async def fake_oauth_post(payload):
+        assert 'redirect_uri' in payload  # 回归：token 交换必须带 redirect_uri 键
         return {
             'access_token': 'ua_abc', 'refresh_token': 'rf_xyz',
             'expires_in': 7200, 'refresh_token_expires_in': 2592000,

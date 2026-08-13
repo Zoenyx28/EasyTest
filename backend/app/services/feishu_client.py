@@ -166,12 +166,16 @@ async def _oauth_post(payload: dict) -> dict:
 
 
 async def exchange_code(code: str, user_id: int) -> dict:
-    """authorization_code → user_access_token + refresh_token，落库。"""
+    """authorization_code → user_access_token + refresh_token，落库。
+
+    oauth/v3/token 对 authorization_code 要求 redirect_uri（须与授权时一致）。
+    """
     data = await _oauth_post({
         'grant_type': 'authorization_code',
         'client_id': FEISHU_APP_ID,
         'client_secret': FEISHU_APP_SECRET,
         'code': code,
+        'redirect_uri': FEISHU_REDIRECT_URI,
     })
     await _save_tokens_from_oauth(user_id, data)
     return data
