@@ -63,3 +63,34 @@ async def run_websocket(ws: WebSocket, run_id: str):
 async def execution_websocket(ws: WebSocket, execution_id: str):
     """Plan-compatible alias for the execution progress stream."""
     await run_websocket(ws, execution_id)
+
+
+# ── 需求文档在线协作：同一需求的连接间广播文档内容变更（last-write-wins）──
+_doc_ws_clients: dict[int, set] = {}
+
+
+@router.websocket('/ws/doc/{req_id}')
+async def doc_collab_ws(ws: WebSocket, req_id: int):
+    """需求文档多人在线编辑：客户端发 {content}，转发给同需求其它连接。
+
+    持久化由调用方（PUT /api/req/{id}）负责，本通道仅负责实时同步。
+    """
+    req_id = int(req_id)
+    await ws.accept()
+    _doc_ws_clients.setdefault(req_id, set()).add(ws)
+    try:
+        while True:
+            msg = await ws.receive_json()
+            content = (msg or {}).get('content')
+            if content is None:
+                continue
+            for other in list(_doc_ws_clients.get(req_id, set())):
+                if other is not ws:
+                    try:
+                        await other.send_json({'type': 'doc', 'content': content, 'by': msg.get('by', '')})
+                    except Exception:
+                        pass
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _doc_ws_clients.get(req_id, set()).discard(ws)

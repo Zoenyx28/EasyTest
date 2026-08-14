@@ -206,6 +206,33 @@ async def create_asset(requirement_id: int, asset_type: str, item: dict,
         return _asset_to_dict(asset)
 
 
+async def delete_asset(asset_id: int) -> dict | None:
+    """删除单个资产，返回被删资产 dict（不存在返回 None）。"""
+    async with session_ctx() as session:
+        result = await session.execute(select(RequirementAsset).where(RequirementAsset.id == asset_id))
+        asset = result.scalar_one_or_none()
+        if asset is None:
+            return None
+        d = _asset_to_dict(asset)
+        await session.delete(asset)
+        await session.commit()
+        return d
+
+
+async def delete_story_assets(req_id: int, asset_type: str, story_id: int) -> int:
+    """删除某需求下指定 story 的某类资产（按 story 隔离的重新生成）。"""
+    async with session_ctx() as session:
+        result = await session.execute(
+            delete(RequirementAsset).where(
+                RequirementAsset.requirement_id == req_id,
+                RequirementAsset.asset_type == asset_type,
+                RequirementAsset.story_id == story_id,
+            )
+        )
+        await session.commit()
+        return result.rowcount or 0
+
+
 async def update_asset(asset_id: int, **kwargs) -> dict | None:
     """Update a single asset's fields. perspective（product/testing）用于双视角确认（#22）。"""
     perspective = kwargs.pop('perspective', None)
@@ -471,6 +498,21 @@ async def get_ai_tasks(requirement_id: int, stage: str = '') -> list[dict]:
         q = q.order_by(desc(AITask.updated_at))
         result = await session.execute(q)
         return [_aitask_to_dict(t) for t in result.scalars().all()]
+
+
+async def fail_stale_tasks() -> int:
+    """把 RUNNING/PENDING 的 AI 任务标记为 FAILED（服务重启中断的孤儿任务）。
+
+    返回受影响行数；在应用启动时调用，避免前端因残留 RUNNING 任务卡在 loading。
+    """
+    async with session_ctx() as session:
+        result = await session.execute(
+            update(AITask)
+            .where(AITask.status.in_(['RUNNING', 'PENDING']))
+            .values(status='FAILED', error='服务重启，任务被中断', updated_at=datetime.utcnow())
+        )
+        await session.commit()
+        return result.rowcount or 0
 
 
 async def create_review_audit(artifact_type: str, artifact_id: int, score: int,

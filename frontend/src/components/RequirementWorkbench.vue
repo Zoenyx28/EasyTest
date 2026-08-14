@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useProject } from '../composables/useProject';
 import { useBranch } from '../composables/useBranch';
-import { useApi } from '../composables/useApi';
+import { useApi, authHeaders } from '../composables/useApi';
 import { renderMarkdown } from '../utils/markdown';
 import BaseButton from './base/BaseButton.vue';
 import BaseTag from './base/BaseTag.vue';
@@ -26,6 +26,30 @@ const GAP_STATUS: Record<string, { label: string; tone: 'yellow' | 'green' | 're
   fixed: { label: '已修复', tone: 'blue' },
   not_applicable: { label: '不涉及', tone: 'gray' },
 };
+// 问题类型（gap_type）中文映射
+const GAP_TYPE_LABELS: Record<string, string> = {
+  AMBIGUOUS_DESCRIPTION: '描述含糊',
+  BUSINESS_RULE_MISSING: '业务规则缺失',
+  SCENARIO_MISSING: '场景缺失',
+  DATA_DEFINITION_MISSING: '数据定义缺失',
+  ACCEPTANCE_CRITERIA_MISSING: '验收标准缺失',
+  DEPENDENCY_UNKNOWN: '依赖不明',
+  RISK_UNSPECIFIED: '风险未明确',
+};
+function gapTypeLabel(t: string): string {
+  return GAP_TYPE_LABELS[t] || t || '其他';
+}
+// 需求状态（req.status）中文映射
+const REQ_STATUS_LABELS: Record<string, string> = {
+  pending_review: '待评审',
+  review_passed: '评审通过',
+  story_confirmed: 'Story 已确认',
+  cases_generated: '用例已生成',
+  done: '已完成',
+};
+function reqStatusLabel(s: string): string {
+  return REQ_STATUS_LABELS[s] || s || '--';
+}
 const STAGE_META = [
   { key: 'review', label: '需求评审' },
   { key: 'story', label: 'Story' },
@@ -48,7 +72,14 @@ const docLoading = ref(false);
 const docError = ref('');
 const docSaving = ref(false);
 const extractingDoc = ref(false);
-const docViewMode = ref<'edit' | 'render'>('render');
+// 默认编辑状态展示（多人在线编辑 + 自动保存）；可切换「预览」看渲染效果
+const docViewMode = ref<'edit' | 'render'>('edit');
+// 自动保存状态：idle / saving / saved
+const docSaveStatus = ref<'idle' | 'saving' | 'saved'>('idle');
+const docFocused = ref(false);
+let docSaveTimer: number | undefined;
+let docWS: WebSocket | null = null;
+let docWSRetry: number | undefined;
 
 function parseMeta(s: string): any {
   try { return JSON.parse(s || '{}'); } catch { return {}; }
@@ -375,14 +406,64 @@ const analysisElements = computed(() => {
   try { return (typeof c === 'string' ? JSON.parse(c) : c)?.elements || null; } catch { return null; }
 });
 const analysisReason = computed(() => analysisAsset.value?.description || analysisAsset.value?.review_comment || '');
+const analysisScore = computed(() => Number(analysisAsset.value?.score) || 0);
+
+// 关键词标签：从分析元素中提取非空维度（项目标签）
+const ELEMENT_LABELS: Record<string, string> = {
+  business_goal: '业务目标', roles: '角色', entities: '业务实体', flows: '关键流程',
+  rules: '业务规则', states: '状态', inputs_outputs: '输入输出', exceptions: '异常场景',
+  permissions: '权限', dependencies: '外部依赖', risks: '风险',
+};
+const analysisTags = computed(() => {
+  const e = analysisElements.value;
+  if (!e) return [];
+  return Object.keys(e).filter(k => {
+    const v = e[k];
+    return Array.isArray(v) ? v.length > 0 : !!v;
+  }).map(k => ELEMENT_LABELS[k] || k);
+});
+
+// 待处理问题：状态筛选 + 分页
+const GAP_FILTERS: { value: string; label: string }[] = [
+  { value: '全部', label: '全部' },
+  { value: 'pending', label: '待确定' },
+  { value: 'confirmed', label: '已确定' },
+  { value: 'ignored', label: '已忽略' },
+  { value: 'fixed', label: '已修复' },
+  { value: 'not_applicable', label: '不涉及' },
+];
+const gapStatusFilter = ref('全部');
+const gapPage = ref(1);
+const gapPageSize = 10;
+const filteredGaps = computed(() => {
+  if (gapStatusFilter.value === '全部') return gapAssets.value;
+  return gapAssets.value.filter((g: any) => g.status === gapStatusFilter.value);
+});
+const gapTotalPages = computed(() => Math.max(1, Math.ceil(filteredGaps.value.length / gapPageSize)));
+const pagedGaps = computed(() => {
+  const start = (gapPage.value - 1) * gapPageSize;
+  return filteredGaps.value.slice(start, start + gapPageSize);
+});
+const gapPageSet = computed(() => {
+  const total = gapTotalPages.value;
+  const cur = gapPage.value;
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  let start = Math.max(1, cur - 2);
+  const end = Math.min(total, start + 4);
+  start = Math.max(1, end - 4);
+  const pages: number[] = [];
+  for (let p = start; p <= end; p++) pages.push(p);
+  return pages;
+});
+watch(gapAssets, () => { if (gapPage.value > gapTotalPages.value) gapPage.value = gapTotalPages.value; });
 
 // 评审进行中（analyze 或 re-review 任务 RUNNING）
+// 评审进行中（只按最新的 analyze/re_review 任务判断，避免旧任务残留 RUNNING 卡 loading）
 const reviewActive = computed(() => {
   if (reviewRunning.value) return true;
   const tasks = workbenchData.value?.ai_tasks || [];
-  return tasks.some((t: any) =>
-    ['analyze', 're_review'].includes(t.stage) && ['PENDING', 'RUNNING'].includes(t.status),
-  );
+  const latest = tasks.find((t: any) => ['analyze', 're_review'].includes(t.stage));
+  return !!latest && ['PENDING', 'RUNNING'].includes(latest.status);
 });
 
 // ── 资产分组（ADR-0016 统一资产表）──
@@ -471,7 +552,9 @@ const runningMap: Record<string, { value: boolean }> = {
 function isStageBusy(stage: string): boolean {
   if (runningMap[stage]?.value) return true;
   const tasks = workbenchData.value?.ai_tasks || [];
-  return tasks.some((t: any) => t.stage === stage && ['PENDING', 'RUNNING'].includes(t.status));
+  // ai_tasks 已按 updated_at 倒序 → 只判断该 stage 最新任务，避免旧任务残留 RUNNING 卡按钮
+  const latest = tasks.find((t: any) => t.stage === stage);
+  return !!latest && ['PENDING', 'RUNNING'].includes(latest.status);
 }
 
 // 轮询 workbench 直到指定 stage 任务结束（静默刷新，不打断文档/阶段 UI）
@@ -486,23 +569,55 @@ async function refreshForPoll() {
   } catch { /* 轮询失败忽略，等下一次 */ }
 }
 
-function pollUntilIdle(stage: string, doneMsg: string, runningRef?: any) {
-  const timer = setInterval(async () => {
-    if (!selectedReqId.value) { clearInterval(timer); return; }
+// ── 统一轮询：单个定时器监控指定 stage 任务，结束后停止并清按钮 loading ──
+const STAGE_DONE_MSG: Record<string, string> = {
+  analyze: '评审完成',
+  re_review: '重新评审完成',
+  stories: 'Story 生成完成',
+  story_review: 'Story 评审完成',
+  test_points: '测试点生成完成',
+  test_point_review: '测试点评审完成',
+  scenarios: '测试场景生成完成',
+  scenario_review: '测试场景评审完成',
+  cases: '测试用例生成完成',
+  case_review: '测试用例评审完成',
+  supplement: '补测用例生成完成',
+};
+let pollTimer: number | undefined;
+let pollStage = '';
+let pollRunningRef: any;
+
+function stopPoll() {
+  if (pollTimer) { window.clearInterval(pollTimer); pollTimer = undefined; }
+  pollStage = '';
+  pollRunningRef = undefined;
+}
+
+/** 轮询直到 stage 任务结束；silent=true 时不弹「完成」提示（用于加载后自动跟踪） */
+function startPoll(stage: string, runningRef?: any, silent = false) {
+  if (pollTimer && pollStage === stage) {
+    if (runningRef) pollRunningRef = runningRef; // 同一 stage 合并，避免双跑
+    return;
+  }
+  stopPoll();
+  pollStage = stage;
+  pollRunningRef = runningRef;
+  pollTimer = window.setInterval(async () => {
+    if (!selectedReqId.value) { stopPoll(); return; }
     await refreshForPoll();
     const tasks = workbenchData.value?.ai_tasks || [];
-    const failed = tasks.find((t: any) => t.stage === stage && t.status === 'FAILED');
+    const failed = tasks.find((t: any) => t.stage === pollStage && t.status === 'FAILED');
     if (failed) {
-      clearInterval(timer);
-      if (runningRef) runningRef.value = false;
-      emit('showToast', failed.error || `${stage} 任务失败`);
+      stopPoll();
+      if (pollRunningRef) pollRunningRef.value = false;
+      emit('showToast', failed.error || `${pollStage} 任务失败`);
       return;
     }
-    const busy = tasks.some((t: any) => t.stage === stage && ['PENDING', 'RUNNING'].includes(t.status));
+    const busy = tasks.some((t: any) => t.stage === pollStage && ['PENDING', 'RUNNING'].includes(t.status));
     if (!busy) {
-      clearInterval(timer);
-      if (runningRef) runningRef.value = false;
-      emit('showToast', doneMsg);
+      stopPoll();
+      if (pollRunningRef) pollRunningRef.value = false;
+      if (!silent) emit('showToast', STAGE_DONE_MSG[pollStage] || '任务完成');
     }
   }, 2000);
 }
@@ -515,7 +630,7 @@ async function triggerStage(stageKey: 'stories' | 'test_points' | 'scenarios' | 
   try {
     await post(`/req/${selectedReqId.value}/${action === 'gen' ? ep.gen : ep.review}`, {});
     emit('showToast', `${action === 'gen' ? '生成' : '评审'}已启动`);
-    pollUntilIdle(stage, `${action === 'gen' ? '生成' : '评审'}完成`, runningMap[stage]);
+    startPoll(stage, runningMap[stage]);
   } catch (e: any) { runningMap[stage].value = false; emit('showToast', e.message || '启动失败'); }
 }
 
@@ -527,6 +642,144 @@ async function confirmAsset(asset: any, perspective: 'product' | 'testing') {
     await loadWorkbench(selectedReqId.value);
     emit('showToast', `${perspective === 'product' ? '产品' : '测试'}已确认`);
   } catch (e: any) { emit('showToast', e.message || '确认失败'); }
+}
+
+// ── Story tab：展开 / 确认 / 编辑 / 删除 / 单条生成测试点 ──
+const expandedStoryIds = ref<Set<number>>(new Set());
+const editingStoryId = ref<number | null>(null);
+const editStoryTitle = ref('');
+const editStoryDesc = ref('');
+const storySaving = ref(false);
+const editingTpId = ref<number | null>(null);
+const editTpTitle = ref('');
+const editTpDesc = ref('');
+const tpSaving = ref(false);
+const assetDeleteTarget = ref<any>(null);
+const assetDeleting = ref(false);
+
+function storyTPs(s: any): any[] {
+  return tpAssets.value.filter((t: any) => t.story_id === s.id);
+}
+function isStoryConfirmed(s: any): boolean {
+  return s.status === 'confirmed';
+}
+// 正在为哪些 story 生成测试点（后端 ai_task.model 记录上下文）
+const tpGeneratingStoryIds = computed(() => {
+  const ids = new Set<number>();
+  const tasks = workbenchData.value?.ai_tasks || [];
+  for (const t of tasks) {
+    if (t.stage === 'test_points' && ['PENDING', 'RUNNING'].includes(t.status)) {
+      const m = t.model || '';
+      if (m.startsWith('story:')) ids.add(Number(m.slice(6)));
+      else if (m === 'stories:all') {
+        for (const s of storyAssets.value) if (s.status === 'confirmed') ids.add(s.id);
+      }
+    }
+  }
+  return ids;
+});
+function isStoryGeneratingTP(s: any): boolean {
+  return tpGeneratingStoryIds.value.has(s.id);
+}
+function storyStatusLabel(s: any): string {
+  if (isStoryGeneratingTP(s)) return '生成测试点中';
+  return statusLabel(s.status);
+}
+function toggleStoryExpand(s: any) {
+  const set = new Set(expandedStoryIds.value);
+  if (set.has(s.id)) set.delete(s.id); else set.add(s.id);
+  expandedStoryIds.value = set;
+}
+function isStoryExpanded(s: any): boolean {
+  return expandedStoryIds.value.has(s.id);
+}
+// 新出现的 story 默认展开（用户可单独收起）；已收起的不再自动展开
+const seenStoryIds = new Set<number>();
+watch(storyAssets, (list) => {
+  for (const s of list) {
+    if (!seenStoryIds.has(s.id)) {
+      seenStoryIds.add(s.id);
+      const set = new Set(expandedStoryIds.value);
+      set.add(s.id);
+      expandedStoryIds.value = set;
+    }
+  }
+}, { immediate: true });
+
+async function confirmStory(s: any) {
+  if (!selectedReqId.value) return;
+  try {
+    await put(`/req/${selectedReqId.value}/assets/${s.id}`, { status: 'confirmed' });
+    await loadWorkbench(selectedReqId.value);
+    emit('showToast', 'Story 已确定');
+  } catch (e: any) { emit('showToast', e.message || '确认失败'); }
+}
+
+async function genAllTPs() {
+  if (!selectedReqId.value || isStageBusy('test_points')) return;
+  try {
+    await post(`/req/${selectedReqId.value}/test-points/generate`, {});
+    emit('showToast', '测试点生成已启动');
+    startPoll('test_points');
+  } catch (e: any) { emit('showToast', e.message || '启动失败'); }
+}
+
+async function genStoryTPs(s: any) {
+  if (!selectedReqId.value || isStoryGeneratingTP(s)) return;
+  try {
+    await post(`/req/${selectedReqId.value}/stories/${s.id}/test-points/generate`, {});
+    emit('showToast', `「${s.title}」测试点生成已启动`);
+    startPoll('test_points');
+  } catch (e: any) { emit('showToast', e.message || '启动失败'); }
+}
+
+function startStoryEdit(s: any) {
+  editingStoryId.value = s.id;
+  editStoryTitle.value = s.title;
+  editStoryDesc.value = s.description || '';
+}
+function cancelStoryEdit() { editingStoryId.value = null; }
+async function saveStoryEdit(s: any) {
+  const title = editStoryTitle.value.trim();
+  if (!title || storySaving.value) return;
+  storySaving.value = true;
+  try {
+    await put(`/req/${selectedReqId.value}/assets/${s.id}`, { title, description: editStoryDesc.value });
+    editingStoryId.value = null;
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', 'Story 已更新');
+  } catch (e: any) { emit('showToast', e.message || '保存失败'); }
+  finally { storySaving.value = false; }
+}
+
+function startTpEdit(t: any) {
+  editingTpId.value = t.id;
+  editTpTitle.value = t.title;
+  editTpDesc.value = t.description || '';
+}
+async function saveTpEdit(t: any) {
+  const title = editTpTitle.value.trim();
+  if (!title || tpSaving.value) return;
+  tpSaving.value = true;
+  try {
+    await put(`/req/${selectedReqId.value}/assets/${t.id}`, { title, description: editTpDesc.value });
+    editingTpId.value = null;
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '测试点已更新');
+  } catch (e: any) { emit('showToast', e.message || '保存失败'); }
+  finally { tpSaving.value = false; }
+}
+
+async function doDeleteAsset() {
+  if (!assetDeleteTarget.value || !selectedReqId.value || assetDeleting.value) return;
+  assetDeleting.value = true;
+  try {
+    await del(`/req/${selectedReqId.value}/assets/${assetDeleteTarget.value.id}`);
+    assetDeleteTarget.value = null;
+    await loadWorkbench(selectedReqId.value!);
+    emit('showToast', '已删除');
+  } catch (e: any) { emit('showToast', e.message || '删除失败'); }
+  finally { assetDeleting.value = false; }
 }
 
 // ── 用例：筛选 / 详情 / 绑定 / 执行 ──
@@ -664,7 +917,7 @@ async function loadWorkbench(reqId: number) {
     workbenchData.value = data;
     const req = data?.requirement;
     docContent.value = req?.content || '';
-    docViewMode.value = 'render';
+    docViewMode.value = 'edit';
     if (!docContent.value) {
       // 无正文 → 若为链接来源则自动提取渲染（无需手动点渲染）
       const link = parseMeta(req?.source_meta).link;
@@ -685,6 +938,12 @@ async function loadWorkbench(reqId: number) {
     if (selectedCase.value && !caseAssets.value.some((c: any) => c.id === selectedCase.value.id)) {
       selectedCase.value = null;
     }
+    // 若存在进行中的 AI 任务，自动轮询直到结束（刷新页面后不卡「评审中/生成中」）
+    const activeTask = (workbenchData.value?.ai_tasks || []).find((t: any) =>
+      ['PENDING', 'RUNNING'].includes(t.status));
+    if (activeTask && STAGE_DONE_MSG[activeTask.stage]) {
+      startPoll(activeTask.stage, undefined, true);
+    }
   } catch (e: any) {
     if (selectedReqId.value !== reqId) return;
     docError.value = e.message || '加载工作台失败';
@@ -703,6 +962,7 @@ function selectReq(reqId: number) {
     router.replace({ query: { req_id: reqId } });
     return;
   }
+  stopPoll(); // 切换需求时停止上一个需求的轮询
   selectedReqId.value = reqId;
   activeStage.value = 'review';
   selectedCase.value = null;
@@ -710,19 +970,74 @@ function selectReq(reqId: number) {
   // 立即清空文档，避免上一个需求的内容残留闪现
   docContent.value = '';
   docError.value = '';
-  docViewMode.value = 'render';
+  docViewMode.value = 'edit';
   docLoading.value = true;
   loadWorkbench(reqId);
+  connectDocWS(reqId); // 多人在线编辑：连接文档协作通道
   router.replace({ query: { req_id: reqId } });
 }
 
-// ── 文档编辑 ──
+// ── 文档编辑：自动保存 + 多人在线协作 ──
+function connectDocWS(reqId: number) {
+  disconnectDocWS();
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    docWS = new WebSocket(`${proto}//${location.host}/ws/doc/${reqId}`);
+    docWS.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        // 其他用户保存的文档内容 → 本人在未输入时同步更新
+        if (msg.type === 'doc' && typeof msg.content === 'string' && !docFocused.value) {
+          docContent.value = msg.content;
+        }
+      } catch {}
+    };
+    docWS.onclose = () => {
+      // 需求仍选中时自动重连
+      if (selectedReqId.value === reqId) {
+        if (docWSRetry) clearTimeout(docWSRetry);
+        docWSRetry = window.setTimeout(() => { if (selectedReqId.value === reqId) connectDocWS(reqId); }, 3000);
+      }
+    };
+  } catch {}
+}
+function disconnectDocWS() {
+  if (docWSRetry) { clearTimeout(docWSRetry); docWSRetry = undefined; }
+  if (docWS) { try { docWS.close(); } catch {} docWS = null; }
+}
+function broadcastDoc() {
+  if (docWS && docWS.readyState === WebSocket.OPEN) {
+    try { docWS.send(JSON.stringify({ content: docContent.value })); } catch {}
+  }
+}
+
+function onDocInput() {
+  docSaveStatus.value = 'saving';
+  if (docSaveTimer) clearTimeout(docSaveTimer);
+  docSaveTimer = window.setTimeout(() => { autoSaveDoc(); }, 800);
+}
+
+async function autoSaveDoc() {
+  if (!selectedReqId.value) return;
+  try {
+    await put(`/req/${selectedReqId.value}`, { content: docContent.value });
+    docSaveStatus.value = 'saved';
+    broadcastDoc();
+    setTimeout(() => { if (docSaveStatus.value === 'saved') docSaveStatus.value = 'idle'; }, 2500);
+  } catch (e: any) {
+    docSaveStatus.value = 'idle';
+    emit('showToast', e.message || '自动保存失败');
+  }
+}
+
 async function saveDoc() {
   if (!selectedReqId.value) return;
   docSaving.value = true;
   try {
     await put(`/req/${selectedReqId.value}`, { content: docContent.value });
-    await loadWorkbench(selectedReqId.value);
+    docSaveStatus.value = 'saved';
+    broadcastDoc();
+    setTimeout(() => { if (docSaveStatus.value === 'saved') docSaveStatus.value = 'idle'; }, 2500);
     emit('showToast', '文档已保存（不自动触发评审）');
   } catch (e: any) { emit('showToast', e.message || '保存失败'); }
   finally { docSaving.value = false; }
@@ -735,7 +1050,7 @@ async function startReview() {
   try {
     await post(`/req/${selectedReqId.value}/analyze`, {});
     emit('showToast', 'AI 评审已启动');
-    pollUntilIdle('analyze', '评审完成', reviewRunning);
+    startPoll('analyze', reviewRunning);
   } catch (e: any) { reviewRunning.value = false; emit('showToast', e.message || '启动评审失败'); }
 }
 
@@ -745,21 +1060,62 @@ async function reReview() {
   try {
     await post(`/req/${selectedReqId.value}/analysis/re-review`, {});
     emit('showToast', '重新评审已启动');
-    pollUntilIdle('re_review', '重新评审完成', reviewRunning);
+    startPoll('re_review', reviewRunning);
   } catch (e: any) { reviewRunning.value = false; emit('showToast', e.message || '重新评审失败'); }
 }
 
 // ── 问题卡片操作 ──
-async function gapComment(g: any) {
+const streamingGapId = ref<number | null>(null);
+const streamingText = ref('');
+const streamingUserComment = ref('');
+
+/** 评论 → AI 回复逐字流式输出（SSE），结束后落库并刷新 */
+async function gapCommentStream(g: any) {
   const text = (commentText.value[g.id] || '').trim();
-  if (!text) return;
+  if (!text || streamingGapId.value) return;
+  commentText.value[g.id] = '';
+  commentOpen.value[g.id] = false;
+  streamingGapId.value = g.id;
+  streamingText.value = '';
+  streamingUserComment.value = text;
   try {
-    await post(`/req/${selectedReqId.value}/gaps/${g.id}/comment`, { comment: text });
-    commentText.value[g.id] = '';
-    commentOpen.value[g.id] = false;
-    await loadWorkbench(selectedReqId.value!);
-    emit('showToast', 'AI 已回复');
+    const res = await fetch(`/api/req/${selectedReqId.value}/gaps/${g.id}/comment-stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ comment: text }),
+    });
+    if (!res.ok || !res.body) {
+      const err = await res.json().catch(() => ({}));
+      emit('showToast', err.msg || '评论失败');
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let errorMsg = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const blocks = buf.split('\n\n');
+      buf = blocks.pop() || '';
+      for (const block of blocks) {
+        const line = block.split('\n').find(l => l.startsWith('data:'));
+        if (!line) continue;
+        let payload: any = {};
+        try { payload = JSON.parse(line.slice(5).trim()); } catch { continue; }
+        if (payload.delta) streamingText.value += payload.delta;
+        if (payload.error) errorMsg = payload.error;
+      }
+    }
+    if (errorMsg) emit('showToast', errorMsg);
   } catch (e: any) { emit('showToast', e.message || '评论失败'); }
+  finally {
+    streamingGapId.value = null;
+    streamingText.value = '';
+    streamingUserComment.value = '';
+    await loadWorkbench(selectedReqId.value!);
+  }
 }
 
 async function gapIgnore(g: any) {
@@ -794,6 +1150,9 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick);
   stopFeishuPoll();
+  stopPoll();
+  disconnectDocWS();
+  if (docSaveTimer) clearTimeout(docSaveTimer);
 });
 </script>
 
@@ -847,7 +1206,7 @@ onUnmounted(() => {
             </div>
             <div class="req-card-meta">
               <span class="req-card-time">{{ formatTime(r.created_at) }}</span>
-              <span class="req-status">{{ r.status }}</span>
+              <span class="req-status">{{ reqStatusLabel(r.status) }}</span>
             </div>
           </template>
         </div>
@@ -900,17 +1259,17 @@ onUnmounted(() => {
       </nav>
 
       <div class="wb-split">
-        <!-- ── 需求文档 60%（左）── -->
+        <!-- ── 需求文档 60%（左）：默认编辑态 + 自动保存 + 多人在线 ── -->
         <div class="doc-panel">
           <div class="panel-head">
             <h3 class="panel-title">需求文档</h3>
             <div class="doc-tools">
+              <span v-if="docSaveStatus !== 'idle'" class="doc-save-status" :class="`doc-save--${docSaveStatus}`">
+                {{ docSaveStatus === 'saving' ? '保存中…' : '已保存 ✓' }}
+              </span>
               <template v-if="docState === 'render' && !wbLoading">
-                <BaseButton v-if="docViewMode === 'render'" size="sm" variant="ghost" @click="docViewMode = 'edit'">编辑</BaseButton>
-                <template v-else>
-                  <BaseButton size="sm" variant="ghost" @click="docViewMode = 'render'">取消</BaseButton>
-                  <BaseButton size="sm" class="btn-save" @click="saveDoc" :loading="docSaving">保存</BaseButton>
-                </template>
+                <BaseButton v-if="docViewMode === 'edit'" size="sm" variant="ghost" @click="docViewMode = 'render'">预览</BaseButton>
+                <BaseButton v-else size="sm" variant="ghost" @click="docViewMode = 'edit'">编辑</BaseButton>
               </template>
             </div>
           </div>
@@ -942,7 +1301,9 @@ onUnmounted(() => {
 
           <!-- 自动渲染（含图片 / 表格） -->
           <div v-else-if="docViewMode === 'render'" class="doc-render" v-html="renderMarkdown(docContent)"></div>
-          <textarea v-else v-model="docContent" class="doc-editor" placeholder="需求文档内容（编辑后保存，不自动触发评审）"></textarea>
+          <textarea v-else v-model="docContent" class="doc-editor" spellcheck="false"
+            placeholder="需求文档内容（多人在线编辑，自动保存）"
+            @input="onDocInput" @focus="docFocused = true" @blur="docFocused = false"></textarea>
         </div>
 
         <!-- ── 阶段面板 40%（右）── -->
@@ -953,9 +1314,16 @@ onUnmounted(() => {
           <div v-else-if="activeStage === 'review'" class="tab-pane">
             <div class="pane-head">
               <span class="pane-title">需求评审</span>
+              <!-- 评审结果出现后：重新评审 / 生成 Story 右对齐 -->
+              <div class="pane-head-actions" v-if="analysisAsset">
+                <BaseButton size="sm" variant="secondary" @click="reReview" :loading="reviewActive">重新评审</BaseButton>
+                <BaseButton size="sm" variant="primary" @click="triggerStage('stories', 'gen')" :loading="isStageBusy('stories')">
+                  {{ isStageBusy('stories') ? '生成中...' : '生成 Story' }}
+                </BaseButton>
+              </div>
             </div>
 
-            <div class="pane-body" v-if="!analysisAsset">
+            <div class="pane-body" v-if="!analysisAsset && !reviewActive">
               <div class="empty-state">
                 <p>尚未发起需求评审。</p>
                 <BaseButton variant="primary" @click="startReview" :loading="reviewActive">
@@ -964,63 +1332,92 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div class="pane-body empty-state" v-else-if="reviewActive">AI 评审进行中…</div>
+            <!-- 无结果且评审进行中 -->
+            <div v-else-if="!analysisAsset" class="pane-body empty-state">AI 评审进行中…</div>
 
-            <!-- 评审完成：此时才出现 重新评审 / 生成Story -->
+            <!-- 评审完成 -->
             <div v-else class="pane-body">
-              <!-- AI 质量分析摘要 -->
+              <!-- AI 质量分析摘要：右上角综合评分 + 总结 + 关键词标签 -->
               <div class="analysis-card">
                 <div class="analysis-head">
-                  <span class="ai-icon">◉</span>
-                  <h4>AI 质量分析摘要</h4>
+                  <div class="analysis-title">
+                    <span class="ai-icon">◉</span>
+                    <h4>AI 质量分析摘要</h4>
+                  </div>
+                  <div class="analysis-score" v-if="analysisScore">
+                    <span class="score-label">综合评分</span>
+                    <span class="score-num" :class="`score-${scoreTone(analysisScore)}`">{{ analysisScore }}</span>
+                  </div>
                 </div>
                 <p class="analysis-text">{{ analysisReason || '评审完成' }}</p>
-                <div v-if="analysisElements" class="analysis-elems">
-                  <span v-for="(v, k) in analysisElements" :key="k" class="elem-chip">
-                    {{ k }}: {{ Array.isArray(v) ? v.length : v }}
-                  </span>
+                <!-- 关键词标签 -->
+                <div class="tag-row" v-if="analysisTags.length">
+                  <span v-for="t in analysisTags" :key="t" class="kw-tag"># {{ t }}</span>
                 </div>
               </div>
 
-              <!-- 待处理问题 -->
-              <h4 class="pane-section">待处理问题（{{ gapAssets.length }}）</h4>
-              <div v-for="g in gapAssets" :key="g.id" class="gap-card">
+              <!-- 待处理问题：状态筛选 -->
+              <div class="issues-toolbar">
+                <div class="filter-chips">
+                  <button v-for="s in GAP_FILTERS" :key="s.value" class="filter-chip"
+                    :class="{ active: gapStatusFilter === s.value }"
+                    @click="gapStatusFilter = s.value; gapPage = 1">{{ s.label }}</button>
+                </div>
+                <span class="issue-count">
+                  共 {{ filteredGaps.length }} 条<template v-if="gapTotalPages > 1"> · 第 {{ gapPage }}/{{ gapTotalPages }} 页</template>
+                </span>
+              </div>
+
+              <!-- 问题卡片：一级操作 + 头部截断描述 + 流式评论 -->
+              <div v-for="g in pagedGaps" :key="g.id" class="gap-card">
                 <div class="gap-head">
-                  <span class="gap-status" :class="`gap-status--${g.status}`">
-                    {{ GAP_STATUS[g.status]?.label || g.status }}
-                  </span>
+                  <span class="gap-status" :class="`gap-status--${g.status}`">{{ GAP_STATUS[g.status]?.label || g.status }}</span>
+                   <span class="gap-desc-trunc" :title="g.description">{{ g.description }}</span>  
+                  <!-- 问题详情 -->
                   <div class="gap-head-actions">
+                    <BaseButton size="sm" variant="ghost" @click="commentOpen[g.id] = !commentOpen[g.id]">评论</BaseButton>
                     <BaseButton size="sm" variant="ghost" @click="gapIgnore(g)" v-if="g.status !== 'ignored'">忽略</BaseButton>
-                    <BaseButton size="sm" variant="ghost" @click="gapConfirm(g)" v-if="g.status !== 'confirmed'">确认解决</BaseButton>
+                    <BaseButton size="sm" variant="ghost" @click="gapConfirm(g)" v-if="g.status !== 'confirmed'">确认</BaseButton>
                   </div>
                 </div>
                 <div class="gap-body">
-                  <p class="gap-type">{{ g.title }}</p>
+                  <span class="gap-type">{{ gapTypeLabel(g.title) }}</span>
                   <p class="gap-desc">{{ g.description }}</p>
-                  <p class="gap-question" v-if="gapContent(g).question">{{ gapContent(g).question }}</p>
-                  <!-- AI 评论气泡 -->
+                  <p class="gap-question" v-if="gapContent(g).question">需确认：{{ gapContent(g).question }}</p>
+                  
+                  <!-- AI 评论线程 -->
                   <div v-for="(t, i) in gapThread(g)" :key="i" class="ai-bubble" :class="`ai-bubble--${t.role}`">
                     <span class="ai-avatar">{{ t.role === 'user' ? '我' : 'AI' }}</span>
                     <span class="ai-text">{{ t.text }}</span>
                   </div>
-                  <!-- 评论输入 -->
-                  <div v-if="commentOpen[g.id]" class="comment-box">
-                    <BaseInput v-model="commentText[g.id]" placeholder="添加评论..." @enter="gapComment(g)" class="w-full" />
+                  <!-- 流式评论：用户评论 + AI 逐字输出 -->
+                  <template v-if="streamingGapId === g.id">
+                    <div class="ai-bubble ai-bubble--user">
+                      <span class="ai-avatar">我</span>
+                      <span class="ai-text">{{ streamingUserComment }}</span>
+                    </div>
+                    <div class="ai-bubble ai-bubble--ai">
+                      <span class="ai-avatar">AI</span>
+                      <span class="ai-text streaming-text">{{ streamingText }}<span class="cursor">▍</span></span>
+                    </div>
+                  </template>
+                  <!-- 评论输入框 -->
+                  <div v-if="commentOpen[g.id] && streamingGapId !== g.id" class="comment-box">
+                    <BaseInput v-model="commentText[g.id]" placeholder="添加评论..." @enter="gapCommentStream(g)" class="w-full" />
                     <div class="comment-actions">
                       <BaseButton size="sm" variant="ghost" @click="commentOpen[g.id] = false">取消</BaseButton>
-                      <BaseButton size="sm" variant="primary" @click="gapComment(g)">提交</BaseButton>
+                      <BaseButton size="sm" variant="primary" @click="gapCommentStream(g)">提交</BaseButton>
                     </div>
                   </div>
-                  <BaseButton v-else size="sm" variant="ghost" @click="commentOpen[g.id] = true">评论</BaseButton>
                 </div>
               </div>
 
-              <!-- 底部操作栏：评审结果出现后才展示 -->
-              <div class="pane-actions">
-                <BaseButton class="flex-1" variant="secondary" @click="reReview" :loading="reviewActive">重新评审</BaseButton>
-                <BaseButton class="flex-1" variant="primary" @click="triggerStage('stories', 'gen')" :loading="isStageBusy('stories')">
-                  {{ isStageBusy('stories') ? '生成中...' : '生成 Story' }}
-                </BaseButton>
+              <!-- 分页 -->
+              <div class="pagination" v-if="gapTotalPages > 1">
+                <button class="page-btn" :disabled="gapPage <= 1" @click="gapPage--">上一页</button>
+                <button v-for="p in gapPageSet" :key="p" class="page-btn" :class="{ active: gapPage === p }"
+                  @click="gapPage = p">{{ p }}</button>
+                <button class="page-btn" :disabled="gapPage >= gapTotalPages" @click="gapPage++">下一页</button>
               </div>
             </div>
           </div>
@@ -1029,46 +1426,91 @@ onUnmounted(() => {
           <div v-else-if="activeStage === 'story'" class="tab-pane">
             <div class="pane-head">
               <h3 class="pane-title">Story 列表</h3>
-              <BaseButton size="sm" variant="primary" @click="triggerStage('test_points', 'gen')"
+              <BaseButton size="sm" variant="primary" @click="genAllTPs"
                 :loading="isStageBusy('test_points')" :disabled="!storiesConfirmed">生成测试点</BaseButton>
             </div>
             <div class="pane-body">
               <div v-if="isStageBusy('stories') && !storyAssets.length" class="empty-state">Story 生成中…</div>
-              <div v-for="s in storyAssets" :key="s.id" class="story-card">
-                <div class="story-head">
-                  <div class="story-id-row">
-                    <span class="story-id">{{ storyNumber(s) }} {{ s.title }}</span>
-                    <span class="score-circle" :class="`score-${scoreTone(s.score)}`" :title="assetContent(s).score_reason">{{ s.score }}</span>
+              <div v-for="s in storyAssets" :key="s.id" class="story-card" :class="{ expanded: isStoryExpanded(s) }">
+                <!-- 编辑态：标题 + 描述 -->
+                <template v-if="editingStoryId === s.id">
+                  <input v-model="editStoryTitle" class="inline-input" placeholder="Story 标题" @keydown.esc="cancelStoryEdit" />
+                  <textarea v-model="editStoryDesc" class="inline-textarea" placeholder="Story 描述"></textarea>
+                  <div class="draft-actions">
+                    <BaseButton size="sm" variant="ghost" @click="cancelStoryEdit">取消</BaseButton>
+                    <BaseButton size="sm" variant="primary" :loading="storySaving" @click="saveStoryEdit(s)">保存</BaseButton>
                   </div>
-                  <div class="story-head-right">
-                    <BaseTag v-if="s.gate_status" :tone="gateTone(s.gate_status)" size="sm">{{ s.gate_status }}</BaseTag>
-                    <span class="story-status">{{ statusLabel(s.status) }}</span>
+                </template>
+                <template v-else>
+                  <div class="story-head">
+                    <div class="story-id-row">
+                      <span class="story-id">{{ storyNumber(s) }} {{ s.title }}</span>
+                      <span class="score-circle score-wrap" :class="`score-${scoreTone(s.score)}`"
+                        :data-tip="assetContent(s).score_reason || '暂无评分原因'">{{ s.score }}</span>
+                      <span class="story-status" :class="{ 'story-status--gen': isStoryGeneratingTP(s) }">{{ storyStatusLabel(s) }}</span>
+                    </div>
+                    <div class="story-head-right">
+                      <BaseTag v-if="s.gate_status" :tone="gateTone(s.gate_status)" size="sm">{{ s.gate_status }}</BaseTag>
+                      <!-- 纯图标操作：确认 / 编辑 / 删除 / 收起展开（hover 显示名称） -->
+                      <span v-if="!isStoryConfirmed(s)" class="icon-btn icon-btn--ok" data-tip="确认" @click="confirmStory(s)">✓</span>
+                      <span class="icon-btn" data-tip="编辑" @click="startStoryEdit(s)">✎</span>
+                      <span class="icon-btn icon-btn--danger" data-tip="删除" @click="assetDeleteTarget = s">🗑</span>
+                      <span class="icon-btn" :data-tip="isStoryExpanded(s) ? '收起' : '展开'" @click="toggleStoryExpand(s)">
+                        {{ isStoryExpanded(s) ? '▲' : '▼' }}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div class="story-body">
-                  <div class="story-block" v-if="s.description">
-                    <h4>描述</h4>
-                    <p>{{ s.description }}</p>
+
+                  <!-- story-body：由 head 上的展开/收起按钮控制 -->
+                  <div class="story-body" v-if="isStoryExpanded(s)">
+                    <div class="story-block" v-if="s.description">
+                      <h4>描述</h4>
+                      <p>{{ s.description }}</p>
+                    </div>
+                    <div class="story-block" v-if="assetContent(s).acceptance_criteria?.length">
+                      <h4>验收标准</h4>
+                      <ul class="criteria-list">
+                        <li v-for="(c, i) in assetContent(s).acceptance_criteria" :key="i">✓ {{ c }}</li>
+                      </ul>
+                    </div>
+
+                    <!-- 关联测试点模块 -->
+                    <div class="story-tps-block">
+                      <div class="story-tps-head">
+                        <span class="story-tps-title">关联测试点（{{ storyTPs(s).length }}）</span>
+                        <BaseButton size="sm" variant="ghost" @click="genStoryTPs(s)"
+                          :loading="isStoryGeneratingTP(s)">
+                          {{ isStoryGeneratingTP(s) ? '生成中…' : '生成测试点' }}
+                        </BaseButton>
+                      </div>
+                      <!-- 列表展示测试点，可编辑/删除 -->
+                      <div class="story-tps-list">
+                        <div v-for="t in storyTPs(s)" :key="t.id" class="story-tp-item">
+                          <template v-if="editingTpId === t.id">
+                            <input v-model="editTpTitle" class="inline-input" placeholder="测试点标题" />
+                            <textarea v-model="editTpDesc" class="inline-textarea" placeholder="测试点描述"></textarea>
+                            <div class="draft-actions">
+                              <BaseButton size="sm" variant="ghost" @click="editingTpId = null">取消</BaseButton>
+                              <BaseButton size="sm" variant="primary" :loading="tpSaving" @click="saveTpEdit(t)">保存</BaseButton>
+                            </div>
+                          </template>
+                          <template v-else>
+                            <div class="story-tp-main">
+                              <span class="story-tp-title">{{ t.title }}</span>
+                              <span class="story-tp-desc">{{ t.description }}</span>
+                            </div>
+                            <div class="story-tp-ops">
+                              <span class="icon-btn" data-tip="编辑" @click="startTpEdit(t)">✎</span>
+                              <span class="icon-btn icon-btn--danger" data-tip="删除" @click="assetDeleteTarget = t">🗑</span>
+                            </div>
+                          </template>
+                        </div>
+                        <div v-if="!storyTPs(s).length && !isStoryGeneratingTP(s)" class="story-tp-empty">该 Story 暂无测试点，点击「生成测试点」提取。</div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="story-block" v-if="assetContent(s).acceptance_criteria?.length">
-                    <h4>验收标准</h4>
-                    <ul class="criteria-list">
-                      <li v-for="(c, i) in assetContent(s).acceptance_criteria" :key="i">✓ {{ c }}</li>
-                    </ul>
-                  </div>
-                </div>
-                <div class="story-actions">
-                  <BaseButton size="sm" variant="ghost" :disabled="!!confirmations(s).product"
-                    @click="confirmAsset(s, 'product')">
-                    {{ confirmations(s).product ? '产品已确认 ✓' : '产品确认' }}
-                  </BaseButton>
-                  <BaseButton size="sm" variant="ghost" :disabled="!!confirmations(s).testing"
-                    @click="confirmAsset(s, 'testing')">
-                    {{ confirmations(s).testing ? '测试已确认 ✓' : '测试确认' }}
-                  </BaseButton>
-                </div>
+                </template>
               </div>
-              <p v-if="storyAssets.length && !storiesConfirmed" class="stage-hint">提示：需全部 Story 完成「产品 + 测试」双视角确认后，才可生成测试点。</p>
             </div>
           </div>
 
@@ -1103,7 +1545,7 @@ onUnmounted(() => {
                   </BaseButton>
                 </div>
               </div>
-              <p v-if="tpAssets.length && !tpsConfirmed" class="stage-hint">提示：需全部测试点完成双视角确认后，才可生成测试场景。</p>
+              <!-- <p v-if="tpAssets.length && !tpsConfirmed" class="stage-hint">提示：需全部测试点完成双视角确认后，才可生成测试场景。</p> -->
 
               <!-- 场景子块 -->
               <div class="sub-block" v-if="tpsConfirmed || scenarioAssets.length">
@@ -1142,7 +1584,7 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-                <p v-if="!scenariosConfirmed && scenarioAssets.length" class="stage-hint">提示：需全部场景完成双视角确认后，才可生成测试用例。</p>
+                <!-- <p v-if="!scenariosConfirmed && scenarioAssets.length" class="stage-hint">提示：需全部场景完成双视角确认后，才可生成测试用例。</p> -->
 
                 <!-- 场景确认后 → 生成用例（用例 tab 产出后才出现） -->
                 <div v-if="scenariosConfirmed" class="next-step">
@@ -1324,6 +1766,15 @@ onUnmounted(() => {
       </template>
     </BaseDialog>
 
+    <!-- 删除资产（Story / 测试点）确认 -->
+    <BaseDialog :open="!!assetDeleteTarget" title="删除确认" :width="420" @close="assetDeleteTarget = null">
+      <p class="delete-hint">确定删除「{{ assetDeleteTarget?.title }}」吗？</p>
+      <template #footer>
+        <BaseButton variant="ghost" @click="assetDeleteTarget = null">取消</BaseButton>
+        <BaseButton variant="danger" :loading="assetDeleting" @click="doDeleteAsset">删除</BaseButton>
+      </template>
+    </BaseDialog>
+
     <!-- 重新上传 / 添加来源弹窗 -->
     <BaseDialog :open="showReupload" title="重新上传 / 添加来源" :width="520" @close="showReupload = false">
       <div class="bind-body">
@@ -1453,10 +1904,13 @@ onUnmounted(() => {
 .wb-split { flex: 1; display: flex; gap: 16px; padding: 16px; min-height: 0; }
 
 /* 需求文档（左 60%） */
-.doc-panel { width: 60%; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
+.doc-panel { width: 68%; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 3px 16px; border-bottom: 1px solid var(--border); background: var(--bg-soft); flex-shrink: 0; }
 .panel-title { margin: 0; font-size: 14px; font-weight: 600; }
 .doc-tools { display: flex; gap: 6px; align-items: center; }
+.doc-save-status { font-size: 11px; color: var(--text-tertiary); }
+.doc-save--saving { color: var(--text-secondary); }
+.doc-save--saved { color: var(--color-success); }
 .btn-save { background: var(--color-success); border-color: var(--color-success); color: #fff; }
 .btn-save:hover { background: var(--color-success); opacity: .9; }
 .doc-render { flex: 1; overflow-y: auto; padding: 16px; font-size: 13px; line-height: 1.7; color: var(--text-primary); }
@@ -1474,7 +1928,7 @@ onUnmounted(() => {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* 阶段面板（右 40%） */
-.stage-panel { width: 40%; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
+.stage-panel { width: 30%; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); overflow: hidden; }
 .tab-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .pane-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-soft); flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
 .pane-title { margin: 0; font-size: 14px; font-weight: 600; }
@@ -1482,50 +1936,115 @@ onUnmounted(() => {
 .type-select { border: 1px solid var(--border); background: var(--bg-card); border-radius: 6px; padding: 3px 8px; font-size: 12px; color: var(--text-primary); }
 .pane-body { flex: 1; overflow-y: auto; padding: 14px 16px; min-height: 0; }
 .pane-actions { display: flex; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.filter-chip { font-size: 12px; margin-right: 6px; padding: 2px 8px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
 
 /* ── 评审 ── */
-.analysis-card { padding: 12px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; }
-.analysis-head { display: flex; align-items: center; gap: 6px; color: var(--color-primary); font-weight: 600; margin-bottom: 6px; }
+.analysis-card { padding: 12px 14px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; }
+.analysis-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--color-primary); font-weight: 600; margin-bottom: 6px; }
+.analysis-title { display: flex; align-items: center; gap: 6px; }
 .analysis-head h4 { margin: 0; font-size: 13px; }
 .ai-icon { font-size: 12px; }
+.analysis-score { display: flex; align-items: baseline; gap: 6px; flex-shrink: 0; }
+.score-label { font-size: 11px; color: var(--text-secondary); font-weight: 500; }
+.score-num { font-size: 24px; font-weight: 700; line-height: 1; }
 .analysis-text { font-size: 12.5px; color: var(--text-secondary); line-height: 1.6; margin: 0; }
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.kw-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg-card); color: var(--color-primary); border: 1px solid var(--color-primary-soft); }
 .analysis-elems { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .elem-chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
 .pane-section { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-tertiary); margin: 12px 0 8px; }
+
+/* 待处理问题：状态筛选栏 */
+.issues-toolbar { display: flex; align-items: center; gap: 10px; margin: 4px 0 10px; flex-wrap: wrap; }
+.issue-count { font-size: 11px; color: var(--text-tertiary); margin-left: auto; }
+
 .gap-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); margin-bottom: 10px; overflow: hidden; }
-.gap-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-soft); gap: 8px; }
-.gap-status { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
+.gap-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-soft); }
+.gap-status { flex-shrink: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
 .gap-status--confirmed { background: var(--color-success-soft, rgba(16,185,129,.12)); color: var(--color-success); }
 .gap-status--pending { background: var(--color-warning-soft, rgba(245,158,11,.12)); color: var(--color-warning); }
-.gap-head-actions { display: flex; gap: 4px; }
+.gap-type { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.gap-desc-trunc { flex: 1; min-width: 0; font-size: 12px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gap-head-actions { flex-shrink: 0; display: flex; gap: 4px; }
 .gap-body { padding: 12px; }
-.gap-type { font-size: 13px; font-weight: 600; margin: 0 0 4px; }
 .gap-desc { font-size: 12.5px; color: var(--text-secondary); margin: 0 0 6px; }
 .gap-question { font-size: 12px; color: var(--color-warning); margin: 0 0 6px; }
 .ai-bubble { display: flex; gap: 8px; margin: 6px 0; align-items: flex-start; }
 .ai-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary-soft); color: var(--color-primary); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .ai-bubble--user .ai-avatar { background: var(--bg-soft); color: var(--text-secondary); }
-.ai-text { font-size: 12px; color: var(--text-secondary); background: var(--bg-soft); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); line-height: 1.5; }
+.ai-text { font-size: 12px; color: var(--text-secondary); background: var(--bg-soft); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); line-height: 1.5; white-space: pre-wrap; }
+.streaming-text { border-color: var(--color-primary); }
+.cursor { display: inline-block; width: 2px; height: 12px; background: var(--color-primary); vertical-align: -1px; animation: blink .8s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
 .comment-box { margin-top: 8px; }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
+/* 分页 */
+.pagination { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 12px 0 4px; }
+.page-btn { min-width: 28px; padding: 4px 10px; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
+.page-btn:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary); }
+.page-btn.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.page-btn:disabled { opacity: .45; cursor: not-allowed; }
+
 /* ── Story ── */
 .story-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--bg-card); }
+.story-card.expanded { border-color: var(--color-primary); }
 .story-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
-.story-id-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.story-id-row { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .story-id { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .score-circle { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
 .score-green { border-color: var(--color-success); color: var(--color-success); }
 .score-yellow { border-color: var(--color-warning); color: var(--color-warning); }
 .score-red { border-color: var(--color-danger); color: var(--color-danger); }
 .story-head-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.story-status { font-size: 11px; color: var(--text-secondary); }
+.story-status { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.story-status--gen { color: var(--color-primary); font-weight: 600; }
 .story-body { display: flex; flex-direction: column; gap: 10px; }
 .story-block h4 { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin: 0 0 4px; }
 .story-block p { font-size: 13px; color: var(--text-primary); margin: 0; white-space: pre-wrap; }
 .criteria-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
 .criteria-list li { font-size: 13px; color: var(--text-primary); }
-.story-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+
+/* 纯图标操作按钮（hover 显示名称 tooltip） */
+.icon-btn { position: relative; width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+.icon-btn:hover { background: var(--bg-muted); color: var(--text-primary); }
+.icon-btn--ok:hover { color: var(--color-success); background: rgba(16,185,129,.1); }
+.icon-btn--danger:hover { color: var(--color-danger); background: rgba(220,38,38,.1); }
+.icon-btn--disabled { opacity: .4; pointer-events: none; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  background: var(--text-primary);
+  color: var(--bg-card);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 40;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+}
+[data-tip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+.score-wrap { cursor: help; }
+
+/* 关联测试点模块 */
+.story-tps-block { border-top: 1px dashed var(--border); padding-top: 10px; }
+.story-tps-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.story-tps-title { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.story-tps-list { display: flex; flex-direction: column; gap: 6px; }
+.story-tp-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; }
+.story-tp-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.story-tp-title { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+.story-tp-desc { font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-tp-ops { display: flex; gap: 2px; flex-shrink: 0; }
+.story-tp-empty { font-size: 12px; color: var(--text-tertiary); padding: 8px; text-align: center; }
+.inline-input { width: 100%; padding: 6px 8px; font-size: 13px; border: 1px solid var(--color-primary); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); outline: none; margin-bottom: 6px; }
+.inline-textarea { width: 100%; min-height: 56px; resize: vertical; padding: 6px 8px; font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); outline: none; }
 
 /* ── 测试点 ── */
 .tp-card { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; background: var(--bg-card); }

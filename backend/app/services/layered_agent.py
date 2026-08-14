@@ -583,13 +583,8 @@ async def generate_supplement_cases(client: LLMClient, requirement: dict, gap: d
 # ══════════════════════════════════════════════════════════
 
 
-async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str) -> dict:
-    """问题卡片评论/忽略：AI 追加回复。
-
-    action='comment'：用户评论 → AI 回复澄清；
-    action='ignore'：告知 LLM 该问题被忽略 → AI 简短确认。
-    返回 {'reply': str}
-    """
+def _gap_prompt(gap: dict, comment: str, action: str) -> str:
+    """构造问题卡片 AI 回复 prompt（评论 / 忽略共用）。"""
     thread = gap.get('thread') or []
     thread_text = '\n'.join(
         f"{'用户' if t.get('role') == 'user' else 'AI'}: {t.get('text', '')}"
@@ -601,7 +596,7 @@ async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str
     else:
         instruction = '用户针对该问题提出了评论，请澄清/补充分析。'
         extra = f'\n【用户评论】{comment}'
-    prompt = f"""你是资深测试需求分析专家。针对以下评审问题，{instruction}
+    return f"""你是资深测试需求分析专家。针对以下评审问题，{instruction}
 
 【问题类型】{gap.get('gap_type', '')}（严重度 {gap.get('severity', '')}）
 【问题描述】{gap.get('description', '')}
@@ -611,8 +606,23 @@ async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str
 {extra}
 
 请用 1-3 句中文回复，只输出回复文本，不要 JSON 或多余格式。"""
-    reply = await client.chat_text(prompt)
+
+
+async def respond_to_gap(client: LLMClient, gap: dict, comment: str, action: str) -> dict:
+    """问题卡片评论/忽略：AI 追加回复。
+
+    action='comment'：用户评论 → AI 回复澄清；
+    action='ignore'：告知 LLM 该问题被忽略 → AI 简短确认。
+    返回 {'reply': str}
+    """
+    reply = await client.chat_text(_gap_prompt(gap, comment, action))
     return {'reply': reply or '已记录。'}
+
+
+async def respond_to_gap_stream(client: LLMClient, gap: dict, comment: str, action: str):
+    """问题卡片评论/忽略：AI 回复逐字流式输出（async generator of str）。"""
+    async for delta in client.chat_text_stream(_gap_prompt(gap, comment, action)):
+        yield delta
 
 
 async def confirm_gap_update_doc(client: LLMClient, requirement: dict, gap: dict) -> dict:

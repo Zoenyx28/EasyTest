@@ -392,6 +392,44 @@ async def gap_comment(request: Request, req_id: int, gap_id: int,
     return ok({'thread': thread, 'reply': reply.get('reply', '')}, msg='已回复')
 
 
+@router.post('/{req_id}/gaps/{gap_id}/comment-stream')
+async def gap_comment_stream(request: Request, req_id: int, gap_id: int,
+                             data: GapActionBody = Body(...)):
+    """问题卡片评论（SSE 流式）：AI 回复逐字流式返回，结束后追加进讨论线程并落库。"""
+    from fastapi.responses import StreamingResponse
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    comment = (data.comment or '').strip()
+    if not comment:
+        return fail(400, '评论不能为空')
+    gap = await req_crud.get_asset(gap_id)
+    if gap is None or gap['asset_type'] != 'gap' or gap['requirement_id'] != req_id:
+        return fail(404, '问题卡片不存在')
+    content = _gap_content(gap)
+    thread = list(content.get('thread') or [])
+
+    async def event_gen():
+        try:
+            client = await _make_llm()
+            reply = ''
+            async for delta in layered_agent.respond_to_gap_stream(
+                    client, {**content, 'thread': thread}, comment, 'comment'):
+                reply += delta
+                yield f'data: {json.dumps({"delta": delta}, ensure_ascii=False)}\n\n'
+            thread.append({'role': 'user', 'text': comment, 'ts': _now_iso()})
+            thread.append({'role': 'ai', 'text': reply or '已记录。', 'ts': _now_iso()})
+            content['thread'] = thread
+            await req_crud.update_asset(gap_id, content=json.dumps(content, ensure_ascii=False))
+            yield f'data: {json.dumps({"done": True, "reply": reply or "已记录。"}, ensure_ascii=False)}\n\n'
+        except ValueError as exc:
+            yield f'data: {json.dumps({"error": str(exc)}, ensure_ascii=False)}\n\n'
+        except Exception as exc:
+            yield f'data: {json.dumps({"error": f"AI 回复失败：{exc}"}, ensure_ascii=False)}\n\n'
+
+    return StreamingResponse(event_gen(), media_type='text/event-stream')
+
+
 @router.post('/{req_id}/gaps/{gap_id}/ignore')
 async def gap_ignore(request: Request, req_id: int, gap_id: int):
     """问题卡片忽略：告知 LLM 该问题被忽略 → 追加 AI 回复 → 状态 ignored。"""
@@ -658,10 +696,11 @@ async def trigger_test_points(request: Request, req_id: int):
     req = ctx['req']
 
     stories = await req_crud.get_assets(req_id, asset_type='story')
-    if not _assets_confirmed(stories):
-        return fail(400, '请先确认全部 Story（产品+测试双视角确认）后再生成测试点')
+    confirmed = [s for s in stories if s.get('status') == 'confirmed']
+    if not confirmed:
+        return fail(400, '请先确认至少一条 Story 后再生成测试点')
 
-    task = await req_crud.create_ai_task(req_id, 'test_points', created_by=user_id)
+    task = await req_crud.create_ai_task(req_id, 'test_points', created_by=user_id, model='stories:all')
     await req_crud.update_ai_task(task['id'], status='RUNNING')
 
     async def run():
@@ -669,14 +708,14 @@ async def trigger_test_points(request: Request, req_id: int):
             client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.generate_test_points(
-                client, requirement, stories,
+                client, requirement, confirmed,
             )
             tps = result.get('test_points') or []
             items = []
             for i, tp in enumerate(tps):
                 sidx = int(tp.get('story_index', 0))
                 pidx = int(tp.get('parent_index', -1))
-                story_id = stories[sidx]['id'] if 0 <= sidx < len(stories) else 0
+                story_id = confirmed[sidx]['id'] if 0 <= sidx < len(confirmed) else 0
                 parent_id = items[pidx].get('_idx', 0) if 0 <= pidx < len(items) else 0
                 content = {
                     'category': tp.get('category', 'Functional'),
@@ -706,6 +745,80 @@ async def trigger_test_points(request: Request, req_id: int):
 
     asyncio.create_task(run())
     return ok({'task_id': task['id'], 'status': 'RUNNING'}, msg='测试点生成已启动')
+
+
+@router.post('/{req_id}/stories/{story_id}/test-points/generate')
+async def trigger_story_test_points(request: Request, req_id: int, story_id: int):
+    """按单条 Story 生成测试点：仅以该 Story 作为上下文，只替换该 Story 的测试点。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+
+    import asyncio
+    user_id = ctx['user']['id']
+    req = ctx['req']
+
+    story = await req_crud.get_asset(story_id)
+    if story is None or story['asset_type'] != 'story' or story['requirement_id'] != req_id:
+        return fail(404, 'Story 不存在')
+
+    task = await req_crud.create_ai_task(req_id, 'test_points', created_by=user_id, model=f'story:{story_id}')
+    await req_crud.update_ai_task(task['id'], status='RUNNING')
+
+    async def run():
+        try:
+            client = await _make_llm()
+            requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
+            result = await layered_agent.generate_test_points(
+                client, requirement, [story],
+            )
+            tps = result.get('test_points') or []
+            items = []
+            for i, tp in enumerate(tps):
+                pidx = int(tp.get('parent_index', -1))
+                parent_id = items[pidx].get('_idx', 0) if 0 <= pidx < len(items) else 0
+                content = {
+                    'category': tp.get('category', 'Functional'),
+                    'story_index': 0,
+                    'parent_index': pidx,
+                }
+                items.append({
+                    '_idx': i,
+                    'title': tp.get('title', ''),
+                    'description': tp.get('description', ''),
+                    'content': json.dumps(content, ensure_ascii=False),
+                    'score': result.get('score', 0) if i == 0 else 0,
+                    'gate_status': '',
+                    'parent_id': parent_id,
+                    'story_id': story_id,
+                    'sort_order': i,
+                    'status': 'generated',
+                })
+            for it in items:
+                it.pop('_idx', None)
+            # 只替换该 Story 的测试点，不影响其它 Story
+            await req_crud.delete_story_assets(req_id, 'test_point', story_id)
+            for it in items:
+                await req_crud.create_asset(req_id, 'test_point', it, created_by=user_id)
+            await req_crud.update_ai_task(task['id'], status='REVIEW')
+        except Exception as exc:
+            await req_crud.update_ai_task(task['id'], status='FAILED', error=str(exc))
+
+    asyncio.create_task(run())
+    return ok({'task_id': task['id'], 'status': 'RUNNING'}, msg='测试点生成已启动')
+
+
+@router.delete('/{req_id}/assets/{asset_id}')
+async def delete_asset(request: Request, req_id: int, asset_id: int):
+    """删除单个资产（Story / 测试点等）。"""
+    ctx, err = await _guard(request, req_id)
+    if ctx is None:
+        return fail(err, '需求不存在或无权访问')
+    asset = await req_crud.get_asset(asset_id)
+    if asset is None or asset['requirement_id'] != req_id:
+        return fail(404, '资产不存在')
+    await req_crud.delete_asset(asset_id)
+    return ok(None, msg='资产已删除')
 
 
 @router.post('/{req_id}/test-points/review')

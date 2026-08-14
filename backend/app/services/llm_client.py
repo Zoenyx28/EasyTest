@@ -143,6 +143,45 @@ class LLMClient:
         raise last_exc
 
 
+    async def chat_text_stream(self, prompt: str, *, model_kind: str = 'text',
+                               temperature: float = 0.3, max_tokens: int = 2048):
+        """流式调用 LLM 返回纯文本增量（async generator，逐段 yield str）。
+
+        用于 AI 评论等需要「逐字输出」的场景；底层走 SSE（stream: true）。
+        """
+        if model_kind == 'vision' and not self.vision_model:
+            raise LLMConfigError('未配置视觉模型（vision_model）')
+        model = self.vision_model if model_kind == 'vision' else self.text_model
+        payload = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'temperature': temperature,
+            'max_tokens': max_tokens,
+            'stream': True,
+        }
+        headers = {'Content-Type': 'application/json'}
+        if self.provider != 'ollama':
+            headers['Authorization'] = f'Bearer {self.api_key}'
+        async with httpx.AsyncClient(transport=self._transport, timeout=self.timeout) as client:
+            async with client.stream(
+                'POST', f'{self.api_base}/chat/completions', headers=headers, json=payload,
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith('data:'):
+                        continue
+                    data = line[5:].strip()
+                    if data == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = chunk.get('choices', [{}])[0].get('delta', {}).get('content') or ''
+                    if delta:
+                        yield delta
+
+
     async def chat_vision(self, prompt: str, images: list[dict], *,
                           max_tokens: int = 8192, schema_hint: str = 'JSON') -> Any:
         """调用视觉模型分析图片并返回解析后的 JSON（#12）。

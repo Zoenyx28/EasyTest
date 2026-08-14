@@ -68,6 +68,14 @@ _configure_logging()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await init_db()
+    # 清理历史遗留的 RUNNING/PENDING AI 任务（进程重启中断的孤儿任务，避免前端卡 loading）
+    try:
+        from app.domains.requirement_design import crud as req_crud
+        stale = await req_crud.fail_stale_tasks()
+        if stale:
+            _logger.info('Marked %d stale AI task(s) as FAILED on startup', stale)
+    except Exception:
+        _logger.exception('Failed to clean stale AI tasks at startup')
     from app.services.executor import set_discovery_cache
     from app.db import crud
     from app.api.discovery import _build_discovery_response
