@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Query, Request
 from pydantic import BaseModel
 
 from app.api.common import ok, fail
@@ -144,3 +144,33 @@ async def feishu_unbind(request: Request):
     user = await get_current_user(request)
     await crud.clear_user_feishu_token(user['id'])
     return ok(None, msg='已解除飞书绑定')
+
+
+# ══════════════════════════════════════════════════════════
+# 飞书文档预览（blocks→markdown） + 图片代理
+# ══════════════════════════════════════════════════════════
+
+feishu_router = APIRouter(prefix='/api/feishu', tags=['飞书'])
+
+
+@feishu_router.get('/preview')
+async def feishu_preview(request: Request, url: str = Query(...)):
+    """按链接返回文档预览 markdown + 图片 token 列表（当前用户身份）。"""
+    user = await get_current_user(request)
+    result = await feishu_client.preview_doc(url, user['id'])
+    if result.get('error_kind'):
+        code = 401 if result['error_kind'] == 'no_auth' else 400
+        return fail(code, result.get('error_message', '预览失败'))
+    return ok({'markdown': result['markdown'], 'images': result['images']}, msg='预览成功')
+
+
+@feishu_router.get('/media/{file_token}')
+async def feishu_media(request: Request, file_token: str):
+    """飞书图片代理：以当前用户身份下载图片字节返回给前端 <img>。"""
+    from fastapi.responses import Response
+    user = await get_current_user(request)
+    try:
+        content, content_type = await feishu_client.fetch_image(file_token, user['id'])
+    except feishu_client.FeishuError as exc:
+        return fail(400, exc.message)
+    return Response(content=content, media_type=content_type)

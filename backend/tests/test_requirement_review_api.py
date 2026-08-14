@@ -81,13 +81,16 @@ def _review_transport() -> MockTransport:
 
 @pytest.fixture
 async def _enable_fake_llm(monkeypatch):
+    import app.db.crud as crud_mod
     real_llm = llm_client.LLMClient
+    fake_settings = {'provider': 'deepseek', 'api_base': 'http://fake',
+                     'text_model': 'fake-model', 'vision_model': '', 'api_key': 'k'}
+    async def fake_get_settings():
+        return fake_settings
+    monkeypatch.setattr(crud_mod, 'get_llm_settings', fake_get_settings)
     monkeypatch.setattr(
         req_api.llm_client, 'LLMClient',
-        lambda *a, **k: real_llm(
-            {'provider': 'deepseek', 'api_base': 'http://fake',
-             'text_model': 'fake-model', 'vision_model': '', 'api_key': 'k'},
-            transport=_review_transport()))
+        lambda *a, **k: real_llm(fake_settings, transport=_review_transport()))
 
 
 # ══════════════════════════════════════════════════════════

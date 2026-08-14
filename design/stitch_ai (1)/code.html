@@ -1,0 +1,510 @@
+<!DOCTYPE html><html lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>EasyTest - Requirement Management</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style data-purpose="custom-fonts">
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "on-primary-fixed": "#001848",
+            "on-primary-fixed-variant": "#0040a2",
+            "on-error-container": "#93000a",
+            "on-background": "#051a3e",
+            "primary": "#003d9b",
+            "background": "#faf9ff",
+            "surface-container": "#e9edff",
+            "surface": "#faf9ff",
+            "primary-fixed-dim": "#b2c5ff",
+            "tertiary-fixed": "#ffdbcf",
+            "surface-container-low": "#f1f3ff",
+            "outline-variant": "#c3c6d6",
+            "surface-container-lowest": "#ffffff",
+            "on-surface-variant": "#434654",
+            "inverse-primary": "#b2c5ff",
+            "surface-variant": "#d8e2ff",
+            "secondary": "#535f73",
+            "on-tertiary-container": "#ffc6b2",
+            "tertiary-container": "#a33500",
+            "on-primary-container": "#c4d2ff",
+            "inverse-surface": "#1d3054",
+            "outline": "#737685",
+            "tertiary": "#7b2600",
+            "on-secondary": "#ffffff",
+            "surface-tint": "#0c56d0",
+            "secondary-fixed-dim": "#bbc7de",
+            "surface-container-highest": "#d8e2ff",
+            "error": "#ba1a1a",
+            "on-tertiary-fixed-variant": "#812800",
+            "inverse-on-surface": "#edf0ff",
+            "surface-dim": "#ccdaff",
+            "on-surface": "#051a3e",
+            "tertiary-fixed-dim": "#ffb59b",
+            "on-secondary-fixed": "#101c2d",
+            "primary-container": "#0052cc",
+            "on-primary": "#ffffff",
+            "error-container": "#ffdad6",
+            "on-secondary-fixed-variant": "#3b475b",
+            "surface-container-high": "#e1e8ff",
+            "on-tertiary": "#ffffff",
+            "on-tertiary-fixed": "#380d00",
+            "secondary-container": "#d4e0f8",
+            "on-secondary-container": "#576377",
+            "secondary-fixed": "#d7e3fb",
+            "surface-bright": "#faf9ff",
+            "on-error": "#ffffff",
+            "primary-fixed": "#dae2ff",
+            "primary-hover": "#003080",
+            "success": "#10b981",
+            "success-hover": "#059669"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.125rem",
+            "lg": "0.25rem",
+            "xl": "0.5rem",
+            "full": "0.75rem",
+            "sm": "0.125rem",
+            "md": "0.125rem"
+          },
+          "spacing": {
+            "xl": "32px",
+            "gutter": "16px",
+            "margin": "24px",
+            "base": "4px",
+            "lg": "24px",
+            "sm": "8px",
+            "xs": "4px",
+            "md": "16px"
+          },
+          "fontFamily": {
+            "display": ["Inter"],
+            "h2": ["Inter"],
+            "body-lg": ["Inter"],
+            "h3": ["Inter"],
+            "body-sm": ["Inter"],
+            "code": ["JetBrains Mono"],
+            "h1": ["Inter"],
+            "body-md": ["Inter"],
+            "label-md": ["Inter"]
+          }
+        }
+      }
+    }
+  </script>
+<script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('left-sidebar');
+      sidebar.classList.toggle('w-64');
+      sidebar.classList.toggle('w-12');
+      sidebar.classList.toggle('overflow-hidden');
+      
+      const contentElements = sidebar.querySelectorAll('.sidebar-content');
+      contentElements.forEach(el => el.classList.toggle('hidden'));
+      
+      const toggleIcon = document.getElementById('sidebar-toggle-icon');
+      if(sidebar.classList.contains('w-12')) {
+          toggleIcon.textContent = 'chevron_right';
+      } else {
+          toggleIcon.textContent = 'chevron_left';
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('text-primary', 'border-b-2', 'border-primary');
+        btn.classList.add('text-on-surface-variant');
+      });
+
+      const activeBtn = document.querySelector(`[data-tab-target="${tabId}"]`);
+      activeBtn.classList.remove('text-on-surface-variant');
+      activeBtn.classList.add('text-primary', 'border-b-2', 'border-primary');
+    }
+  </script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;display=swap" data-snapdom="injected-import"></head>
+<body class="bg-surface text-on-surface h-screen flex flex-col overflow-hidden aspect-video max-w-[1920px] mx-auto shadow-2xl">
+<!-- BEGIN: MainHeader -->
+<header class="bg-surface-container-lowest border-b border-outline-variant px-4 h-14 flex items-center justify-between shrink-0">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2 font-semibold text-lg text-primary">
+<svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+<path d="M12 2L2 7l10 5 10-5-10-5zm0 7.5l-5-2.5 5-2.5 5 2.5-5 2.5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+</svg>
+        EasyTest
+      </div>
+<nav class="flex gap-1 h-full">
+<a class="px-3 py-4 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-t-md transition-colors" href="#">项目管理</a>
+<a class="px-3 py-4 text-sm font-medium text-primary border-b-2 border-primary bg-surface-container-low rounded-t-md" href="#">需求管理</a>
+<a class="px-3 py-4 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-t-md transition-colors" href="#">自动化</a>
+<a class="px-3 py-4 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-t-md transition-colors" href="#">测试执行</a>
+<a class="px-3 py-4 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-t-md transition-colors" href="#">缺陷管理</a>
+<a class="px-3 py-4 text-sm font-medium text-on-surface-variant hover:text-primary hover:bg-surface-container-low rounded-t-md transition-colors" href="#">测试报告</a>
+</nav>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 px-3 py-1.5 border border-outline-variant rounded-md text-sm hover:bg-surface-container-low transition-colors">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+        main (默认)
+        <svg class="w-4 h-4 text-on-surface-variant" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+<div class="w-8 h-8 bg-surface-container-high rounded-full flex items-center justify-center text-primary font-semibold overflow-hidden border border-outline-variant cursor-pointer">
+        U
+      </div>
+<button class="p-2 rounded-md hover:bg-surface-container-low text-on-surface-variant transition-colors border border-outline-variant flex items-center gap-1 text-sm">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+        浅色
+      </button>
+</div>
+</header>
+<!-- END: MainHeader -->
+<!-- BEGIN: MainContent -->
+<main class="flex-1 flex overflow-hidden">
+<!-- BEGIN: LeftSidebar -->
+<aside class="bg-surface-container-lowest border-r border-outline-variant flex flex-col shrink-0 transition-all duration-300 w-64" id="left-sidebar">
+<div class="p-4 border-b border-outline-variant flex items-center justify-between">
+<h2 class="font-medium mb-3 sidebar-content">需求列表</h2>
+<button class="p-1 rounded hover:bg-surface-container-low text-on-surface-variant" onclick="toggleSidebar()">
+<span class="material-symbols-outlined text-lg" id="sidebar-toggle-icon">chevron_left</span>
+</button>
+</div>
+<div class="p-4 border-b border-outline-variant sidebar-content">
+<div class="relative">
+<input class="w-full pl-3 pr-8 py-1.5 border border-outline rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-surface-container-lowest" placeholder="搜索需求" type="text">
+<svg class="w-4 h-4 absolute right-2.5 top-2 text-outline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto sidebar-content">
+<ul class="p-2 space-y-1">
+<li class="">
+<a class="flex items-center justify-between p-2 rounded-md bg-surface-container-low hover:bg-surface-container transition-colors text-sm" href="#">
+<span class="truncate pr-2">测试</span>
+<span class="px-2 py-0.5 text-[10px] rounded-full border border-outline-variant text-on-surface-variant bg-surface-container-lowest shrink-0">pending_review</span>
+</a>
+</li>
+<li class="">
+<a class="flex items-center justify-between p-2 rounded-md hover:bg-surface-container-low transition-colors text-sm" href="#">
+<span class="truncate pr-2">标注平台</span>
+<span class="px-2 py-0.5 text-[10px] rounded-full border border-outline-variant text-on-surface-variant bg-surface-container-lowest shrink-0">pending_review</span>
+</a>
+</li>
+<li class="">
+<a class="flex items-center justify-between p-2 rounded-md hover:bg-surface-container-low transition-colors text-sm" href="#">
+<span class="truncate pr-2">1122</span>
+<span class="px-2 py-0.5 text-[10px] rounded-full border border-outline-variant text-on-surface-variant bg-surface-container-lowest shrink-0">pending_review</span>
+</a>
+</li>
+</ul>
+</div>
+</aside>
+<!-- END: LeftSidebar -->
+<!-- BEGIN: RightContentArea -->
+<div class="flex-1 flex flex-col bg-surface overflow-hidden">
+<!-- Top Tabs -->
+<div class="bg-surface-container-lowest border-b border-outline-variant px-4 flex gap-6 shrink-0">
+<button class="tab-btn px-1 py-3 text-sm font-medium hover:text-primary transition-colors text-on-surface-variant" data-tab-target="tab-review" onclick="switchTab('tab-review')">需求评审</button>
+<button class="tab-btn px-1 py-3 text-sm font-medium hover:text-primary transition-colors text-on-surface-variant" data-tab-target="tab-story" onclick="switchTab('tab-story')">Story</button>
+<button class="tab-btn px-1 py-3 text-sm font-medium hover:text-primary transition-colors text-on-surface-variant" data-tab-target="tab-points" onclick="switchTab('tab-points')">测试点</button>
+<button class="tab-btn px-1 py-3 text-sm font-medium text-primary border-b-2 border-primary" data-tab-target="tab-cases" onclick="switchTab('tab-cases')">测试用例</button>
+</div>
+<!-- Main Editor/Review Split -->
+<div class="flex-1 p-4 flex gap-4 overflow-hidden h-full">
+<!-- Document Editor (Sub-left) -->
+<div class="w-3/5 flex flex-col bg-surface-container-lowest border border-outline-variant rounded-md overflow-hidden shadow-sm">
+<div class="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<h3 class="font-medium text-sm">需求文档</h3>
+<button class="px-3 py-1 bg-success hover:bg-success-hover text-white text-sm rounded-md transition-colors shadow-sm">保存</button>
+</div>
+<div class="flex-1 p-4 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPgo8cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI4IiBmaWxsPSIjZmFmOWZmIj48L3JlY3Q+CjxwYXRoIGQ9Ik0wIDBMOCA4Wk04IDBMMCA4WiIgc3Ryb2tlPSIjZjFmM2ZmIiBzdHJva2Utd2lkdGg9IjEiPjwvcGF0aD4KPC9zdmc+')] bg-repeat relative">
+<textarea class="w-full h-full bg-transparent border-none resize-none focus:ring-0 p-0 text-sm text-on-surface" placeholder="需求文档内容（可编辑，编辑不自动触发评审）"></textarea>
+</div>
+</div>
+<!-- Panels Area (Sub-right) -->
+<div class="w-2/5 flex flex-col bg-surface-container-lowest border border-outline-variant rounded-md overflow-hidden shadow-sm relative">
+<!-- TAB: Review -->
+<div class="tab-content flex-1 flex flex-col overflow-hidden hidden" id="tab-review">
+<div class="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<div class="flex gap-2">
+<button class="px-3 py-1 bg-primary/20 text-primary font-medium text-sm rounded-full transition-colors opacity-50 cursor-not-allowed">需求评审</button>
+</div>
+</div>
+<div class="flex-1 flex flex-col overflow-hidden">
+<div class="flex-1 overflow-y-auto p-4 space-y-4">
+<div class="p-4 bg-surface-container-low rounded-md border border-outline-variant">
+<div class="flex items-center gap-2 mb-2 text-primary font-semibold">
+<span class="material-symbols-outlined text-sm">analytics</span>
+<h4 class="text-sm">AI 质量分析摘要</h4>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                    该需求文档结构完整，但在“异常流程处理”和“性能指标”方面存在 3 处潜在缺失。建议补充用户在断网状态下的交互逻辑。
+                  </p>
+</div>
+<div class="space-y-3">
+<h4 class="text-xs font-semibold text-outline uppercase tracking-wider px-1">待处理问题 (3)</h4>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-md shadow-sm overflow-hidden">
+<div class="px-3 py-2 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<span class="text-xs font-medium px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded-full">待确定</span>
+<div class="flex gap-2">
+<button class="text-[10px] text-outline hover:text-primary transition-colors">忽略</button>
+<button class="text-[10px] text-primary font-semibold hover:underline">确认解决</button>
+</div>
+</div>
+<div class="p-3">
+<p class="text-sm font-medium mb-2">缺失断网重连机制说明</p>
+<div class="space-y-2 mb-3">
+<div class="flex gap-2">
+<div class="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-[10px] text-primary font-bold">AI</div>
+<p class="text-xs text-on-surface-variant bg-surface-container-low p-2 rounded-md">建议在第 3 节补充：若网络中断，系统应自动重试 3 次并弹出提示。</p>
+</div>
+</div>
+<div class="relative">
+<input class="w-full text-xs border border-outline-variant rounded-md px-2 py-1.5 focus:ring-1 focus:ring-primary focus:outline-none bg-surface-container-lowest" placeholder="添加评论..." type="text">
+</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant rounded-md shadow-sm overflow-hidden opacity-80">
+<div class="px-3 py-2 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<span class="text-xs font-medium px-2 py-0.5 bg-surface-container-highest text-on-surface-variant rounded-full">待确定</span>
+<div class="flex gap-2">
+<button class="text-[10px] text-outline hover:text-primary transition-colors">忽略</button>
+<button class="text-[10px] text-primary font-semibold hover:underline">确认解决</button>
+</div>
+</div>
+<div class="p-3">
+<p class="text-sm font-medium mb-1">性能指标定义模糊</p>
+<p class="text-xs text-outline">“响应迅速”需量化为具体的毫秒数值。</p>
+</div>
+</div>
+</div>
+</div>
+<div class="p-4 border-t border-outline-variant bg-surface-container-lowest flex gap-3">
+<button class="flex-1 py-2 border border-primary text-primary text-sm font-medium rounded-md hover:bg-surface-container-low transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg">refresh</span>重新评审
+                </button>
+<button class="flex-1 py-2 bg-primary text-white text-sm font-medium rounded-md hover:bg-primary-hover transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg">auto_awesome</span>生成 Story
+                </button>
+</div>
+</div>
+</div>
+<!-- TAB: Story -->
+<div class="tab-content flex-1 flex flex-col overflow-hidden hidden" id="tab-story">
+<div class="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<h3 class="font-medium text-sm">Story 列表</h3>
+<button class="px-3 py-1 bg-primary hover:bg-primary-hover text-white text-sm rounded-md transition-colors shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">auto_awesome</span>生成测试点
+              </button>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-4">
+<div class="border border-outline-variant rounded-md p-4 hover:border-primary transition-colors cursor-pointer group">
+<div class="flex items-center justify-between mb-2">
+<div class="flex items-center gap-3">
+<span class="font-semibold text-sm">ST-001 用户登录验证</span>
+<div class="relative group/tooltip">
+<div class="w-8 h-8 rounded-full border-2 border-success flex items-center justify-center text-[10px] font-bold text-success">92</div>
+<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-on-surface text-white text-[10px] rounded opacity-0 group-hover/tooltip:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">AI 评分理由: 逻辑完整，边界条件覆盖清晰</div>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-1 hover:bg-surface-container rounded transition-colors text-on-surface-variant"><span class="material-symbols-outlined text-lg">edit</span></button>
+<button class="p-1 hover:bg-surface-container rounded transition-colors text-on-surface-variant"><span class="material-symbols-outlined text-lg">delete</span></button>
+<span class="material-symbols-outlined text-on-surface-variant">expand_more</span>
+</div>
+</div>
+<div class="mt-3 pt-3 border-t border-outline-variant space-y-3">
+<div>
+<h4 class="text-xs font-semibold text-on-surface-variant mb-1">描述</h4>
+<p class="text-sm text-on-surface">验证用户通过手机号和验证码登录系统的完整流程。</p>
+</div>
+<div>
+<h4 class="text-xs font-semibold text-on-surface-variant mb-1">验收标准</h4>
+<ul class="text-sm text-on-surface list-disc pl-4">
+<li class="">验证码有效期为5分钟</li>
+<li class="">连续错误3次锁定10分钟</li>
+</ul>
+</div>
+<div class="flex gap-4">
+<div class="flex flex-col"><span class="text-[10px] text-outline">完整性</span><span class="text-xs font-medium">高</span></div>
+<div class="flex flex-col"><span class="text-[10px] text-outline">可行性</span><span class="text-xs font-medium">高</span></div>
+<div class="flex flex-col"><span class="text-[10px] text-outline">清晰度</span><span class="text-xs font-medium">中</span></div>
+</div>
+<div class="mt-4 pt-4 border-t border-outline-variant">
+<div class="flex items-center justify-between mb-3">
+<h4 class="text-xs font-semibold text-on-surface-variant">关联测试点</h4>
+<button class="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary hover:bg-primary/20 text-[10px] font-medium rounded transition-colors">
+<span class="material-symbols-outlined text-xs">auto_awesome</span>生成测试点
+                      </button>
+</div>
+<div class="space-y-2">
+<div class="flex items-center justify-between p-2 bg-surface-container-low border border-outline-variant rounded hover:border-primary transition-colors">
+<div class="flex flex-col"><span class="text-[10px] text-outline font-medium">TP-101</span><span class="text-xs text-on-surface">验证手机号格式校验逻辑</span></div>
+<div class="flex items-center gap-1">
+<button class="p-1 hover:bg-surface-container rounded text-on-surface-variant"><span class="material-symbols-outlined text-base">edit</span></button>
+<button class="p-1 hover:bg-surface-container rounded text-on-surface-variant"><span class="material-symbols-outlined text-base">delete</span></button>
+</div>
+</div>
+<div class="flex items-center justify-between p-2 bg-surface-container-low border border-outline-variant rounded hover:border-primary transition-colors">
+<div class="flex flex-col"><span class="text-[10px] text-outline font-medium">TP-102</span><span class="text-xs text-on-surface">验证验证码发送频率限制</span></div>
+<div class="flex items-center gap-1">
+<button class="p-1 hover:bg-surface-container rounded text-on-surface-variant"><span class="material-symbols-outlined text-base">edit</span></button>
+<button class="p-1 hover:bg-surface-container rounded text-on-surface-variant"><span class="material-symbols-outlined text-base">delete</span></button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="border border-outline-variant rounded-md p-4 hover:border-primary transition-colors cursor-pointer">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="font-semibold text-sm">ST-002 个人资料修改</span>
+<div class="w-8 h-8 rounded-full border-2 border-primary/40 flex items-center justify-center text-[10px] font-bold text-primary">85</div>
+</div>
+<div class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant">expand_more</span></div>
+</div>
+</div>
+</div>
+</div>
+<!-- TAB: Test Points -->
+<div class="tab-content flex-1 flex flex-col overflow-hidden hidden" id="tab-points">
+<div class="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<h3 class="font-medium text-sm">测试点列表</h3>
+<button class="px-3 py-1 bg-primary hover:bg-primary-hover text-white text-sm rounded-md transition-colors shadow-sm flex items-center gap-1"><span class="material-symbols-outlined text-sm">account_tree</span>批量提取测试用例</button>
+</div>
+<div class="flex-1 overflow-y-auto p-4 space-y-4">
+<div class="border border-outline-variant rounded-md p-4 hover:border-primary transition-colors cursor-pointer group bg-surface-container-lowest">
+<div class="flex items-center justify-between mb-2">
+<div class="flex flex-col gap-1"><span class="font-semibold text-sm">验证手机号+验证码登录流程</span><span class="text-xs text-on-surface-variant">关联 Story: ST-001</span></div>
+<div class="flex items-center gap-2">
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">编辑</button>
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">删除</button>
+<button class="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors">提取测试用例</button>
+</div>
+</div>
+</div>
+<div class="border border-outline-variant rounded-md p-4 hover:border-primary transition-colors cursor-pointer group bg-surface-container-lowest">
+<div class="flex items-center justify-between mb-2">
+<div class="flex flex-col gap-1"><span class="font-semibold text-sm">验证验证码5分钟有效期限制</span><span class="text-xs text-on-surface-variant">关联 Story: ST-001</span></div>
+<div class="flex items-center gap-2">
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">编辑</button>
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">删除</button>
+<button class="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors">提取测试用例</button>
+</div>
+</div>
+</div>
+<div class="border border-outline-variant rounded-md p-4 hover:border-primary transition-colors cursor-pointer group bg-surface-container-lowest">
+<div class="flex items-center justify-between mb-2">
+<div class="flex flex-col gap-1"><span class="font-semibold text-sm">验证连续3次错误锁定10分钟</span><span class="text-xs text-on-surface-variant">关联 Story: ST-001</span></div>
+<div class="flex items-center gap-2">
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">编辑</button>
+<button class="px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-container transition-colors">删除</button>
+<button class="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors">提取测试用例</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- TAB: Test Cases -->
+<div class="tab-content flex-1 flex flex-col overflow-hidden" id="tab-cases">
+<div class="flex items-center justify-between px-4 py-2 border-b border-outline-variant bg-surface-container-low">
+<h3 class="font-medium text-sm">测试用例清单</h3>
+<div class="flex gap-2">
+<select class="border border-outline-variant bg-surface rounded text-xs px-2 py-1 focus:border-primary outline-none">
+<option>所有类型</option><option>功能</option><option>接口</option>
+</select>
+<button class="px-3 py-1 bg-primary hover:bg-primary-hover text-white text-sm rounded-md transition-colors shadow-sm flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">add</span>新建用例
+                </button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low sticky top-0 z-10 shadow-sm text-xs text-on-surface-variant">
+<tr>
+<th class="py-2 px-4 font-semibold border-b border-outline-variant w-16">编号</th>
+<th class="py-2 px-4 font-semibold border-b border-outline-variant">用例名称</th>
+<th class="py-2 px-4 font-semibold border-b border-outline-variant w-20">Story</th>
+<th class="py-2 px-4 font-semibold border-b border-outline-variant w-20">类型</th>
+<th class="py-2 px-4 font-semibold border-b border-outline-variant w-24 text-right">操作</th>
+</tr>
+</thead>
+<tbody class="text-xs text-on-surface divide-y divide-outline-variant"><tr class="hover:bg-surface-container-low transition-colors cursor-pointer group" onclick="this.nextElementSibling.classList.toggle('hidden'); const icon = this.querySelector('.expand-icon'); icon.textContent = icon.textContent === 'expand_more' ? 'expand_less' : 'expand_more';">
+  <td class="py-2 px-4"><span class="bg-surface-container-high px-1.5 py-0.5 rounded text-[10px] font-medium">TC-01</span></td>
+  <td class="py-2 px-4">
+    <div class="font-medium text-primary">验证手机号+验证码登录流程</div>
+    <div class="text-[10px] text-on-surface-variant">关联测试点: TP-101</div>
+  </td>
+  <td class="py-2 px-4 text-on-surface-variant">ST-001</td>
+  <td class="py-2 px-4"><span class="bg-surface-container-highest text-primary px-2 py-0.5 rounded text-[10px]">功能</span></td>
+  <td class="py-2 px-4 text-right">
+    <div class="flex justify-end gap-2">
+      <button class="p-1 hover:bg-success-hover/20 rounded transition-colors text-success" title="执行">
+        <span class="material-symbols-outlined text-lg">play_arrow</span>
+      </button>
+      <button class="p-1 hover:bg-surface-container rounded transition-colors text-on-surface-variant" title="编辑">
+        <span class="material-symbols-outlined text-lg">edit</span>
+      </button>
+      <button class="p-1 hover:bg-error-container rounded transition-colors text-error" title="删除">
+        <span class="material-symbols-outlined text-lg">delete</span>
+      </button>
+      <span class="material-symbols-outlined text-lg text-on-surface-variant expand-icon">expand_more</span>
+    </div>
+  </td>
+</tr>
+<tr class="bg-surface-container-lowest hidden">
+  <td class="p-4 border-b border-outline-variant bg-surface-container-low/30" colspan="5">
+    <div class="flex flex-col gap-4">
+      <div class="grid grid-cols-1 gap-4">
+        <div>
+          <p class="font-semibold text-on-surface-variant mb-1 text-xs">前置条件</p>
+          <p class="p-2 bg-surface-container-lowest border border-outline-variant rounded text-xs">用户未登录，处于登录页面；手机号已注册。</p>
+        </div>
+        <div>
+          <p class="font-semibold text-on-surface-variant mb-1 text-xs">测试数据</p>
+          <p class="p-2 bg-surface-container-lowest border border-outline-variant rounded text-xs">Phone: 13800138000, Code: 123456</p>
+        </div>
+      </div>
+      <div>
+        <p class="font-semibold text-on-surface-variant mb-1 text-xs">操作步骤</p>
+        <ol class="list-decimal pl-4 space-y-1 text-xs">
+          <li class="">输入有效的手机号</li>
+          <li class="">点击获取验证码</li>
+          <li class="">输入收到的6位验证码</li>
+          <li class="">点击登录按钮</li>
+        </ol>
+      </div>
+      <div>
+        <p class="font-semibold text-on-surface-variant mb-1 text-xs">预期结果</p>
+        <p class="p-2 bg-surface-container-lowest border border-outline-variant rounded text-xs">系统验证通过，跳转至首页，并显示登录成功提示。</p>
+      </div>
+      <div class="border-t border-outline-variant pt-3">
+        <p class="font-semibold text-on-surface-variant mb-2 text-xs">自动化绑定</p>
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-success text-sm">link</span>
+          <span class="text-on-surface text-xs">AT-LOGIN-001 (Playwright)</span>
+          <button class="ml-auto text-[10px] border border-outline-variant px-2 py-1 rounded hover:bg-surface-container">重新绑定</button>
+        </div>
+      </div>
+    </div>
+  </td>
+</tr></tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- END: RightContentArea -->
+</main>
+<!-- END: MainContent -->
+
+
+</body></html>

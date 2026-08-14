@@ -159,13 +159,15 @@ async def generate_cases(client: LLMClient, requirement: dict, stories: list[dic
 {story_block}
 
 请严格按以下 JSON 返回（不要输出其他内容）：
-{{"cases": [{{"story_index": 0, "title": "用例标题", "preconditions": "前置条件", "steps": ["步骤1", "步骤2"], "expected": "预期结果"}}], "score": 0, "score_reason": "用例质量评分原因"}}
+{{"cases": [{{"story_index": 0, "title": "用例标题", "preconditions": "前置条件", "test_data": "测试数据", "steps": ["步骤1", "步骤2"], "expected": "预期结果", "test_type": "功能"}}], "score": 0, "score_reason": "用例质量评分原因"}}
 
 要求：
 1. story_index 对应上方 Story 序号（从 0 开始）
 2. 每个 Story 至少 2 条用例，覆盖正常、边界、异常场景
 3. 步骤用数组，每步可执行；预期结果明确
-4. score 为 0-100 的整数"""
+4. test_type 取「功能 / 接口 / UI / 安全 / 性能 / 兼容 / Manual」之一（按用例验证方式判断）
+5. test_data 填写该用例需要准备的测试数据（无特殊数据可填空串）
+6. score 为 0-100 的整数"""
     data = await client.chat_json(prompt, schema_hint='用例生成')
     if not isinstance(data, dict):
         raise ValueError('用例生成输出应为 JSON 对象')
@@ -177,6 +179,8 @@ async def generate_cases(client: LLMClient, requirement: dict, stories: list[dic
         if not isinstance(c.get('steps'), list):
             c['steps'] = []
         c.setdefault('story_index', 0)
+        c.setdefault('test_type', '功能')
+        c.setdefault('test_data', '')
     data['cases'] = cases
     data.setdefault('score', 0)
     data.setdefault('score_reason', '')
@@ -203,15 +207,17 @@ async def regenerate_single_case(client: LLMClient, requirement: dict,
 预期: {case.get('expected', '')}
 
 请严格按以下 JSON 返回（不要输出其他内容）：
-{{"title": "用例标题", "preconditions": "前置条件", "steps": ["步骤1", "步骤2"], "expected": "预期结果", "score": 0, "score_reason": "本次用例质量评分原因"}}
+{{"title": "用例标题", "preconditions": "前置条件", "test_data": "测试数据", "steps": ["步骤1", "步骤2"], "expected": "预期结果", "test_type": "功能", "score": 0, "score_reason": "本次用例质量评分原因"}}
 
-score 为 0-100 的整数。"""
+score 为 0-100 的整数；test_type 取「功能 / 接口 / UI / 安全 / 性能 / 兼容 / Manual」之一。"""
     data = await client.chat_json(prompt, schema_hint='单用例重生成')
     if not isinstance(data, dict):
         raise ValueError('单用例重生成输出应为 JSON 对象')
     _require_fields(data, ['title', 'preconditions', 'expected'])
     if not isinstance(data.get('steps'), list):
         data['steps'] = []
+    data.setdefault('test_type', '功能')
+    data.setdefault('test_data', '')
     data['score'] = _as_score(data.get('score'))
     return data
 

@@ -9,7 +9,7 @@ import pytest
 from httpx import MockTransport
 
 from app.db import crud
-from app.services import llm_client
+from app.services import llm_client, requirement_agent
 from app.api import requirements as req_api
 
 # ── Mock LLM：按 prompt 关键词返回对应固定 JSON ──
@@ -195,6 +195,37 @@ async def test_agent_full_flow_with_state_machine(client, ctx, monkeypatch):
     assert resp.json()['code'] == 200
     req = (await client.get(f'/api/requirements/{req_id}', headers=headers)).json()['data']
     assert req['status'] == 'done'
+
+
+async def test_generate_cases_defaults_test_type_and_test_data():
+    """generate_cases 解析 LLM 输出中的 test_type/test_data；缺失时安全兜底。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        data = {
+            'cases': [
+                {'story_index': 0, 'title': '查询订单-按订单号', 'preconditions': '已登录',
+                 'test_data': '订单号: 2024001', 'steps': ['输入订单号', '查询'],
+                 'expected': '展示订单详情', 'test_type': '接口'},
+                {'story_index': 0, 'title': '查询订单-异常单号', 'preconditions': '已登录',
+                 'steps': ['输入非法单号'], 'expected': '提示错误'},
+            ],
+            'score': 85, 'score_reason': '覆盖正常与边界',
+        }
+        return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(data, ensure_ascii=False)}}]})
+
+    client = llm_client.LLMClient({'provider': 'deepseek', 'api_base': 'http://fake-llm',
+                                   'text_model': 'fake-model', 'vision_model': '', 'api_key': 'fake-key'},
+                                  transport=MockTransport(handler))
+    requirement = {'title': '订单需求', 'content': '支持查询订单'}
+    stories = [{'title': '查询订单', 'description': '按条件查询订单列表', 'acceptance_criteria': []}]
+
+    result = await requirement_agent.generate_cases(client, requirement, stories)
+    cases = result['cases']
+    assert cases[0]['test_type'] == '接口'
+    assert cases[0]['test_data'] == '订单号: 2024001'
+    # 缺失字段 → 安全兜底，不破坏既有字段
+    assert cases[1]['test_type'] == '功能'
+    assert cases[1]['test_data'] == ''
+    assert cases[1]['preconditions'] == '已登录'
 
 
 async def test_review_low_score(client, ctx, monkeypatch):

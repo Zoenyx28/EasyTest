@@ -280,7 +280,7 @@ async def trigger_analysis(request: Request, req_id: int,
     # Run agent in background
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             sources = [{'text_content': req.get('content', '') or req.get('title', '')}]
             result = await layered_agent.analyze_requirement(
@@ -341,11 +341,12 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _make_llm():
-    try:
-        return llm_client.LLMClient()
-    except Exception as exc:
-        raise ValueError(f'LLM 配置错误：{exc}')
+async def _make_llm() -> llm_client.LLMClient:
+    from app.db import crud
+    settings = await crud.get_llm_settings()
+    if not settings:
+        raise ValueError('尚未配置 LLM，请先在「设置」中填写')
+    return llm_client.LLMClient(settings)
 
 
 async def _snapshot_content(req_id: int, content: str) -> None:
@@ -378,7 +379,7 @@ async def gap_comment(request: Request, req_id: int, gap_id: int,
     thread = list(content.get('thread') or [])
     thread.append({'role': 'user', 'text': comment, 'ts': _now_iso()})
     try:
-        client = _make_llm()
+        client = await _make_llm()
         reply = await layered_agent.respond_to_gap(
             client, {**content, 'thread': thread}, comment, 'comment')
     except ValueError as exc:
@@ -403,7 +404,7 @@ async def gap_ignore(request: Request, req_id: int, gap_id: int):
     content = _gap_content(gap)
     thread = list(content.get('thread') or [])
     try:
-        client = _make_llm()
+        client = await _make_llm()
         reply = await layered_agent.respond_to_gap(
             client, {**content, 'thread': thread}, '', 'ignore')
     except ValueError as exc:
@@ -431,7 +432,7 @@ async def gap_confirm(request: Request, req_id: int, gap_id: int):
     content = _gap_content(gap)
     thread = list(content.get('thread') or [])
     try:
-        client = _make_llm()
+        client = await _make_llm()
         result = await layered_agent.confirm_gap_update_doc(
             client, {'content': req.get('content') or ''}, {**content, 'thread': thread})
     except ValueError as exc:
@@ -472,7 +473,7 @@ async def re_review_requirement_agent(request: Request, req_id: int,
                 {**_gap_content(g), 'id': g['id'], 'status': g.get('status', 'pending')}
                 for g in old_gaps
             ]
-            client = _make_llm()
+            client = await _make_llm()
             result = await layered_agent.re_review_requirement(
                 client, req, [{'text_content': req.get('content') or req.get('title', '')}],
                 old_gap_dicts, comment,
@@ -553,7 +554,7 @@ async def trigger_stories(request: Request, req_id: int):
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             sources = [{'text_content': req.get('content', '') or req.get('title', '')}]
             # Get latest review for context
@@ -613,7 +614,7 @@ async def trigger_story_review(request: Request, req_id: int,
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             sources = [{'text_content': req.get('content', '') or req.get('title', '')}]
             result = await layered_agent.review_stories(
@@ -665,7 +666,7 @@ async def trigger_test_points(request: Request, req_id: int):
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.generate_test_points(
                 client, requirement, stories,
@@ -730,7 +731,7 @@ async def trigger_test_point_review(request: Request, req_id: int,
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.review_test_points(
                 client, requirement, stories, test_points, comment,
@@ -781,7 +782,7 @@ async def trigger_scenarios(request: Request, req_id: int):
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.generate_scenarios(
                 client, requirement, test_points,
@@ -837,7 +838,7 @@ async def trigger_scenario_review(request: Request, req_id: int,
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.review_scenarios(
                 client, requirement, test_points, scenarios, comment,
@@ -890,7 +891,7 @@ async def trigger_cases(request: Request, req_id: int):
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await requirement_agent.generate_cases(
                 client, requirement, stories,
@@ -902,8 +903,10 @@ async def trigger_cases(request: Request, req_id: int):
                 story_id = stories[sidx]['id'] if 0 <= sidx < len(stories) else 0
                 content = {
                     'preconditions': c.get('preconditions', ''),
+                    'test_data': c.get('test_data', ''),
                     'steps': c.get('steps', ''),
                     'expected': c.get('expected', ''),
+                    'test_type': c.get('test_type', '功能'),
                     'score_reason': c.get('score_reason', ''),
                     'story_index': sidx,
                 }
@@ -951,7 +954,7 @@ async def trigger_case_review(request: Request, req_id: int,
 
     async def run():
         try:
-            client = llm_client.LLMClient()
+            client = await _make_llm()
             requirement = {'title': req.get('title', ''), 'summary': req.get('content', '')}
             result = await layered_agent.review_cases(
                 client, requirement, stories, test_points, scenarios, cases, comment,
@@ -1102,7 +1105,7 @@ async def generate_supplement(request: Request, req_id: int, gap_id: int,
     await req_crud.update_ai_task(task['id'], status='RUNNING')
 
     try:
-        client = llm_client.LLMClient()
+        client = await _make_llm()
     except Exception as exc:
         await req_crud.update_ai_task(task['id'], status='FAILED', error=str(exc))
         return fail(400, f'LLM 配置错误：{exc}')

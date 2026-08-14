@@ -42,6 +42,8 @@ _TOKEN_URL = f'{_OAUTH_HOST}/oauth/v3/token'
 SCOPES = [
     'docx:document:readonly',
     'wiki:node:read',
+    'drive:media:download',
+    'drive:drive:readonly',
     'auth:user.id:read',
     'offline_access',
 ]
@@ -418,3 +420,202 @@ async def _extract_bitable(token: str, access_token: str) -> tuple[str, str]:
     records = data2.get('data', {}).get('items') or []
     lines = [' | '.join(f'{k}: {v}' for k, v in (rec.get('fields') or {}).items()) for rec in records]
     return '\n'.join(lines), ''
+
+
+# ══════════════════════════════════════════════════════════
+# 文档预览（blocks → markdown + 图片代理）
+# ══════════════════════════════════════════════════════════
+
+
+def _elements_text(elements) -> str:
+    """把 block 的 elements 数组（text_run/mention 等）拼成纯文本。"""
+    parts = []
+    for e in elements or []:
+        run = (e.get('text_run') or {}).get('content')
+        if run:
+            parts.append(run)
+        mention = (e.get('mention') or {}).get('text')
+        if mention:
+            parts.append(mention)
+    return ''.join(parts)
+
+
+def _block_elements(b: dict, keys: tuple) -> list:
+    """取 block 内首个存在的结构（heading1/paragraph/text 等）的 elements。"""
+    for k in keys:
+        if b.get(k):
+            return b[k].get('elements') or []
+    return []
+
+
+def _cell_text(cell_id: int, by_id: dict, children_of: dict, seen: set) -> str:
+    if cell_id in seen:
+        return ''
+    seen.add(cell_id)
+    out = []
+    for c in children_of.get(cell_id, []):
+        t = _elements_text(_block_elements(c, ('text', 'paragraph')))
+        if t:
+            out.append(t)
+        out.append(_cell_text(c.get('block_id'), by_id, children_of, seen))
+    return ''.join(out)
+
+
+def _table_md(b: dict, by_id: dict, children_of: dict) -> str:
+    tbl = b.get('table') or {}
+    cells = tbl.get('cells') or []
+    prop = tbl.get('property') or {}
+    col_size = int(prop.get('column_size') or 0)
+    if not cells or not col_size:
+        return '(表格)'
+    rows = []
+    for i in range(0, len(cells), col_size):
+        row = [_cell_text(cid, by_id, children_of, set()).replace('|', '\\|') for cid in cells[i:i + col_size]]
+        rows.append(row)
+    header = rows[0] if rows else []
+    out = ['| ' + ' | '.join(header) + ' |', '|' + '---|' * len(header)]
+    for r in rows[1:]:
+        out.append('| ' + ' | '.join(r) + ' |')
+    return '\n'.join(out)
+
+
+def _blocks_to_markdown(items: list) -> str:
+    """把飞书 docx blocks 转成 markdown（标题/段落/列表/代码/引用/待办/表格/分割线/图片占位）。"""
+    lines: list[str] = []
+    by_id = {b.get('block_id'): b for b in items}
+    children_of: dict = {}
+    for b in items:
+        children_of.setdefault(b.get('parent_id'), []).append(b)
+
+    def walk(bid, depth=0):
+        for b in children_of.get(bid, []):
+            btype = b.get('block_type')
+            indent = '  ' * min(depth, 4)
+            if btype == 3:
+                lines.append(f"# {_elements_text(_block_elements(b, ('heading1',)))}")
+            elif btype == 4:
+                lines.append(f"## {_elements_text(_block_elements(b, ('heading2',)))}")
+            elif btype == 5:
+                lines.append(f"### {_elements_text(_block_elements(b, ('heading3',)))}")
+            elif btype in (6, 7, 8, 9, 10, 11):
+                lvl = btype - 2
+                lines.append(f"{'#' * lvl} {_elements_text(_block_elements(b, (f'heading{lvl}',)))}")
+            elif btype == 2:
+                t = _elements_text(_block_elements(b, ('text', 'paragraph')))
+                if t:
+                    lines.append(t)
+            elif btype == 12:
+                lines.append(f"{indent}- {_elements_text(_block_elements(b, ('bullet',)))}")
+            elif btype == 13:
+                lines.append(f"{indent}1. {_elements_text(_block_elements(b, ('ordered',)))}")
+            elif btype == 14:
+                lines.append("```")
+                lines.append(_elements_text(_block_elements(b, ('code',))))
+                lines.append("```")
+            elif btype == 15:
+                lines.append(f"> {_elements_text(_block_elements(b, ('quote',)))}")
+            elif btype == 16:
+                mark = '[x]' if (b.get('todo') or {}).get('done') else '[ ]'
+                lines.append(f"{indent}- {mark} {_elements_text(_block_elements(b, ('todo',)))}")
+            elif btype == 21:
+                lines.append('---')
+            elif btype == 27:
+                token = (b.get('image') or {}).get('token', '')
+                lines.append(f"![图片](/api/feishu/media/{token})" if token else '![图片]')
+            elif btype == 28:
+                md = _table_md(b, by_id, children_of)
+                lines.append(md)
+            # btype 1 (page) 与其他类型忽略；递归子块
+            walk(b.get('block_id'), depth + 1)
+
+    walk(0)
+    return '\n'.join(lines)
+
+
+async def _resolve_wiki_node(access_token: str, token: str) -> tuple[str, str]:
+    """wiki token → (obj_token, obj_type)。"""
+    async with httpx.AsyncClient(timeout=20) as hc:
+        resp = await hc.get(f'{_FEISHU_HOST}/open-apis/wiki/v2/spaces/get_node',
+                            params={'token': token},
+                            headers={'Authorization': f'Bearer {access_token}'})
+        data = resp.json()
+    if resp.status_code != 200 or data.get('code') != 0:
+        _raise_api_error(data, '知识库节点解析失败')
+    node = data.get('data', {}).get('node', {})
+    obj_token = node.get('obj_token', '')
+    obj_type = node.get('obj_type', '')
+    if not obj_token:
+        raise FeishuError(ERR_FETCH, '知识库节点解析失败')
+    return obj_token, obj_type
+
+
+async def _fetch_blocks(access_token: str, document_id: str, page_token: str = '') -> list:
+    """拉取 docx 全部 blocks（分页）。"""
+    all_items: list = []
+    params = {'page_size': 500}
+    if page_token:
+        params['page_token'] = page_token
+    async with httpx.AsyncClient(timeout=30) as hc:
+        resp = await hc.get(f'{_FEISHU_HOST}/open-apis/docx/v1/documents/{document_id}/blocks',
+                            params=params, headers={'Authorization': f'Bearer {access_token}'})
+        data = resp.json()
+    if resp.status_code != 200 or data.get('code') != 0:
+        _raise_api_error(data, '文档块读取失败')
+    items = data.get('data', {}).get('items') or []
+    all_items.extend(items)
+    npt = data.get('data', {}).get('page_token', '')
+    if npt:
+        all_items.extend(await _fetch_blocks(access_token, document_id, npt))
+    return all_items
+
+
+async def preview_doc(url: str, user_id: int = 0) -> dict:
+    """获取文档预览：markdown（blocks 转换）+ 图片 token 列表。
+
+    返回 {markdown, images, error_kind, error_message}。任何失败不抛异常。
+    """
+    parsed = parse_link(url)
+    if not parsed['valid']:
+        return {'markdown': '', 'images': [], 'error_kind': parsed['error_kind'],
+                'error_message': parsed['error_message']}
+    doc_type = parsed['doc_type']
+    if doc_type not in _SUPPORTED_READ:
+        return {'markdown': '', 'images': [], 'error_kind': ERR_UNSUPPORTED,
+                'error_message': f'暂不支持该链接类型（{doc_type}）'}
+    access_token = await _get_user_token(user_id) if user_id else None
+    if not access_token:
+        access_token = await _get_tenant_token()
+    if not access_token:
+        return {'markdown': '', 'images': [], 'error_kind': ERR_NO_AUTH,
+                'error_message': '尚未授权飞书，请先在「设置 → 飞书授权」完成授权'}
+    try:
+        if doc_type == 'wiki':
+            doc_id, real_type = await _resolve_wiki_node(access_token, parsed['token'])
+        else:
+            doc_id, real_type = parsed['token'], doc_type
+        if real_type not in ('docx', 'doc'):
+            raise FeishuError(ERR_UNSUPPORTED, '预览仅支持文档类（docx），请手动粘贴内容')
+        items = await _fetch_blocks(access_token, doc_id)
+        images = [b.get('image', {}).get('token', '')
+                  for b in items if b.get('block_type') == 27 and b.get('image', {}).get('token')]
+        markdown = _blocks_to_markdown(items)
+        return {'markdown': markdown, 'images': images, 'error_kind': '', 'error_message': ''}
+    except FeishuError as exc:
+        return {'markdown': '', 'images': [], 'error_kind': exc.kind, 'error_message': exc.message}
+
+
+async def fetch_image(file_token: str, user_id: int) -> tuple[bytes, str]:
+    """下载飞书图片字节 + content_type（user token）。"""
+    access_token = await _get_user_token(user_id)
+    if not access_token:
+        raise FeishuError(ERR_NO_AUTH, '尚未授权飞书')
+    async with httpx.AsyncClient(timeout=30) as hc:
+        r = await hc.get(f'{_FEISHU_HOST}/open-apis/drive/v1/medias/{file_token}/download',
+                         headers={'Authorization': f'Bearer {access_token}'})
+    if r.status_code != 200:
+        try:
+            data = r.json()
+        except Exception:
+            data = {'msg': '图片下载失败'}
+        _raise_api_error(data, '图片下载失败')
+    return r.content, r.headers.get('content-type', 'image/png')

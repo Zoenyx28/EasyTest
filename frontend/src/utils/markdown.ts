@@ -36,6 +36,28 @@ export function renderMarkdown(text: string): string {
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
 
+  // Images ![alt](url) — before the link rule so it isn't treated as a link
+  const imgs: string[] = [];
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, url) => {
+    imgs.push(`<img src="${url}" alt="${alt}" style="max-width:100%;border-radius:8px;margin:6px 0;" />`);
+    return `\u0000IMG${imgs.length - 1}\u0000`;
+  });
+
+  // Tables: consecutive pipe rows → <table> (placeholder to dodge later rules)
+  const tables: string[] = [];
+  html = html.replace(/((?:\|[^\n]+\|\n?)+)/g, (m) => {
+    const rows = m.trim().split('\n').filter((r) => r.trim().startsWith('|'));
+    if (rows.length < 2) return m;
+    const cells = (r: string) => r.split('|').filter((c) => c.trim() !== '').map((c) => c.trim());
+    const header = cells(rows[0]);
+    const body = rows.slice(2).map(cells);
+    const th = header.map((h) => `<th style="border:1px solid var(--border);padding:4px 8px;background:var(--bg-soft);">${h}</th>`).join('');
+    const trs = body.map((r) => `<tr>${r.map((c) => `<td style="border:1px solid var(--border);padding:4px 8px;">${c}</td>`).join('')}</tr>`).join('');
+    tables.push(`<table style="border-collapse:collapse;width:100%;font-size:12px;margin:6px 0;">` +
+      `<thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>`);
+    return `\u0000TABLE${tables.length - 1}\u0000`;
+  });
+
   // Links [text](url)
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
 
@@ -67,6 +89,10 @@ export function renderMarkdown(text: string): string {
   // Line breaks (double newline = paragraph)
   html = html.replace(/\n\n/g, '</p><p>');
   html = html.replace(/\n/g, '<br>');
+
+  // Restore images / tables
+  html = html.replace(/\u0000IMG(\d+)\u0000/g, (_m, i) => imgs[+i]);
+  html = html.replace(/\u0000TABLE(\d+)\u0000/g, (_m, i) => tables[+i]);
 
   // Restore code blocks / inline code
   html = html.replace(/\u0000CODEBLOCK(\d+)\u0000/g, (_m, i) => `<pre><code>${codeBlocks[+i]}</code></pre>`);

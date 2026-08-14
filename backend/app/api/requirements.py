@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -247,9 +248,50 @@ async def list_sources(request: Request, req_id: int):
     return ok(enriched)
 
 
+def _html_to_text(html: str) -> str:
+    """极简 HTML → 纯文本（无第三方依赖）：剥离 script/style/标签，块级标签换行。"""
+    if not html:
+        return ''
+    html = re.sub(r'(?is)<(script|style)[^>]*>.*?</\1>', ' ', html)
+    html = re.sub(r'(?i)</?(p|div|li|br|h[1-6]|tr|td|th|section|article|blockquote)\b[^>]*>', '\n', html)
+    html = re.sub(r'<[^>]+>', '', html)
+    html = html.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"')
+    text = re.sub(r'[ \t]+', ' ', html)
+    text = re.sub(r'\n\s*\n+', '\n', text)
+    return text.strip()
+
+
+async def _fetch_web_text(url: str) -> tuple[str, str]:
+    """抓取网页正文（网页获取）：返回 (文本, content-type)。"""
+    import httpx
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; EasyTest/1.0)', 'Accept': 'text/html,application/json,*/*'}
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+        ctype = (resp.headers.get('content-type') or '').split(';')[0].lower()
+        if 'html' in ctype:
+            return _html_to_text(resp.text), ctype
+        return resp.text.strip(), ctype
+
+
+def _extract_docx_text(data: bytes) -> str:
+    """docx（zip+xml）→ 纯文本，无需第三方库。"""
+    import io
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            xml = z.read('word/document.xml').decode('utf-8', 'ignore')
+        xml = re.sub(r'</w:p>', '\n', xml)
+        text = re.sub(r'<[^>]+>', '', xml)
+        text = re.sub(r'\n\s*\n+', '\n', text)
+        return text.strip()
+    except Exception:
+        return ''
+
+
 @router.post('/{req_id}/sources')
 async def add_link_source(request: Request, req_id: int, data: RequirementSourceAdd = Body(...)):
-    """添加链接来源（飞书文档链接等）；以当前用户身份提取正文（失败降级为仅保存链接）"""
+    """添加链接来源（飞书文档链接 / 网页获取）；以当前用户身份提取正文（失败降级为仅保存链接）"""
     user = await get_current_user(request)
     req = await crud.get_requirement(req_id)
     if req is None:
@@ -259,10 +301,10 @@ async def add_link_source(request: Request, req_id: int, data: RequirementSource
     if not data.link.strip():
         return fail(400, '链接不能为空')
 
-    source_type = data.type if data.type in ('lark_link', 'file') else 'lark_link'
+    source_type = data.type if data.type in ('lark_link', 'web', 'file') else 'lark_link'
     link = data.link.strip()
 
-    # 飞书链接：以当前用户身份同步提取正文（失败降级，不阻断添加来源）
+    # 飞书链接 / 网页：以当前用户身份同步提取正文（失败降级，不阻断添加来源）
     extracted = False
     text_content = data.text_content or ''
     extract_error = ''
@@ -275,6 +317,16 @@ async def add_link_source(request: Request, req_id: int, data: RequirementSource
             await crud.update_requirement(req_id, {'content': text_content})
         else:
             extract_error = result.get('error_message', '') or '飞书文档读取失败'
+    elif source_type == 'web':
+        try:
+            text_content, _mime = await _fetch_web_text(link)
+            if text_content.strip():
+                extracted = True
+                await crud.update_requirement(req_id, {'content': text_content[:80000]})
+            else:
+                extract_error = '网页内容为空或无法解析'
+        except Exception as exc:
+            extract_error = f'网页获取失败：{exc}'
 
     source_id = await crud.create_requirement_source(
         req_id,
@@ -358,6 +410,15 @@ async def upload_source_file(request: Request, req_id: int, file: UploadFile = F
     with open(filepath, 'wb') as f:
         f.write(content)
 
+    # 可解析的文本类文件（txt/md/json/docx）→ 提取正文作为需求文档（单一事实源）
+    text = ''
+    if ext in ('.txt', '.md', '.json', '.csv'):
+        text = content.decode('utf-8', 'ignore').strip()
+    elif ext == '.docx':
+        text = _extract_docx_text(content)
+    if text:
+        await crud.update_requirement(req_id, {'content': text[:80000]})
+
     source_id = await crud.create_requirement_source(
         req_id,
         type='file',
@@ -365,9 +426,12 @@ async def upload_source_file(request: Request, req_id: int, file: UploadFile = F
         filepath=str(filepath),
         file_size=len(content),
         mime_type=file.content_type or 'application/octet-stream',
+        text_content=text[:80000] if text else '',
+        extracted=bool(text),
+        extract_error='' if text else '该格式暂不支持自动提取正文（文件已保存，可在来源中查看/下载）',
         user_id=user['id'],
     )
-    return ok({'id': source_id}, msg='文件上传成功')
+    return ok({'id': source_id, 'extracted': bool(text)}, msg='文件已上传并加载为需求文档' if text else '文件上传成功')
 
 
 @router.delete('/sources/{source_id}')

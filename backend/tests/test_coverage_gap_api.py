@@ -240,3 +240,55 @@ async def test_execution_feedback_creates_p0_gap(client, ctx):
     data = await _analyze(client, ctx['member'], req_id)
     assert any(g['severity'] == 'P0' and g['layer'] == 'case'
                and g['source_ref'].startswith('exec:') for g in data['test_gaps'])
+
+
+async def test_workbench_aggregate_case_contract(client, ctx):
+    """工作台聚合契约：case 资产 content 含 test_type/test_data；绑定出现在 bindings。
+
+    这是前端 RequirementWorkbench 测试用例阶段的直接数据源校验：
+    assets[case].content 可解析出 preconditions/test_data/steps/expected/test_type，
+    且绑定的自动化用例 uid 出现在 workbench.bindings 中。
+    """
+    req_id = await _create_req(client, ctx['member'], ctx['project_id'], ctx['branch_id'])
+    user = ctx['member']
+
+    await _seed_stories(client, user, req_id, confirmed=True)
+    await crud_requirements.upsert_assets(req_id, 'test_point', [
+        {'title': '退款资格校验', 'status': 'confirmed',
+         'content': json.dumps(
+             {'category': 'Functional', 'confirmations': {'product': True, 'testing': True}},
+             ensure_ascii=False)},
+    ], created_by=user['id'])
+    await crud_requirements.upsert_assets(req_id, 'scenario', [
+        {'title': '已支付订单申请退款', 'status': 'confirmed',
+         'content': json.dumps(
+             {'coverage_dim': '正常', 'confirmations': {'product': True, 'testing': True}},
+             ensure_ascii=False)},
+    ], created_by=user['id'])
+    await crud_requirements.upsert_assets(req_id, 'case', [
+        {'title': '退款-正常申请', 'story_id': 0, 'sort_order': 0, 'status': 'generated',
+         'content': json.dumps(
+             {'preconditions': '已登录', 'test_data': '订单号 2024001',
+              'steps': ['进入退款页', '提交'], 'expected': '退款成功', 'test_type': '接口'},
+             ensure_ascii=False)},
+    ], created_by=user['id'])
+
+    cases = await crud_requirements.get_assets(req_id, 'case')
+    await crud_requirements.create_binding(
+        cases[0]['id'], 'linkAT-LOGIN-001', ctx['project_id'], ctx['branch_id'])
+
+    resp = await client.get(f'/api/req/{req_id}/workbench', headers=_auth(user))
+    body = resp.json()
+    assert body['code'] == 200, body
+    data = body['data']
+
+    case_assets = [a for a in data['assets'] if a['asset_type'] == 'case']
+    assert len(case_assets) == 1
+    content = json.loads(case_assets[0]['content'])
+    assert content['test_type'] == '接口'
+    assert content['test_data'] == '订单号 2024001'
+    assert content['steps'] == ['进入退款页', '提交']
+
+    assert any(b['uid'] == 'linkAT-LOGIN-001'
+               and b['generated_case_id'] == case_assets[0]['id']
+               for b in data['bindings'])

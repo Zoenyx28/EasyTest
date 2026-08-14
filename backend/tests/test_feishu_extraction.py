@@ -242,3 +242,29 @@ async def test_add_link_source_fails_gracefully(client, ctx, monkeypatch):
                              headers={'Authorization': f"Bearer {ctx['member']['token']}"})).json()['data']
     assert srcs[0]['type'] == 'lark_link'
     assert srcs[0]['extracted'] is False
+
+
+async def test_preview_doc_blocks_to_markdown(client, ctx, monkeypatch):
+    """预览：blocks → markdown（标题/段落/图片占位）+ 图片 token 列表。"""
+    blocks = {'code': 0, 'data': {'items': [
+        {'block_id': 'b1', 'block_type': 3, 'parent_id': 0, 'children': [],
+         'heading1': {'elements': [{'text_run': {'content': '产品需求'}}]}},
+        {'block_id': 'b2', 'block_type': 2, 'parent_id': 0, 'children': [],
+         'text': {'elements': [{'text_run': {'content': '支持订单退款'}}]}},
+        {'block_id': 'b3', 'block_type': 12, 'parent_id': 0, 'children': [],
+         'bullet': {'elements': [{'text_run': {'content': '3 天无理由'}}]}},
+        {'block_id': 'b4', 'block_type': 27, 'parent_id': 0, 'children': [],
+         'image': {'token': 'img_tok_1'}},
+    ], 'page_token': ''}}
+    fake = _FakeHttp({'blocks': blocks})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: fake)
+    monkeypatch.setattr(feishu_client, '_get_tenant_token', AsyncMock(return_value='tt'))
+    monkeypatch.setattr(feishu_client, '_get_user_token', AsyncMock(return_value=None))
+
+    result = await feishu_client.preview_doc('https://x.feishu.cn/docx/Doc1', ctx['member']['id'])
+    assert result['error_kind'] == ''
+    assert '# 产品需求' in result['markdown']
+    assert '支持订单退款' in result['markdown']
+    assert '- 3 天无理由' in result['markdown']
+    assert '![图片](/api/feishu/media/img_tok_1)' in result['markdown']
+    assert 'img_tok_1' in result['images']
